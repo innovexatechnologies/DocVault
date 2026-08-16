@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/camera_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/image_selection_provider.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -105,6 +106,16 @@ class _CameraScreenState extends State<CameraScreen> {
     }
 
     if (_errorMessage != null) {
+      final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
+      final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
+      final errorIconSize = ResponsiveHelper.isTablet(context) ? 70 : 60;
+      final errorTextSize = ResponsiveHelper.getResponsiveFontSize(
+        context,
+        mobileSize: 15,
+        tabletSize: 16,
+        desktopSize: 17,
+      );
+
       return Scaffold(
         backgroundColor: AppTheme.bgLight,
         appBar: AppBar(
@@ -113,31 +124,34 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
         body: Center(
           child: Padding(
-            padding: const EdgeInsets.all(24.0),
+            padding: EdgeInsets.all(responsivePadding),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                const Icon(
+                Icon(
                   Icons.error_outline,
-                  size: 60,
+                  size: errorIconSize,
                   color: AppTheme.errorColor,
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: responsivePadding),
                 Text(
                   _errorMessage!,
                   textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    fontSize: 16,
+                  style: TextStyle(
+                    fontSize: errorTextSize,
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 32),
-                ElevatedButton(
-                  onPressed: _goToGallery,
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppTheme.primaryColor,
+                SizedBox(height: responsivePadding * 1.33),
+                SizedBox(
+                  height: buttonHeight,
+                  child: ElevatedButton(
+                    onPressed: _goToGallery,
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                    ),
+                    child: const Text('Use Gallery Instead'),
                   ),
-                  child: const Text('Use Gallery Instead'),
                 ),
               ],
             ),
@@ -160,29 +174,35 @@ class _CameraScreenState extends State<CameraScreen> {
             // Top Bar
             SafeArea(
               child: Padding(
-                padding: const EdgeInsets.all(16.0),
+                padding: EdgeInsets.all(
+                  ResponsiveHelper.getGridSpacing(context),
+                ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     GestureDetector(
                       onTap: () => Navigator.of(context).pop(),
                       child: Container(
-                        padding: const EdgeInsets.all(8),
+                        padding: EdgeInsets.all(
+                          ResponsiveHelper.isMobile(context) ? 8 : 10,
+                        ),
                         decoration: BoxDecoration(
                           color: Colors.black.withOpacity(0.5),
                           borderRadius: BorderRadius.circular(8),
                         ),
-                        child: const Icon(
+                        child: Icon(
                           Icons.close,
                           color: Colors.white,
-                          size: 24,
+                          size: ResponsiveHelper.isMobile(context) ? 24 : 28,
                         ),
                       ),
                     ),
                     Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 12,
-                        vertical: 6,
+                      padding: EdgeInsets.symmetric(
+                        horizontal: ResponsiveHelper.isMobile(context)
+                            ? 12
+                            : 16,
+                        vertical: ResponsiveHelper.isMobile(context) ? 6 : 8,
                       ),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor,
@@ -190,9 +210,15 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                       child: Text(
                         'Photos: $_captureCount',
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Colors.white,
                           fontWeight: FontWeight.w600,
+                          fontSize: ResponsiveHelper.getResponsiveFontSize(
+                            context,
+                            mobileSize: 13,
+                            tabletSize: 14,
+                            desktopSize: 15,
+                          ),
                         ),
                       ),
                     ),
@@ -207,7 +233,9 @@ class _CameraScreenState extends State<CameraScreen> {
               right: 0,
               child: SafeArea(
                 child: Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.getGridSpacing(context),
+                  ),
                   color: Colors.black.withOpacity(0.7),
                   child: Column(
                     children: [
@@ -218,8 +246,12 @@ class _CameraScreenState extends State<CameraScreen> {
                           GestureDetector(
                             onTap: _capturePhoto,
                             child: Container(
-                              width: 70,
-                              height: 70,
+                              width: ResponsiveHelper.isTablet(context)
+                                  ? 80
+                                  : 70,
+                              height: ResponsiveHelper.isTablet(context)
+                                  ? 80
+                                  : 70,
                               decoration: BoxDecoration(
                                 color: AppTheme.primaryColor,
                                 shape: BoxShape.circle,
@@ -233,53 +265,94 @@ class _CameraScreenState extends State<CameraScreen> {
                                   ),
                                 ],
                               ),
-                              child: const Center(
+                              child: Center(
                                 child: Icon(
                                   Icons.camera,
                                   color: Colors.white,
-                                  size: 32,
+                                  size: ResponsiveHelper.isTablet(context)
+                                      ? 36
+                                      : 32,
                                 ),
                               ),
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
+                      SizedBox(
+                        height: ResponsiveHelper.getGridSpacing(context),
+                      ),
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                         children: [
                           // Use Gallery Instead
                           Expanded(
-                            child: OutlinedButton(
-                              onPressed: _goToGallery,
-                              style: OutlinedButton.styleFrom(
-                                side: const BorderSide(color: Colors.white),
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              height:
+                                  ResponsiveHelper.getResponsiveButtonHeight(
+                                    context,
+                                  ) *
+                                  0.75,
+                              child: OutlinedButton(
+                                onPressed: _goToGallery,
+                                style: OutlinedButton.styleFrom(
+                                  side: const BorderSide(color: Colors.white),
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                 ),
-                              ),
-                              child: const Text(
-                                'Gallery',
-                                style: TextStyle(color: Colors.white),
+                                child: Text(
+                                  'Gallery',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize:
+                                        ResponsiveHelper.getResponsiveFontSize(
+                                          context,
+                                          mobileSize: 13,
+                                          tabletSize: 14,
+                                          desktopSize: 15,
+                                        ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          SizedBox(
+                            width:
+                                ResponsiveHelper.getGridSpacing(context) * 0.5,
+                          ),
                           // Done Button
                           Expanded(
-                            child: ElevatedButton(
-                              onPressed: _captureCount > 0 ? _goToReview : null,
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: _captureCount > 0
-                                    ? AppTheme.successColor
-                                    : Colors.grey,
-                                shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(8),
+                            child: SizedBox(
+                              height:
+                                  ResponsiveHelper.getResponsiveButtonHeight(
+                                    context,
+                                  ) *
+                                  0.75,
+                              child: ElevatedButton(
+                                onPressed: _captureCount > 0
+                                    ? _goToReview
+                                    : null,
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: _captureCount > 0
+                                      ? AppTheme.successColor
+                                      : Colors.grey,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(8),
+                                  ),
                                 ),
-                              ),
-                              child: const Text(
-                                AppConstants.done,
-                                style: TextStyle(color: Colors.white),
+                                child: Text(
+                                  AppConstants.done,
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize:
+                                        ResponsiveHelper.getResponsiveFontSize(
+                                          context,
+                                          mobileSize: 13,
+                                          tabletSize: 14,
+                                          desktopSize: 15,
+                                        ),
+                                  ),
+                                ),
                               ),
                             ),
                           ),

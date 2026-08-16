@@ -5,6 +5,7 @@ import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/services/gallery_service.dart';
+import '../../core/utils/responsive_helper.dart';
 
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({super.key});
@@ -149,12 +150,19 @@ class _ReviewScreenState extends State<ReviewScreen> {
                           ],
                         )
                       : GridView.builder(
-                          padding: const EdgeInsets.all(16),
+                          padding: EdgeInsets.all(
+                            ResponsiveHelper.getGridSpacing(context),
+                          ),
                           gridDelegate:
-                              const SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: 2,
-                                crossAxisSpacing: 12,
-                                mainAxisSpacing: 12,
+                              SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount:
+                                    ResponsiveHelper.getGridCrossAxisCount(
+                                      context,
+                                    ),
+                                crossAxisSpacing:
+                                    ResponsiveHelper.getGridSpacing(context),
+                                mainAxisSpacing:
+                                    ResponsiveHelper.getGridSpacing(context),
                               ),
                           itemCount: imageProvider.selectedImages.length,
                           itemBuilder: (context, index) {
@@ -168,14 +176,18 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 // Bottom Controls
                 Container(
                   color: AppTheme.bgWhite,
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(
+                    ResponsiveHelper.getResponsivePadding(context),
+                  ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.stretch,
                     children: [
                       // Mode Toggle Button
                       if (!_isReordering)
                         SizedBox(
-                          height: 44,
+                          height: ResponsiveHelper.getResponsiveButtonHeight(
+                            context,
+                          ),
                           child: OutlinedButton.icon(
                             onPressed: _toggleReorderMode,
                             icon: const Icon(Icons.drag_handle),
@@ -184,49 +196,98 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         ),
                       if (_isReordering)
                         SizedBox(
-                          height: 44,
+                          height: ResponsiveHelper.getResponsiveButtonHeight(
+                            context,
+                          ),
                           child: ElevatedButton.icon(
                             onPressed: _toggleReorderMode,
                             icon: const Icon(Icons.check),
                             label: const Text('Done'),
                           ),
                         ),
-                      const SizedBox(height: 12),
-                      // Add More Options
-                      SingleChildScrollView(
-                        scrollDirection: Axis.horizontal,
-                        child: Row(
-                          children: [
-                            ElevatedButton.icon(
-                              onPressed: () => _addMoreImages('camera'),
-                              icon: const Icon(Icons.camera_alt),
-                              label: const Text('Camera'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.primaryColor,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            ElevatedButton.icon(
-                              onPressed: () => _addMoreImages('gallery'),
-                              icon: const Icon(Icons.image),
-                              label: const Text('Gallery'),
-                              style: ElevatedButton.styleFrom(
-                                backgroundColor: AppTheme.accentColor,
-                              ),
-                            ),
-                          ],
-                        ),
+                      SizedBox(
+                        height: ResponsiveHelper.isMobile(context) ? 10 : 16,
                       ),
-                      const SizedBox(height: 12),
+                      // Add More Options
+                      ResponsiveHelper.isMobile(context)
+                          ? Column(
+                              children: [
+                                SizedBox(
+                                  height:
+                                      ResponsiveHelper.getResponsiveButtonHeight(
+                                        context,
+                                      ),
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _addMoreImages('camera'),
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Camera'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                ),
+                                const SizedBox(height: 8),
+                                SizedBox(
+                                  height:
+                                      ResponsiveHelper.getResponsiveButtonHeight(
+                                        context,
+                                      ),
+                                  child: ElevatedButton.icon(
+                                    onPressed: () => _addMoreImages('gallery'),
+                                    icon: const Icon(Icons.image),
+                                    label: const Text('Gallery'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.accentColor,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            )
+                          : SingleChildScrollView(
+                              scrollDirection: Axis.horizontal,
+                              child: Row(
+                                children: [
+                                  ElevatedButton.icon(
+                                    onPressed: () => _addMoreImages('camera'),
+                                    icon: const Icon(Icons.camera_alt),
+                                    label: const Text('Camera'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.primaryColor,
+                                    ),
+                                  ),
+                                  const SizedBox(width: 8),
+                                  ElevatedButton.icon(
+                                    onPressed: () => _addMoreImages('gallery'),
+                                    icon: const Icon(Icons.image),
+                                    label: const Text('Gallery'),
+                                    style: ElevatedButton.styleFrom(
+                                      backgroundColor: AppTheme.accentColor,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                      SizedBox(
+                        height: ResponsiveHelper.isMobile(context) ? 10 : 16,
+                      ),
                       // Generate PDF Button
                       SizedBox(
-                        height: 50,
+                        height: ResponsiveHelper.getResponsiveButtonHeight(
+                          context,
+                        ),
                         child: ElevatedButton.icon(
                           onPressed: _generatePdf,
                           icon: const Icon(Icons.picture_as_pdf),
-                          label: const Text(
+                          label: Text(
                             AppConstants.generatePdf,
-                            style: TextStyle(fontSize: 16),
+                            style: TextStyle(
+                              fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                context,
+                                mobileSize: 14,
+                                tabletSize: 16,
+                                desktopSize: 18,
+                              ),
+                            ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.successColor,

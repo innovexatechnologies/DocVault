@@ -3,6 +3,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:open_file/open_file.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/responsive_helper.dart';
+import '../../core/utils/file_utils.dart';
 import '../../models/pdf_result.dart';
 
 class ResultScreen extends StatelessWidget {
@@ -39,6 +41,34 @@ class ResultScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isTablet = ResponsiveHelper.isTablet(context);
+    final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
+    final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
+    final titleFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 22,
+      tabletSize: 26,
+      desktopSize: 28,
+    );
+    final labelFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 11,
+      tabletSize: 12,
+      desktopSize: 13,
+    );
+    final valueFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 11,
+      tabletSize: 12,
+      desktopSize: 13,
+    );
+    final buttonLabelFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 14,
+      tabletSize: 16,
+      desktopSize: 18,
+    );
+
     return WillPopScope(
       onWillPop: () async {
         return false;
@@ -53,43 +83,45 @@ class ResultScreen extends StatelessWidget {
           automaticallyImplyLeading: false,
         ),
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(responsivePadding),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Success Icon
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: AppTheme.successColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.picture_as_pdf,
-                      size: 60,
-                      color: AppTheme.successColor,
+                Center(
+                  child: Container(
+                    width: isTablet ? 120 : 100,
+                    height: isTablet ? 120 : 100,
+                    decoration: BoxDecoration(
+                      color: AppTheme.successColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.picture_as_pdf,
+                        size: isTablet ? 70 : 60,
+                        color: AppTheme.successColor,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: responsivePadding),
                 // Title
-                const Text(
+                Text(
                   'PDF Ready!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 24,
+                    fontSize: titleFontSize,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 16),
+                SizedBox(height: responsivePadding * 0.67),
                 // File Details
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: EdgeInsets.all(responsivePadding * 0.67),
                   decoration: BoxDecoration(
                     color: AppTheme.bgWhite,
                     borderRadius: BorderRadius.circular(12),
@@ -100,20 +132,20 @@ class ResultScreen extends StatelessWidget {
                     children: [
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'File Name:',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: labelFontSize,
                               color: AppTheme.textSecondary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          SizedBox(width: responsivePadding * 0.33),
                           Expanded(
                             child: Text(
                               pdfResult.fileName,
-                              style: const TextStyle(
-                                fontSize: 12,
+                              style: TextStyle(
+                                fontSize: valueFontSize,
                                 color: AppTheme.textPrimary,
                                 fontWeight: FontWeight.w500,
                               ),
@@ -122,46 +154,49 @@ class ResultScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: responsivePadding * 0.5),
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'Pages:',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: labelFontSize,
                               color: AppTheme.textSecondary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(width: 8),
+                          SizedBox(width: responsivePadding * 0.33),
                           Text(
                             '${pdfResult.pageCount}',
-                            style: const TextStyle(
-                              fontSize: 12,
+                            style: TextStyle(
+                              fontSize: valueFontSize,
                               color: AppTheme.textPrimary,
                               fontWeight: FontWeight.w500,
                             ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 12),
+                      SizedBox(height: responsivePadding * 0.5),
                       Row(
                         children: [
-                          const Text(
+                          Text(
                             'Generated:',
                             style: TextStyle(
-                              fontSize: 12,
+                              fontSize: labelFontSize,
                               color: AppTheme.textSecondary,
                               fontWeight: FontWeight.w600,
                             ),
                           ),
-                          const SizedBox(width: 8),
-                          Text(
-                            _formatDateTime(pdfResult.generatedAt),
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppTheme.textPrimary,
-                              fontWeight: FontWeight.w500,
+                          SizedBox(width: responsivePadding * 0.33),
+                          Expanded(
+                            child: Text(
+                              _formatDateTime(pdfResult.generatedAt),
+                              style: TextStyle(
+                                fontSize: valueFontSize,
+                                color: AppTheme.textPrimary,
+                                fontWeight: FontWeight.w500,
+                              ),
+                              overflow: TextOverflow.ellipsis,
                             ),
                           ),
                         ],
@@ -169,61 +204,142 @@ class ResultScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 40),
-                // Action Buttons
-                SizedBox(
-                  height: 56,
-                  child: ElevatedButton.icon(
-                    onPressed: _openPdf,
-                    icon: const Icon(Icons.open_in_new),
-                    label: const Text(
-                      AppConstants.open,
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    style: ElevatedButton.styleFrom(
-                      backgroundColor: AppTheme.primaryColor,
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                SizedBox(height: responsivePadding * 1.67),
+                // Action Buttons - Stack on mobile, side by side on tablet
+                if (isTablet)
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Row(
+                        children: [
+                          Expanded(
+                            child: SizedBox(
+                              height: buttonHeight,
+                              child: ElevatedButton.icon(
+                                onPressed: _openPdf,
+                                icon: const Icon(Icons.open_in_new),
+                                label: Text(
+                                  AppConstants.open,
+                                  style: TextStyle(
+                                    fontSize: buttonLabelFontSize,
+                                  ),
+                                ),
+                                style: ElevatedButton.styleFrom(
+                                  backgroundColor: AppTheme.primaryColor,
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                          SizedBox(width: responsivePadding * 0.5),
+                          Expanded(
+                            child: SizedBox(
+                              height: buttonHeight,
+                              child: OutlinedButton.icon(
+                                onPressed: () => _sharePdf(context),
+                                icon: const Icon(Icons.share),
+                                label: Text(
+                                  AppConstants.share,
+                                  style: TextStyle(
+                                    fontSize: buttonLabelFontSize,
+                                  ),
+                                ),
+                                style: OutlinedButton.styleFrom(
+                                  shape: RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.circular(12),
+                                  ),
+                                  side: const BorderSide(
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _sharePdf(context),
-                    icon: const Icon(Icons.share),
-                    label: const Text(
-                      AppConstants.share,
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                      SizedBox(height: responsivePadding * 0.5),
+                      SizedBox(
+                        height: buttonHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _createNewPdf(context),
+                          icon: const Icon(Icons.add),
+                          label: Text(
+                            'Create New PDF',
+                            style: TextStyle(fontSize: buttonLabelFontSize),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            side: const BorderSide(color: AppTheme.accentColor),
+                          ),
+                        ),
                       ),
-                      side: const BorderSide(color: AppTheme.primaryColor),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                SizedBox(
-                  height: 56,
-                  child: OutlinedButton.icon(
-                    onPressed: () => _createNewPdf(context),
-                    icon: const Icon(Icons.add),
-                    label: const Text(
-                      'Create New PDF',
-                      style: TextStyle(fontSize: 16),
-                    ),
-                    style: OutlinedButton.styleFrom(
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                    ],
+                  )
+                else
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      SizedBox(
+                        height: buttonHeight,
+                        child: ElevatedButton.icon(
+                          onPressed: _openPdf,
+                          icon: const Icon(Icons.open_in_new),
+                          label: Text(
+                            AppConstants.open,
+                            style: TextStyle(fontSize: buttonLabelFontSize),
+                          ),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppTheme.primaryColor,
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                          ),
+                        ),
                       ),
-                      side: const BorderSide(color: AppTheme.accentColor),
-                    ),
+                      SizedBox(height: responsivePadding * 0.5),
+                      SizedBox(
+                        height: buttonHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _sharePdf(context),
+                          icon: const Icon(Icons.share),
+                          label: Text(
+                            AppConstants.share,
+                            style: TextStyle(fontSize: buttonLabelFontSize),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            side: const BorderSide(
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                      SizedBox(height: responsivePadding * 0.5),
+                      SizedBox(
+                        height: buttonHeight,
+                        child: OutlinedButton.icon(
+                          onPressed: () => _createNewPdf(context),
+                          icon: const Icon(Icons.add),
+                          label: Text(
+                            'Create New PDF',
+                            style: TextStyle(fontSize: buttonLabelFontSize),
+                          ),
+                          style: OutlinedButton.styleFrom(
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            side: const BorderSide(color: AppTheme.accentColor),
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ),
               ],
             ),
           ),

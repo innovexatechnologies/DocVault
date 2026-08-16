@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/gallery_service.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/image_selection_provider.dart';
 
 class GalleryScreen extends StatefulWidget {
@@ -58,6 +59,28 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
+    final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
+    final titleFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 20,
+      tabletSize: 24,
+      desktopSize: 26,
+    );
+    final descriptionFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 13,
+      tabletSize: 14,
+      desktopSize: 15,
+    );
+    final buttonLabelFontSize = ResponsiveHelper.getResponsiveFontSize(
+      context,
+      mobileSize: 14,
+      tabletSize: 16,
+      desktopSize: 18,
+    );
+    final iconSize = ResponsiveHelper.isTablet(context) ? 70 : 60;
+
     return WillPopScope(
       onWillPop: () async {
         Navigator.of(context).pop();
@@ -72,51 +95,56 @@ class _GalleryScreenState extends State<GalleryScreen> {
           elevation: 1,
         ),
         body: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
+          child: SingleChildScrollView(
+            padding: EdgeInsets.all(responsivePadding),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 // Icon
-                Container(
-                  width: 100,
-                  height: 100,
-                  decoration: BoxDecoration(
-                    color: AppTheme.accentColor.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: const Center(
-                    child: Icon(
-                      Icons.image,
-                      size: 60,
-                      color: AppTheme.accentColor,
+                Center(
+                  child: Container(
+                    width: ResponsiveHelper.isTablet(context) ? 120 : 100,
+                    height: ResponsiveHelper.isTablet(context) ? 120 : 100,
+                    decoration: BoxDecoration(
+                      color: AppTheme.accentColor.withOpacity(0.1),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.image,
+                        size: iconSize,
+                        color: AppTheme.accentColor,
+                      ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 24),
+                SizedBox(height: responsivePadding),
                 // Title
-                const Text(
+                Text(
                   'Select Images',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: 22,
+                    fontSize: titleFontSize,
                     fontWeight: FontWeight.bold,
                     color: AppTheme.textPrimary,
                   ),
                 ),
-                const SizedBox(height: 8),
+                SizedBox(height: responsivePadding * 0.33),
                 // Description
-                const Text(
+                Text(
                   'Choose one or multiple images from your gallery',
                   textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 14, color: AppTheme.textSecondary),
+                  style: TextStyle(
+                    fontSize: descriptionFontSize,
+                    color: AppTheme.textSecondary,
+                  ),
                 ),
                 if (_errorMessage != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 16.0),
+                    padding: EdgeInsets.only(top: responsivePadding * 0.67),
                     child: Container(
-                      padding: const EdgeInsets.all(12),
+                      padding: EdgeInsets.all(responsivePadding * 0.5),
                       decoration: BoxDecoration(
                         color: AppTheme.errorColor.withOpacity(0.1),
                         borderRadius: BorderRadius.circular(8),
@@ -125,17 +153,22 @@ class _GalleryScreenState extends State<GalleryScreen> {
                       child: Text(
                         _errorMessage!,
                         textAlign: TextAlign.center,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: AppTheme.errorColor,
-                          fontSize: 12,
+                          fontSize: ResponsiveHelper.getResponsiveFontSize(
+                            context,
+                            mobileSize: 11,
+                            tabletSize: 12,
+                            desktopSize: 13,
+                          ),
                         ),
                       ),
                     ),
                   ),
-                const SizedBox(height: 40),
+                SizedBox(height: responsivePadding * 1.67),
                 // Pick Images Button
                 SizedBox(
-                  height: 56,
+                  height: buttonHeight,
                   child: ElevatedButton(
                     onPressed: _isLoading ? null : _pickImages,
                     style: ElevatedButton.styleFrom(
@@ -154,15 +187,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
                               strokeWidth: 2,
                             ),
                           )
-                        : const Row(
+                        : Row(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              Icon(Icons.add_photo_alternate),
-                              SizedBox(width: 8),
+                              const Icon(Icons.add_photo_alternate),
+                              SizedBox(width: responsivePadding * 0.33),
                               Text(
                                 'Pick Images',
                                 style: TextStyle(
-                                  fontSize: 16,
+                                  fontSize: buttonLabelFontSize,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -170,10 +203,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
                           ),
                   ),
                 ),
-                const SizedBox(height: 12),
+                SizedBox(height: responsivePadding * 0.5),
                 // Use Camera Instead
                 SizedBox(
-                  height: 56,
+                  height: buttonHeight,
                   child: OutlinedButton(
                     onPressed: _goToCamera,
                     style: OutlinedButton.styleFrom(
@@ -182,15 +215,15 @@ class _GalleryScreenState extends State<GalleryScreen> {
                         borderRadius: BorderRadius.circular(12),
                       ),
                     ),
-                    child: const Row(
+                    child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(Icons.camera_alt),
-                        SizedBox(width: 8),
+                        const Icon(Icons.camera_alt),
+                        SizedBox(width: responsivePadding * 0.33),
                         Text(
                           'Use Camera Instead',
                           style: TextStyle(
-                            fontSize: 16,
+                            fontSize: buttonLabelFontSize,
                             fontWeight: FontWeight.w600,
                           ),
                         ),
