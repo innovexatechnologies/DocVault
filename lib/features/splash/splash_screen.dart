@@ -28,8 +28,8 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   Widget build(BuildContext context) {
     final isTablet = ResponsiveHelper.isTablet(context);
-    final logoSize = isTablet ? 120 : 100;
-    final iconSize = isTablet ? 70 : 60;
+    final logoSize = isTablet ? 120.0 : 100.0;
+    final iconSize = isTablet ? 70.0 : 60.0;
     final appNameFontSize = ResponsiveHelper.getResponsiveFontSize(
       context,
       mobileSize: 28,

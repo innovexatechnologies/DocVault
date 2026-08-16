@@ -79,13 +79,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
       tabletSize: 16,
       desktopSize: 18,
     );
-    final iconSize = ResponsiveHelper.isTablet(context) ? 70 : 60;
+    final iconSize = ResponsiveHelper.isTablet(context) ? 70.0 : 60.0;
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.of(context).pop();
-        return false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         backgroundColor: AppTheme.bgLight,
         appBar: AppBar(
@@ -104,10 +101,10 @@ class _GalleryScreenState extends State<GalleryScreen> {
                 // Icon
                 Center(
                   child: Container(
-                    width: ResponsiveHelper.isTablet(context) ? 120 : 100,
-                    height: ResponsiveHelper.isTablet(context) ? 120 : 100,
+                    width: ResponsiveHelper.isTablet(context) ? 120.0 : 100.0,
+                    height: ResponsiveHelper.isTablet(context) ? 120.0 : 100.0,
                     decoration: BoxDecoration(
-                      color: AppTheme.accentColor.withOpacity(0.1),
+                      color: AppTheme.accentColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Center(
@@ -146,7 +143,7 @@ class _GalleryScreenState extends State<GalleryScreen> {
                     child: Container(
                       padding: EdgeInsets.all(responsivePadding * 0.5),
                       decoration: BoxDecoration(
-                        color: AppTheme.errorColor.withOpacity(0.1),
+                        color: AppTheme.errorColor.withValues(alpha: 0.1),
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(color: AppTheme.errorColor),
                       ),

@@ -18,32 +18,36 @@ class HomeScreen extends StatelessWidget {
         child: SingleChildScrollView(
           child: Padding(
             padding: EdgeInsets.all(padding),
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height - 
-                  MediaQuery.of(context).padding.top - 
-                  MediaQuery.of(context).padding.bottom,
+            child: ConstrainedBox(
+              constraints: BoxConstraints(
+                minHeight:
+                    MediaQuery.of(context).size.height -
+                    MediaQuery.of(context).padding.top -
+                    MediaQuery.of(context).padding.bottom,
+              ),
               child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
                 crossAxisAlignment: CrossAxisAlignment.center,
                 children: [
-                  SizedBox(height: isMobile ? 20 : 40),
-                  // App Logo
+                  SizedBox(height: isMobile ? 20.0 : 40.0),
                   Container(
-                    width: isMobile ? 70 : 100,
-                    height: isMobile ? 70 : 100,
+                    width: isMobile ? 70.0 : 100.0,
+                    height: isMobile ? 70.0 : 100.0,
                     decoration: BoxDecoration(
                       color: AppTheme.primaryColor,
-                      borderRadius: BorderRadius.circular(isMobile ? 12 : 20),
+                      borderRadius: BorderRadius.circular(
+                        isMobile ? 12.0 : 20.0,
+                      ),
                     ),
                     child: Center(
                       child: Icon(
                         Icons.document_scanner,
-                        size: isMobile ? 40 : 60,
+                        size: isMobile ? 40.0 : 60.0,
                         color: Colors.white,
                       ),
                     ),
                   ),
-                  SizedBox(height: isMobile ? 16 : 24),
-                  // App Title
+                  SizedBox(height: isMobile ? 16.0 : 24.0),
                   Text(
                     AppConstants.appName,
                     style: TextStyle(
@@ -57,8 +61,7 @@ class HomeScreen extends StatelessWidget {
                       color: AppTheme.textPrimary,
                     ),
                   ),
-                  SizedBox(height: isMobile ? 6 : 8),
-                  // Tagline
+                  SizedBox(height: isMobile ? 6.0 : 8.0),
                   Padding(
                     padding: EdgeInsets.symmetric(horizontal: padding),
                     child: Text(
@@ -75,71 +78,45 @@ class HomeScreen extends StatelessWidget {
                       ),
                     ),
                   ),
-                  SizedBox(height: isMobile ? 40 : 60),
-                  // Main Options
-                  Expanded(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        // Create PDF Button
-                        SizedBox(
-                          width: double.infinity,
-                          height: buttonHeight,
-                          child: ElevatedButton(
-                            onPressed: () {
-                              Navigator.of(context).pushNamed('/source-selection');
-                            },
-                            style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.primaryColor,
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
+                  SizedBox(height: isMobile ? 40.0 : 60.0),
+                  SizedBox(
+                    width: double.infinity,
+                    height: buttonHeight,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        Navigator.of(context).pushNamed('/source-selection');
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: AppTheme.primaryColor,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.add, color: Colors.white),
+                          SizedBox(width: isMobile ? 6.0 : 8.0),
+                          Text(
+                            AppConstants.createPdf,
+                            style: TextStyle(
+                              fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                context,
+                                mobileSize: 14,
+                                tabletSize: 16,
+                                desktopSize: 18,
                               ),
-                            ),
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                const Icon(Icons.add, color: Colors.white),
-                                SizedBox(width: isMobile ? 6 : 8),
-                                Text(
-                                  AppConstants.createPdf,
-                                  style: TextStyle(
-                                    fontSize: ResponsiveHelper.getResponsiveFontSize(
-                                      context,
-                                      mobileSize: 14,
-                                      tabletSize: 16,
-                                      desktopSize: 18,
-                                    ),
-                                    fontWeight: FontWeight.w600,
-                                    color: Colors.white,
-                                  ),
-                                ),
-                              ],
+                              fontWeight: FontWeight.w600,
+                              color: Colors.white,
                             ),
                           ),
-                        ),
-                      ],
+                        ],
+                      ),
                     ),
                   ),
                 ],
               ),
             ),
-          ),
-        ),
-      ),
-    );
-  }
-}
-                                color: Colors.white,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
           ),
         ),
       ),

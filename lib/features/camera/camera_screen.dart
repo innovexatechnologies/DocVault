@@ -108,7 +108,7 @@ class _CameraScreenState extends State<CameraScreen> {
     if (_errorMessage != null) {
       final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
       final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
-      final errorIconSize = ResponsiveHelper.isTablet(context) ? 70 : 60;
+      final errorIconSize = ResponsiveHelper.isTablet(context) ? 70.0 : 60.0;
       final errorTextSize = ResponsiveHelper.getResponsiveFontSize(
         context,
         mobileSize: 15,
@@ -160,11 +160,8 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.of(context).pop();
-        return false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         backgroundColor: Colors.black,
         body: Stack(
@@ -184,25 +181,29 @@ class _CameraScreenState extends State<CameraScreen> {
                       onTap: () => Navigator.of(context).pop(),
                       child: Container(
                         padding: EdgeInsets.all(
-                          ResponsiveHelper.isMobile(context) ? 8 : 10,
+                          ResponsiveHelper.isMobile(context) ? 8.0 : 10.0,
                         ),
                         decoration: BoxDecoration(
-                          color: Colors.black.withOpacity(0.5),
+                          color: Colors.black.withValues(alpha: 0.5),
                           borderRadius: BorderRadius.circular(8),
                         ),
                         child: Icon(
                           Icons.close,
                           color: Colors.white,
-                          size: ResponsiveHelper.isMobile(context) ? 24 : 28,
+                          size: ResponsiveHelper.isMobile(context)
+                              ? 24.0
+                              : 28.0,
                         ),
                       ),
                     ),
                     Container(
                       padding: EdgeInsets.symmetric(
                         horizontal: ResponsiveHelper.isMobile(context)
-                            ? 12
-                            : 16,
-                        vertical: ResponsiveHelper.isMobile(context) ? 6 : 8,
+                            ? 12.0
+                            : 16.0,
+                        vertical: ResponsiveHelper.isMobile(context)
+                            ? 6.0
+                            : 8.0,
                       ),
                       decoration: BoxDecoration(
                         color: AppTheme.primaryColor,
@@ -236,7 +237,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   padding: EdgeInsets.all(
                     ResponsiveHelper.getGridSpacing(context),
                   ),
-                  color: Colors.black.withOpacity(0.7),
+                  color: Colors.black.withValues(alpha: 0.7),
                   child: Column(
                     children: [
                       Row(
@@ -247,18 +248,18 @@ class _CameraScreenState extends State<CameraScreen> {
                             onTap: _capturePhoto,
                             child: Container(
                               width: ResponsiveHelper.isTablet(context)
-                                  ? 80
-                                  : 70,
+                                  ? 80.0
+                                  : 70.0,
                               height: ResponsiveHelper.isTablet(context)
-                                  ? 80
-                                  : 70,
+                                  ? 80.0
+                                  : 70.0,
                               decoration: BoxDecoration(
                                 color: AppTheme.primaryColor,
                                 shape: BoxShape.circle,
                                 boxShadow: [
                                   BoxShadow(
-                                    color: AppTheme.primaryColor.withOpacity(
-                                      0.5,
+                                    color: AppTheme.primaryColor.withValues(
+                                      alpha: 0.5,
                                     ),
                                     blurRadius: 16,
                                     spreadRadius: 4,

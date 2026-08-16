@@ -12,11 +12,8 @@ class SourceSelectionScreen extends StatelessWidget {
     final isMobile = ResponsiveHelper.isMobile(context);
     final isTablet = ResponsiveHelper.isTablet(context);
 
-    return WillPopScope(
-      onWillPop: () async {
-        Navigator.of(context).pop();
-        return false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         backgroundColor: AppTheme.bgLight,
         appBar: AppBar(
@@ -29,68 +26,44 @@ class SourceSelectionScreen extends StatelessWidget {
           child: SingleChildScrollView(
             child: Padding(
               padding: EdgeInsets.all(padding),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                SizedBox(height: isMobile ? 20 : 40),
-                Text(
-                  'Choose Source',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: ResponsiveHelper.getResponsiveFontSize(
-                      context,
-                      mobileSize: 20,
-                      tabletSize: 24,
-                      desktopSize: 28,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  SizedBox(height: isMobile ? 20.0 : 40.0),
+                  Text(
+                    'Choose Source',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: ResponsiveHelper.getResponsiveFontSize(
+                        context,
+                        mobileSize: 20,
+                        tabletSize: 24,
+                        desktopSize: 28,
+                      ),
+                      fontWeight: FontWeight.bold,
+                      color: AppTheme.textPrimary,
                     ),
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
                   ),
-                ),
-                SizedBox(height: isMobile ? 6 : 12),
-                Text(
-                  'Select where to get your documents from',
-                  textAlign: TextAlign.center,
-                  style: TextStyle(
-                    fontSize: ResponsiveHelper.getResponsiveFontSize(
-                      context,
-                      mobileSize: 12,
-                      tabletSize: 14,
-                      desktopSize: 16,
+                  SizedBox(height: isMobile ? 6.0 : 12.0),
+                  Text(
+                    'Select where to get your documents from',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: ResponsiveHelper.getResponsiveFontSize(
+                        context,
+                        mobileSize: 12,
+                        tabletSize: 14,
+                        desktopSize: 16,
+                      ),
+                      color: AppTheme.textSecondary,
                     ),
-                    color: AppTheme.textSecondary,
                   ),
-                ),
-                SizedBox(height: isMobile ? 30 : 60),
-                isTablet
-                    ? Row(
-                        children: [
-                          Expanded(
-                            child: _buildSourceOption(
-                              context,
-                              title: AppConstants.camera,
-                              icon: Icons.camera_alt,
-                              color: AppTheme.primaryColor,
-                              onTap: () =>
-                                  Navigator.of(context).pushNamed('/camera'),
-                            ),
-                          ),
-                          SizedBox(width: padding),
-                          Expanded(
-                            child: _buildSourceOption(
-                              context,
-                              title: AppConstants.gallery,
-                              icon: Icons.image,
-                              color: AppTheme.accentColor,
-                              onTap: () =>
-                                  Navigator.of(context).pushNamed('/gallery'),
-                            ),
-                          ),
-                        ],
-                      )
-                    : Column(
-                        children: [
-                          _buildSourceOption(
+                  SizedBox(height: isMobile ? 30.0 : 60.0),
+                  if (isTablet)
+                    Row(
+                      children: [
+                        Expanded(
+                          child: _buildSourceOption(
                             context,
                             title: AppConstants.camera,
                             icon: Icons.camera_alt,
@@ -98,8 +71,10 @@ class SourceSelectionScreen extends StatelessWidget {
                             onTap: () =>
                                 Navigator.of(context).pushNamed('/camera'),
                           ),
-                          SizedBox(height: isMobile ? 16 : 24),
-                          _buildSourceOption(
+                        ),
+                        SizedBox(width: padding),
+                        Expanded(
+                          child: _buildSourceOption(
                             context,
                             title: AppConstants.gallery,
                             icon: Icons.image,
@@ -107,9 +82,33 @@ class SourceSelectionScreen extends StatelessWidget {
                             onTap: () =>
                                 Navigator.of(context).pushNamed('/gallery'),
                           ),
-                        ],
-                      ),
-              ],
+                        ),
+                      ],
+                    )
+                  else
+                    Column(
+                      children: [
+                        _buildSourceOption(
+                          context,
+                          title: AppConstants.camera,
+                          icon: Icons.camera_alt,
+                          color: AppTheme.primaryColor,
+                          onTap: () =>
+                              Navigator.of(context).pushNamed('/camera'),
+                        ),
+                        SizedBox(height: isMobile ? 16.0 : 24.0),
+                        _buildSourceOption(
+                          context,
+                          title: AppConstants.gallery,
+                          icon: Icons.image,
+                          color: AppTheme.accentColor,
+                          onTap: () =>
+                              Navigator.of(context).pushNamed('/gallery'),
+                        ),
+                      ],
+                    ),
+                ],
+              ),
             ),
           ),
         ),
@@ -129,14 +128,14 @@ class SourceSelectionScreen extends StatelessWidget {
     return GestureDetector(
       onTap: onTap,
       child: Container(
-        padding: EdgeInsets.all(isMobile ? 16 : 24),
+        padding: EdgeInsets.all(isMobile ? 16.0 : 24.0),
         decoration: BoxDecoration(
           color: AppTheme.bgWhite,
           borderRadius: BorderRadius.circular(12),
           border: Border.all(color: AppTheme.dividerColor),
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: Colors.black.withValues(alpha: 0.05),
               blurRadius: 4,
               offset: const Offset(0, 2),
             ),
@@ -144,12 +143,8 @@ class SourceSelectionScreen extends StatelessWidget {
         ),
         child: Column(
           children: [
-            Icon(
-              icon,
-              size: isMobile ? 48 : 60,
-              color: color,
-            ),
-            SizedBox(height: isMobile ? 12 : 16),
+            Icon(icon, size: isMobile ? 48.0 : 60.0, color: color),
+            SizedBox(height: isMobile ? 12.0 : 16.0),
             Text(
               title,
               style: TextStyle(
@@ -163,7 +158,7 @@ class SourceSelectionScreen extends StatelessWidget {
                 color: AppTheme.textPrimary,
               ),
             ),
-            SizedBox(height: isMobile ? 6 : 8),
+            SizedBox(height: isMobile ? 6.0 : 8.0),
             Text(
               title == AppConstants.camera
                   ? 'Capture new documents with camera'

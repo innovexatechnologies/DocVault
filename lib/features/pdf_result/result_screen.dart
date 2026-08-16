@@ -4,7 +4,6 @@ import 'package:open_file/open_file.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
-import '../../core/utils/file_utils.dart';
 import '../../models/pdf_result.dart';
 
 class ResultScreen extends StatelessWidget {
@@ -21,12 +20,14 @@ class ResultScreen extends StatelessWidget {
   }
 
   Future<void> _sharePdf(BuildContext context) async {
+    final messenger = ScaffoldMessenger.maybeOf(context);
+
     try {
       await Share.shareXFiles([
         XFile(pdfResult.filePath),
       ], text: 'Check out my document: ${pdfResult.fileName}');
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      messenger?.showSnackBar(
         const SnackBar(
           content: Text('Failed to share PDF'),
           backgroundColor: AppTheme.errorColor,
@@ -69,10 +70,8 @@ class ResultScreen extends StatelessWidget {
       desktopSize: 18,
     );
 
-    return WillPopScope(
-      onWillPop: () async {
-        return false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         backgroundColor: AppTheme.bgLight,
         appBar: AppBar(
@@ -92,16 +91,16 @@ class ResultScreen extends StatelessWidget {
                 // Success Icon
                 Center(
                   child: Container(
-                    width: isTablet ? 120 : 100,
-                    height: isTablet ? 120 : 100,
+                    width: isTablet ? 120.0 : 100.0,
+                    height: isTablet ? 120.0 : 100.0,
                     decoration: BoxDecoration(
-                      color: AppTheme.successColor.withOpacity(0.1),
+                      color: AppTheme.successColor.withValues(alpha: 0.1),
                       borderRadius: BorderRadius.circular(20),
                     ),
                     child: Center(
                       child: Icon(
                         Icons.picture_as_pdf,
-                        size: isTablet ? 70 : 60,
+                        size: isTablet ? 70.0 : 60.0,
                         color: AppTheme.successColor,
                       ),
                     ),

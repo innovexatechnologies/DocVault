@@ -45,10 +45,8 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
     final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
     final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
 
-    return WillPopScope(
-      onWillPop: () async {
-        return false;
-      },
+    return PopScope(
+      canPop: false,
       child: Scaffold(
         backgroundColor: AppTheme.bgLight,
         body: FutureBuilder<PdfResult>(
@@ -62,8 +60,12 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       SizedBox(
-                        width: ResponsiveHelper.isTablet(context) ? 100 : 80,
-                        height: ResponsiveHelper.isTablet(context) ? 100 : 80,
+                        width: ResponsiveHelper.isTablet(context)
+                            ? 100.0
+                            : 80.0,
+                        height: ResponsiveHelper.isTablet(context)
+                            ? 100.0
+                            : 80.0,
                         child: const CircularProgressIndicator(
                           color: AppTheme.primaryColor,
                           strokeWidth: 4,
@@ -111,7 +113,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                     children: [
                       Icon(
                         Icons.error_outline,
-                        size: ResponsiveHelper.isTablet(context) ? 70 : 60,
+                        size: ResponsiveHelper.isTablet(context) ? 70.0 : 60.0,
                         color: AppTheme.errorColor,
                       ),
                       SizedBox(height: responsivePadding),
@@ -200,16 +202,22 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Container(
-                        width: ResponsiveHelper.isTablet(context) ? 120 : 100,
-                        height: ResponsiveHelper.isTablet(context) ? 120 : 100,
+                        width: ResponsiveHelper.isTablet(context)
+                            ? 120.0
+                            : 100.0,
+                        height: ResponsiveHelper.isTablet(context)
+                            ? 120.0
+                            : 100.0,
                         decoration: BoxDecoration(
-                          color: AppTheme.successColor.withOpacity(0.1),
+                          color: AppTheme.successColor.withValues(alpha: 0.1),
                           borderRadius: BorderRadius.circular(20),
                         ),
                         child: Center(
                           child: Icon(
                             Icons.check_circle_outline,
-                            size: ResponsiveHelper.isTablet(context) ? 70 : 60,
+                            size: ResponsiveHelper.isTablet(context)
+                                ? 70.0
+                                : 60.0,
                             color: AppTheme.successColor,
                           ),
                         ),
