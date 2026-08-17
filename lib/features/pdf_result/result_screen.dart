@@ -1,23 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
-import 'package:open_file/open_file.dart';
+// import 'package:open_file/open_file.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/pdf_result.dart';
+import 'pdf_viewer_screen.dart';
 
 class ResultScreen extends StatelessWidget {
   final PdfResult pdfResult;
 
   const ResultScreen({super.key, required this.pdfResult});
 
-  Future<void> _openPdf() async {
-    final result = await OpenFile.open(pdfResult.filePath);
-    if (result.type == ResultType.noAppToOpen) {
-      // Show error
-      debugPrint('No PDF viewer available');
-    }
-  }
+void _openPdf(BuildContext context) {
+  Navigator.of(context).push(
+    MaterialPageRoute(
+      builder: (_) => PdfViewerScreen(
+        filePath: pdfResult.filePath,
+        fileName: pdfResult.fileName,
+      ),
+    ),
+  );
+}
 
   Future<void> _sharePdf(BuildContext context) async {
     final messenger = ScaffoldMessenger.maybeOf(context);
@@ -215,7 +219,7 @@ class ResultScreen extends StatelessWidget {
                             child: SizedBox(
                               height: buttonHeight,
                               child: ElevatedButton.icon(
-                                onPressed: _openPdf,
+                              onPressed: () => _openPdf(context),
                                 icon: const Icon(Icons.open_in_new),
                                 label: Text(
                                   AppConstants.open,
@@ -285,7 +289,7 @@ class ResultScreen extends StatelessWidget {
                       SizedBox(
                         height: buttonHeight,
                         child: ElevatedButton.icon(
-                          onPressed: _openPdf,
+                          onPressed: () => _openPdf(context),
                           icon: const Icon(Icons.open_in_new),
                           label: Text(
                             AppConstants.open,
