@@ -62,7 +62,7 @@ dependencies:
   open_file: ^3.5.10
   permission_handler: ^13.0.1
   pdfx: ^2.9.2
-
+  file_picker: ^10.3.2
 dev_dependencies:
   flutter_test:
     sdk: flutter
