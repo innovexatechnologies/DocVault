@@ -310,8 +310,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
           Image.file(
             File(imageItem.filePath),
             fit: BoxFit.cover,
-            cacheWidth: 400,
-            cacheHeight: 400,
+            cacheWidth: 220,
+            cacheHeight: 220,
+            filterQuality: FilterQuality.medium,
           ),
           // Page Number Badge
           Positioned(
@@ -396,8 +397,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     child: Image.file(
                       File(imageItem.filePath),
                       fit: BoxFit.cover,
-                      cacheWidth: 500,
-                      cacheHeight: 500,
+                      cacheWidth: 220,
+                      cacheHeight: 220,
+                      filterQuality: FilterQuality.medium,
                     ),
                   ),
                   Positioned(
