@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/providers/image_selection_provider.dart';
+import 'core/providers/theme_provider.dart';
 
 import 'features/splash/splash_screen.dart';
 import 'features/home/home_screen.dart';
@@ -26,90 +27,102 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
+        // =====================================================
+        // IMAGE SELECTION PROVIDER
+        // =====================================================
+
         ChangeNotifierProvider(
           create: (_) => ImageSelectionProvider(),
         ),
+
+        // =====================================================
+        // THEME PROVIDER
+        // =====================================================
+
+        ChangeNotifierProvider(
+          create: (_) => ThemeProvider(),
+        ),
       ],
-      child: MaterialApp(
-        // =====================================================
-        // APP INFORMATION
-        // =====================================================
 
-        title: 'DocVault',
+      // =====================================================
+      // THEME CONSUMER
+      // =====================================================
 
-        debugShowCheckedModeBanner: false,
+      child: Consumer<ThemeProvider>(
+        builder: (context, themeProvider, child) {
+          return MaterialApp(
+            // =================================================
+            // APP INFORMATION
+            // =================================================
 
-        // =====================================================
-        // LIGHT THEME
-        // =====================================================
+            title: 'DocVault',
 
-        theme: AppTheme.lightTheme(),
+            debugShowCheckedModeBanner: false,
 
-        // =====================================================
-        // DARK THEME
-        // =====================================================
+            // =================================================
+            // LIGHT THEME
+            // =================================================
 
-        darkTheme: AppTheme.darkTheme(),
+            theme: AppTheme.lightTheme(),
 
-        // =====================================================
-        // THEME MODE
-        // =====================================================
+            // =================================================
+            // DARK THEME
+            // =================================================
 
-        // Filhaal phone/system ki theme follow karega.
-        //
-        // Light device  -> Light Theme
-        // Dark device   -> Dark Theme
-        //
-        // Baad mein Settings se manually:
-        // Light / Dark / System
-        // select karne ka option add karenge.
+            darkTheme: AppTheme.darkTheme(),
 
-        themeMode: ThemeMode.system,
+            // =================================================
+            // CURRENT THEME MODE
+            // =================================================
 
-        // =====================================================
-        // INITIAL SCREEN
-        // =====================================================
+            themeMode: themeProvider.themeMode,
 
-        home: const SplashScreen(),
+            // =================================================
+            // INITIAL SCREEN
+            // =================================================
 
-        // =====================================================
-        // APP ROUTES
-        // =====================================================
+            home: const SplashScreen(),
 
-        routes: {
-          '/splash': (context) => const SplashScreen(),
+            // =================================================
+            // APP ROUTES
+            // =================================================
 
-          '/home': (context) => const HomeScreen(),
+            routes: {
+              '/splash': (context) => const SplashScreen(),
 
-          '/source-selection': (context) =>
-              const SourceSelectionScreen(),
+              '/home': (context) => const HomeScreen(),
 
-          '/camera': (context) => const CameraScreen(),
+              '/source-selection': (context) =>
+                  const SourceSelectionScreen(),
 
-          '/gallery': (context) => const GalleryScreen(),
+              '/camera': (context) => const CameraScreen(),
 
-          '/review': (context) => const ReviewScreen(),
+              '/gallery': (context) => const GalleryScreen(),
 
-          '/pdf-generation': (context) =>
-              const PdfGenerationScreen(),
-        },
+              '/review': (context) => const ReviewScreen(),
 
-        // =====================================================
-        // DYNAMIC ROUTES
-        // =====================================================
+              '/pdf-generation': (context) =>
+                  const PdfGenerationScreen(),
+            },
 
-        onGenerateRoute: (settings) {
-          if (settings.name == '/result') {
-            final pdfResult = settings.arguments as PdfResult;
+            // =================================================
+            // DYNAMIC ROUTES
+            // =================================================
 
-            return MaterialPageRoute(
-              builder: (context) => ResultScreen(
-                pdfResult: pdfResult,
-              ),
-            );
-          }
+            onGenerateRoute: (settings) {
+              if (settings.name == '/result') {
+                final pdfResult = settings.arguments as PdfResult;
 
-          return null;
+                return MaterialPageRoute(
+                  builder: (context) => ResultScreen(
+                    pdfResult: pdfResult,
+                  ),
+                );
+              }
+
+              return null;
+            },
+          );
         },
       ),
     );
