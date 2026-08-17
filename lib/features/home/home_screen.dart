@@ -1,43 +1,413 @@
 import 'package:flutter/material.dart';
+import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/theme_provider.dart';
+import '../../core/services/permission_service.dart';
 
 class HomeScreen extends StatelessWidget {
   const HomeScreen({super.key});
 
+  // ==========================================================
+  // PERMISSION SERVICE
+  // ==========================================================
+
+  static final PermissionService _permissionService =
+      PermissionService();
+
+  // ==========================================================
+  // CAMERA QUICK ACTION
+  // ==========================================================
+
+  Future<void> _handleCamera(BuildContext context) async {
+    final shouldContinue = await _showPermissionDialog(
+      context,
+      title: 'Camera Access',
+      icon: Icons.camera_alt_rounded,
+      description:
+          'DocVault needs access to your camera to scan documents and convert them into PDF.',
+    );
+
+    if (!shouldContinue || !context.mounted) return;
+
+    final status =
+        await _permissionService.requestCameraPermission();
+
+    if (!context.mounted) return;
+
+    if (status.isGranted) {
+      Navigator.of(context).pushNamed('/camera');
+    } else if (status.isPermanentlyDenied ||
+        status.isRestricted) {
+      await _showSettingsDialog(
+        context,
+        title: 'Camera Permission Required',
+        message:
+            'Camera permission is disabled. Please enable it from your device settings to scan documents.',
+      );
+    } else {
+      _showDeniedMessage(
+        context,
+        'Camera permission was denied.',
+      );
+    }
+  }
+
+  // ==========================================================
+  // GALLERY QUICK ACTION
+  // ==========================================================
+
+  Future<void> _handleGallery(BuildContext context) async {
+    final shouldContinue = await _showPermissionDialog(
+      context,
+      title: 'Gallery Access',
+      icon: Icons.photo_library_rounded,
+      description:
+          'DocVault needs access to your photos so you can select images and convert them into PDF.',
+    );
+
+    if (!shouldContinue || !context.mounted) return;
+
+    final status =
+        await _permissionService.requestGalleryPermission();
+
+    if (!context.mounted) return;
+
+    if (status.isGranted || status.isLimited) {
+      Navigator.of(context).pushNamed('/gallery');
+    } else if (status.isPermanentlyDenied ||
+        status.isRestricted) {
+      await _showSettingsDialog(
+        context,
+        title: 'Gallery Permission Required',
+        message:
+            'Photo permission is disabled. Please enable it from your device settings to select images.',
+      );
+    } else {
+      _showDeniedMessage(
+        context,
+        'Gallery permission was denied.',
+      );
+    }
+  }
+
+  // ==========================================================
+  // PERMISSION DIALOG
+  // ==========================================================
+
+  Future<bool> _showPermissionDialog(
+    BuildContext context, {
+    required String title,
+    required IconData icon,
+    required String description,
+  }) async {
+    final result = await showDialog<bool>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final colorScheme = theme.colorScheme;
+        final isDark =
+            theme.brightness == Brightness.dark;
+
+        final screenWidth =
+            MediaQuery.sizeOf(dialogContext).width;
+
+        final dialogWidth = screenWidth < 600
+            ? screenWidth * 0.86
+            : 420.0;
+
+        return Dialog(
+          backgroundColor: colorScheme.surface,
+          surfaceTintColor: Colors.transparent,
+          insetPadding: const EdgeInsets.symmetric(
+            horizontal: 20,
+            vertical: 24,
+          ),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          child: ConstrainedBox(
+            constraints: BoxConstraints(
+              maxWidth: dialogWidth,
+              minWidth: 280,
+            ),
+            child: Padding(
+              padding: const EdgeInsets.fromLTRB(
+                24,
+                26,
+                24,
+                22,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  // ==================================================
+                  // ICON
+                  // ==================================================
+
+                  Container(
+                    width: 64,
+                    height: 64,
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor.withValues(
+                        alpha: isDark ? 0.16 : 0.10,
+                      ),
+                      borderRadius:
+                          BorderRadius.circular(18),
+                    ),
+                    child: Icon(
+                      icon,
+                      color: AppTheme.primaryColor,
+                      size: 30,
+                    ),
+                  ),
+
+                  const SizedBox(height: 18),
+
+                  // ==================================================
+                  // TITLE
+                  // ==================================================
+
+                  Text(
+                    title,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 20,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+
+                  const SizedBox(height: 9),
+
+                  // ==================================================
+                  // DESCRIPTION
+                  // ==================================================
+
+                  Text(
+                    description,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 13,
+                      height: 1.5,
+                      color:
+                          colorScheme.onSurface.withValues(
+                        alpha: 0.60,
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 22),
+
+                  // ==================================================
+                  // BUTTONS
+                  // ==================================================
+
+                  Row(
+                    children: [
+                      Expanded(
+                        child: OutlinedButton(
+                          onPressed: () {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop(false);
+                          },
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor:
+                                colorScheme.onSurface,
+                            side: BorderSide(
+                              color: colorScheme.outline,
+                            ),
+                            minimumSize:
+                                const Size.fromHeight(48),
+                            shape:
+                                RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Not Now',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      const SizedBox(width: 12),
+
+                      Expanded(
+                        child: ElevatedButton(
+                          onPressed: () {
+                            Navigator.of(
+                              dialogContext,
+                            ).pop(true);
+                          },
+                          style:
+                              ElevatedButton.styleFrom(
+                            backgroundColor:
+                                AppTheme.primaryColor,
+                            foregroundColor:
+                                Colors.white,
+                            elevation: 0,
+                            minimumSize:
+                                const Size.fromHeight(48),
+                            shape:
+                                RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius.circular(14),
+                            ),
+                          ),
+                          child: const Text(
+                            'Allow',
+                            style: TextStyle(
+                              fontWeight: FontWeight.w700,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ),
+        );
+      },
+    );
+
+    return result ?? false;
+  }
+
+  // ==========================================================
+  // SETTINGS DIALOG
+  // ==========================================================
+
+  Future<void> _showSettingsDialog(
+    BuildContext context, {
+    required String title,
+    required String message,
+  }) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        final theme = Theme.of(dialogContext);
+        final colorScheme = theme.colorScheme;
+
+        return AlertDialog(
+          backgroundColor: colorScheme.surface,
+          surfaceTintColor: Colors.transparent,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(24),
+          ),
+          title: Text(
+            title,
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
+          ),
+          content: Text(
+            message,
+            style: TextStyle(
+              height: 1.5,
+              color:
+                  colorScheme.onSurface.withValues(
+                alpha: 0.65,
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                Navigator.of(dialogContext).pop();
+              },
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () async {
+                Navigator.of(dialogContext).pop();
+
+                await _permissionService.openSettings();
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor:
+                    AppTheme.primaryColor,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Open Settings'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  // ==========================================================
+  // DENIED MESSAGE
+  // ==========================================================
+
+  void _showDeniedMessage(
+    BuildContext context,
+    String message,
+  ) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppTheme.errorColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // BUILD
+  // ==========================================================
+
   @override
   Widget build(BuildContext context) {
-    final padding = ResponsiveHelper.getResponsivePadding(context);
-    final isMobile = ResponsiveHelper.isMobile(context);
+    final padding =
+        ResponsiveHelper.getResponsivePadding(context);
+
+    final isMobile =
+        ResponsiveHelper.isMobile(context);
 
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark =
+        theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
 
       body: SafeArea(
         child: SingleChildScrollView(
-          physics: const BouncingScrollPhysics(),
+          physics:
+              const BouncingScrollPhysics(),
           child: Padding(
             padding: EdgeInsets.symmetric(
               horizontal: padding,
               vertical: isMobile ? 20 : 32,
             ),
             child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: [
                 // ==========================================================
                 // HEADER
                 // ==========================================================
 
                 Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  mainAxisAlignment:
+                      MainAxisAlignment.spaceBetween,
                   children: [
                     Row(
                       children: [
@@ -50,26 +420,41 @@ class HomeScreen extends StatelessWidget {
                                 AppTheme.primaryColor,
                                 AppTheme.accentColor,
                               ],
-                              begin: Alignment.topLeft,
-                              end: Alignment.bottomRight,
+                              begin:
+                                  Alignment.topLeft,
+                              end:
+                                  Alignment.bottomRight,
                             ),
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius:
+                                BorderRadius.circular(
+                              14,
+                            ),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.primaryColor.withOpacity(
-                                  isDark ? 0.20 : 0.15,
+                                color: AppTheme
+                                    .primaryColor
+                                    .withValues(
+                                  alpha:
+                                      isDark
+                                          ? 0.20
+                                          : 0.15,
                                 ),
                                 blurRadius: 18,
-                                offset: const Offset(0, 6),
+                                offset:
+                                    const Offset(0, 6),
                               ),
                             ],
                           ),
                           child: Icon(
-                            Icons.description_rounded,
+                            Icons
+                                .description_rounded,
                             color: isDark
                                 ? AppTheme.bgDark
                                 : Colors.white,
-                            size: isMobile ? 24 : 28,
+                            size:
+                                isMobile
+                                    ? 24
+                                    : 28,
                           ),
                         ),
 
@@ -78,17 +463,23 @@ class HomeScreen extends StatelessWidget {
                         Text(
                           AppConstants.appName,
                           style: TextStyle(
-                            fontSize: isMobile ? 20 : 24,
-                            fontWeight: FontWeight.w800,
+                            fontSize:
+                                isMobile
+                                    ? 20
+                                    : 24,
+                            fontWeight:
+                                FontWeight.w800,
                             letterSpacing: -0.5,
-                            color: colorScheme.onSurface,
+                            color:
+                                colorScheme
+                                    .onSurface,
                           ),
                         ),
                       ],
                     ),
 
                     // ======================================================
-                    // THEME TOGGLE BUTTON
+                    // THEME TOGGLE
                     // ======================================================
 
                     Container(
@@ -98,7 +489,10 @@ class HomeScreen extends StatelessWidget {
                         color: isDark
                             ? AppTheme.surfaceDark
                             : AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(14),
+                        borderRadius:
+                            BorderRadius.circular(
+                          14,
+                        ),
                         border: Border.all(
                           color: isDark
                               ? AppTheme.dividerDark
@@ -107,13 +501,18 @@ class HomeScreen extends StatelessWidget {
                       ),
                       child: IconButton(
                         onPressed: () {
-                          context.read<ThemeProvider>().toggleTheme();
+                          context
+                              .read<ThemeProvider>()
+                              .toggleTheme();
                         },
                         icon: Icon(
                           isDark
-                              ? Icons.light_mode_rounded
-                              : Icons.dark_mode_rounded,
-                          color: colorScheme.onSurface,
+                              ? Icons
+                                  .light_mode_rounded
+                              : Icons
+                                  .dark_mode_rounded,
+                          color:
+                              colorScheme.onSurface,
                           size: 21,
                         ),
                         tooltip: isDark
@@ -124,31 +523,39 @@ class HomeScreen extends StatelessWidget {
                   ],
                 ),
 
-                SizedBox(height: isMobile ? 34 : 50),
+                SizedBox(
+                  height: isMobile ? 34 : 50,
+                ),
 
                 // ==========================================================
-                // WELCOME TEXT
+                // WELCOME
                 // ==========================================================
 
                 Text(
                   'Your documents.',
                   style: TextStyle(
-                    fontSize: isMobile ? 30 : 38,
-                    fontWeight: FontWeight.w800,
+                    fontSize:
+                        isMobile ? 30 : 38,
+                    fontWeight:
+                        FontWeight.w800,
                     height: 1.1,
                     letterSpacing: -1.2,
-                    color: colorScheme.onSurface,
+                    color:
+                        colorScheme.onSurface,
                   ),
                 ),
 
                 Text(
                   'Simplified.',
                   style: TextStyle(
-                    fontSize: isMobile ? 30 : 38,
-                    fontWeight: FontWeight.w800,
+                    fontSize:
+                        isMobile ? 30 : 38,
+                    fontWeight:
+                        FontWeight.w800,
                     height: 1.1,
                     letterSpacing: -1.2,
-                    color: AppTheme.primaryColor,
+                    color:
+                        AppTheme.primaryColor,
                   ),
                 ),
 
@@ -157,13 +564,17 @@ class HomeScreen extends StatelessWidget {
                 Text(
                   AppConstants.appTagline,
                   style: TextStyle(
-                    fontSize: isMobile ? 14 : 16,
+                    fontSize:
+                        isMobile ? 14 : 16,
                     height: 1.5,
-                    color: colorScheme.onSurface.withOpacity(0.60),
+                    color: colorScheme.onSurface
+                        .withValues(alpha: 0.60),
                   ),
                 ),
 
-                SizedBox(height: isMobile ? 30 : 42),
+                SizedBox(
+                  height: isMobile ? 30 : 42,
+                ),
 
                 // ==========================================================
                 // CREATE PDF HERO CARD
@@ -179,41 +590,56 @@ class HomeScreen extends StatelessWidget {
                       colors: [
                         AppTheme.primaryColor,
                         isDark
-                            ? const Color(0xFF00A77E)
-                            : const Color(0xFF087F73),
+                            ? const Color(
+                                0xFF00A77E,
+                              )
+                            : const Color(
+                                0xFF087F73,
+                              ),
                       ],
-                      begin: Alignment.topLeft,
-                      end: Alignment.bottomRight,
+                      begin:
+                          Alignment.topLeft,
+                      end:
+                          Alignment.bottomRight,
                     ),
-                    borderRadius: BorderRadius.circular(
+                    borderRadius:
+                        BorderRadius.circular(
                       isMobile ? 22 : 28,
                     ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.primaryColor.withOpacity(
-                          isDark ? 0.22 : 0.18,
+                        color: AppTheme
+                            .primaryColor
+                            .withValues(
+                          alpha:
+                              isDark ? 0.22 : 0.18,
                         ),
                         blurRadius: 28,
-                        offset: const Offset(0, 12),
+                        offset:
+                            const Offset(0, 12),
                       ),
                     ],
                   ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
-                      // ====================================================
-                      // PDF ICON
-                      // ====================================================
-
                       Container(
                         width: 52,
                         height: 52,
                         decoration: BoxDecoration(
-                          color: Colors.white.withOpacity(0.16),
-                          borderRadius: BorderRadius.circular(16),
+                          color: Colors.white
+                              .withValues(
+                            alpha: 0.16,
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(
+                            16,
+                          ),
                         ),
                         child: const Icon(
-                          Icons.picture_as_pdf_rounded,
+                          Icons
+                              .picture_as_pdf_rounded,
                           color: Colors.white,
                           size: 28,
                         ),
@@ -222,10 +648,14 @@ class HomeScreen extends StatelessWidget {
                       const SizedBox(height: 20),
 
                       Text(
-                        'Create a PDF',
+                        'Images to PDF',
                         style: TextStyle(
-                          fontSize: isMobile ? 22 : 26,
-                          fontWeight: FontWeight.w800,
+                          fontSize:
+                              isMobile
+                                  ? 22
+                                  : 26,
+                          fontWeight:
+                              FontWeight.w800,
                           color: Colors.white,
                         ),
                       ),
@@ -235,48 +665,72 @@ class HomeScreen extends StatelessWidget {
                       Text(
                         'Scan documents with your camera or choose images from your gallery.',
                         style: TextStyle(
-                          fontSize: isMobile ? 13 : 15,
+                          fontSize:
+                              isMobile
+                                  ? 13
+                                  : 15,
                           height: 1.45,
-                          color: Colors.white.withOpacity(0.82),
+                          color: Colors.white
+                              .withValues(
+                            alpha: 0.82,
+                          ),
                         ),
                       ),
 
                       const SizedBox(height: 22),
 
-                      // ====================================================
-                      // CREATE PDF BUTTON
-                      // ====================================================
-
                       SizedBox(
                         width: double.infinity,
-                        height: isMobile ? 52 : 56,
+                        height:
+                            isMobile ? 52 : 56,
                         child: ElevatedButton(
                           onPressed: () {
-                            Navigator.of(context).pushNamed(
+                            Navigator.of(
+                              context,
+                            ).pushNamed(
                               '/source-selection',
                             );
                           },
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: Colors.white,
-                            foregroundColor: AppTheme.primaryDark,
+                          style:
+                              ElevatedButton
+                                  .styleFrom(
+                            backgroundColor:
+                                Colors.white,
+                            foregroundColor:
+                                AppTheme
+                                    .primaryDark,
                             elevation: 0,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(15),
+                            shape:
+                                RoundedRectangleBorder(
+                              borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                15,
+                              ),
                             ),
                           ),
                           child: Row(
-                            mainAxisAlignment: MainAxisAlignment.center,
+                            mainAxisAlignment:
+                                MainAxisAlignment
+                                    .center,
                             children: [
                               const Icon(
                                 Icons.add_rounded,
                                 size: 22,
                               ),
-                              const SizedBox(width: 8),
+                              const SizedBox(
+                                  width: 8),
                               Text(
-                                AppConstants.createPdf,
+                                AppConstants
+                                    .createPdf,
                                 style: TextStyle(
-                                  fontSize: isMobile ? 14 : 16,
-                                  fontWeight: FontWeight.w700,
+                                  fontSize:
+                                      isMobile
+                                          ? 14
+                                          : 16,
+                                  fontWeight:
+                                      FontWeight
+                                          .w700,
                                 ),
                               ),
                             ],
@@ -287,7 +741,9 @@ class HomeScreen extends StatelessWidget {
                   ),
                 ),
 
-                SizedBox(height: isMobile ? 26 : 34),
+                SizedBox(
+                  height: isMobile ? 26 : 34,
+                ),
 
                 // ==========================================================
                 // QUICK ACTIONS
@@ -296,9 +752,12 @@ class HomeScreen extends StatelessWidget {
                 Text(
                   'Quick Actions',
                   style: TextStyle(
-                    fontSize: isMobile ? 17 : 20,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
+                    fontSize:
+                        isMobile ? 17 : 20,
+                    fontWeight:
+                        FontWeight.w700,
+                    color:
+                        colorScheme.onSurface,
                   ),
                 ),
 
@@ -306,33 +765,50 @@ class HomeScreen extends StatelessWidget {
 
                 Row(
                   children: [
+                    // ======================================================
+                    // CAMERA
+                    // ======================================================
+
                     Expanded(
                       child: _QuickActionCard(
-                        icon: Icons.camera_alt_rounded,
+                        icon: Icons
+                            .camera_alt_rounded,
                         title: 'Scan',
                         subtitle: 'Use Camera',
                         onTap: () {
-                          Navigator.of(context).pushNamed('/camera');
+                          _handleCamera(
+                            context,
+                          );
                         },
                       ),
                     ),
 
                     const SizedBox(width: 12),
 
+                    // ======================================================
+                    // GALLERY
+                    // ======================================================
+
                     Expanded(
                       child: _QuickActionCard(
-                        icon: Icons.photo_library_rounded,
+                        icon: Icons
+                            .photo_library_rounded,
                         title: 'Gallery',
-                        subtitle: 'Choose Images',
+                        subtitle:
+                            'Choose Images',
                         onTap: () {
-                          Navigator.of(context).pushNamed('/gallery');
+                          _handleGallery(
+                            context,
+                          );
                         },
                       ),
                     ),
                   ],
                 ),
 
-                SizedBox(height: isMobile ? 30 : 42),
+                SizedBox(
+                  height: isMobile ? 30 : 42,
+                ),
 
                 // ==========================================================
                 // INFO CARD
@@ -340,12 +816,16 @@ class HomeScreen extends StatelessWidget {
 
                 Container(
                   width: double.infinity,
-                  padding: const EdgeInsets.all(18),
+                  padding:
+                      const EdgeInsets.all(18),
                   decoration: BoxDecoration(
                     color: isDark
                         ? AppTheme.surfaceDark
                         : AppTheme.surfaceLight,
-                    borderRadius: BorderRadius.circular(18),
+                    borderRadius:
+                        BorderRadius.circular(
+                      18,
+                    ),
                     border: Border.all(
                       color: isDark
                           ? AppTheme.dividerDark
@@ -353,20 +833,31 @@ class HomeScreen extends StatelessWidget {
                     ),
                   ),
                   child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+                    crossAxisAlignment:
+                        CrossAxisAlignment.start,
                     children: [
                       Container(
                         width: 42,
                         height: 42,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withOpacity(
-                            isDark ? 0.14 : 0.10,
+                        decoration:
+                            BoxDecoration(
+                          color: AppTheme
+                              .primaryColor
+                              .withValues(
+                            alpha: isDark
+                                ? 0.14
+                                : 0.10,
                           ),
-                          borderRadius: BorderRadius.circular(12),
+                          borderRadius:
+                              BorderRadius.circular(
+                            12,
+                          ),
                         ),
                         child: const Icon(
-                          Icons.verified_user_outlined,
-                          color: AppTheme.primaryColor,
+                          Icons
+                              .verified_user_outlined,
+                          color: AppTheme
+                              .primaryColor,
                           size: 22,
                         ),
                       ),
@@ -375,24 +866,33 @@ class HomeScreen extends StatelessWidget {
 
                       Expanded(
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
+                          crossAxisAlignment:
+                              CrossAxisAlignment
+                                  .start,
                           children: [
                             Text(
                               'Private & Simple',
                               style: TextStyle(
                                 fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: colorScheme.onSurface,
+                                fontWeight:
+                                    FontWeight
+                                        .w700,
+                                color:
+                                    colorScheme
+                                        .onSurface,
                               ),
                             ),
-                            const SizedBox(height: 4),
+                            const SizedBox(
+                                height: 4),
                             Text(
                               'Your documents can be converted locally without needing an account.',
                               style: TextStyle(
                                 fontSize: 12,
                                 height: 1.45,
-                                color: colorScheme.onSurface.withOpacity(
-                                  0.58,
+                                color: colorScheme
+                                    .onSurface
+                                    .withValues(
+                                  alpha: 0.58,
                                 ),
                               ),
                             ),
@@ -417,7 +917,8 @@ class HomeScreen extends StatelessWidget {
 // QUICK ACTION CARD
 // ==========================================================================
 
-class _QuickActionCard extends StatelessWidget {
+class _QuickActionCard
+    extends StatelessWidget {
   final IconData icon;
   final String title;
   final String subtitle;
@@ -434,64 +935,86 @@ class _QuickActionCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
+    final isDark =
+        theme.brightness == Brightness.dark;
 
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(18),
-      child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: isDark
-              ? AppTheme.surfaceDark
-              : AppTheme.surfaceLight,
-          borderRadius: BorderRadius.circular(18),
-          border: Border.all(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius:
+            BorderRadius.circular(18),
+        child: Container(
+          padding:
+              const EdgeInsets.all(16),
+          decoration: BoxDecoration(
             color: isDark
-                ? AppTheme.dividerDark
-                : AppTheme.dividerColor,
+                ? AppTheme.surfaceDark
+                : AppTheme.surfaceLight,
+            borderRadius:
+                BorderRadius.circular(18),
+            border: Border.all(
+              color: isDark
+                  ? AppTheme.dividerDark
+                  : AppTheme.dividerColor,
+            ),
           ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor.withOpacity(
-                  isDark ? 0.14 : 0.09,
+          child: Column(
+            crossAxisAlignment:
+                CrossAxisAlignment.start,
+            children: [
+              Container(
+                width: 44,
+                height: 44,
+                decoration:
+                    BoxDecoration(
+                  color: AppTheme
+                      .primaryColor
+                      .withValues(
+                    alpha:
+                        isDark ? 0.14 : 0.09,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    13,
+                  ),
                 ),
-                borderRadius: BorderRadius.circular(13),
+                child: Icon(
+                  icon,
+                  color:
+                      AppTheme.primaryColor,
+                  size: 22,
+                ),
               ),
-              child: Icon(
-                icon,
-                color: AppTheme.primaryColor,
-                size: 22,
+
+              const SizedBox(height: 14),
+
+              Text(
+                title,
+                style: TextStyle(
+                  fontSize: 14,
+                  fontWeight:
+                      FontWeight.w700,
+                  color:
+                      colorScheme.onSurface,
+                ),
               ),
-            ),
 
-            const SizedBox(height: 14),
+              const SizedBox(height: 4),
 
-            Text(
-              title,
-              style: TextStyle(
-                fontSize: 14,
-                fontWeight: FontWeight.w700,
-                color: colorScheme.onSurface,
+              Text(
+                subtitle,
+                style: TextStyle(
+                  fontSize: 11,
+                  color: colorScheme
+                      .onSurface
+                      .withValues(
+                    alpha: 0.55,
+                  ),
+                ),
               ),
-            ),
-
-            const SizedBox(height: 4),
-
-            Text(
-              subtitle,
-              style: TextStyle(
-                fontSize: 11,
-                color: colorScheme.onSurface.withOpacity(0.55),
-              ),
-            ),
-          ],
+            ],
+          ),
         ),
       ),
     );
