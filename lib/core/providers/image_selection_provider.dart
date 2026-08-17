@@ -29,11 +29,38 @@ class ImageSelectionProvider extends ChangeNotifier {
   }
 
   void reorderImages(int oldIndex, int newIndex) {
+    if (_selectedImages.length < 2) {
+      return;
+    }
+
+    if (oldIndex < 0 ||
+        newIndex < 0 ||
+        oldIndex >= _selectedImages.length ||
+        newIndex >= _selectedImages.length) {
+      return;
+    }
+
+    if (oldIndex == newIndex) {
+      return;
+    }
+
+    final reorderedItems = List<ImageItem>.from(_selectedImages);
+    final item = reorderedItems.removeAt(oldIndex);
+
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
-    final image = _selectedImages.removeAt(oldIndex);
-    _selectedImages.insert(newIndex, image);
+
+    if (newIndex < 0) {
+      newIndex = 0;
+    } else if (newIndex > reorderedItems.length) {
+      newIndex = reorderedItems.length;
+    }
+
+    reorderedItems.insert(newIndex, item);
+    _selectedImages
+      ..clear()
+      ..addAll(reorderedItems);
     notifyListeners();
   }
 

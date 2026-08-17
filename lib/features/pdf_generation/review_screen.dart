@@ -131,20 +131,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 // Image Grid
                 Expanded(
                   child: _isReordering
-                      ? ReorderableListView(
-                          onReorder: _reorderImages,
-                          children: [
-                            for (
-                              int i = 0;
-                              i < imageProvider.selectedImages.length;
-                              i++
-                            )
-                              _buildReorderableImageItem(
-                                imageProvider.selectedImages[i],
-                                i,
-                                key: Key(imageProvider.selectedImages[i].id),
-                              ),
-                          ],
+                      ? ListView.builder(
+                          padding: EdgeInsets.all(
+                            ResponsiveHelper.getGridSpacing(context),
+                          ),
+                          itemCount: imageProvider.selectedImages.length,
+                          itemBuilder: (context, index) {
+                            final imageItem =
+                                imageProvider.selectedImages[index];
+                            return _buildReorderableRowItem(imageItem, index);
+                          },
                         )
                       : GridView.builder(
                           padding: EdgeInsets.all(
@@ -311,7 +307,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.file(File(imageItem.filePath), fit: BoxFit.cover),
+          Image.file(
+            File(imageItem.filePath),
+            fit: BoxFit.cover,
+            cacheWidth: 400,
+            cacheHeight: 400,
+          ),
           // Page Number Badge
           Positioned(
             top: 8,
@@ -375,51 +376,72 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
-  Widget _buildReorderableImageItem(
-    dynamic imageItem,
-    int index, {
-    required Key key,
-  }) {
-    return Card(
-      key: key,
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
+  Widget _buildReorderableRowItem(dynamic imageItem, int index) {
+    final canMoveUp = index > 0;
+    final canMoveDown =
+        index < context.read<ImageSelectionProvider>().imageCount - 1;
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: Row(
         children: [
-          Image.file(File(imageItem.filePath), fit: BoxFit.cover),
-          // Reorder Indicator
-          Center(
-            child: Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.5),
-                shape: BoxShape.circle,
-              ),
-              child: const Icon(
-                Icons.open_in_full,
-                color: Colors.white,
-                size: 32,
+          Expanded(
+            child: Card(
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  SizedBox(
+                    height: 180,
+                    child: Image.file(
+                      File(imageItem.filePath),
+                      fit: BoxFit.cover,
+                      cacheWidth: 500,
+                      cacheHeight: 500,
+                    ),
+                  ),
+                  Positioned(
+                    top: 8,
+                    left: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: AppTheme.primaryColor,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        '${index + 1}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
-          // Page Number
-          Positioned(
-            top: 8,
-            left: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(4),
+          const SizedBox(width: 8),
+          Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              IconButton(
+                onPressed: canMoveUp
+                    ? () => _reorderImages(index, index - 1)
+                    : null,
+                icon: const Icon(Icons.arrow_upward),
               ),
-              child: Text(
-                '${index + 1}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
-                ),
+              IconButton(
+                onPressed: canMoveDown
+                    ? () => _reorderImages(index, index + 1)
+                    : null,
+                icon: const Icon(Icons.arrow_downward),
               ),
-            ),
+            ],
           ),
         ],
       ),
