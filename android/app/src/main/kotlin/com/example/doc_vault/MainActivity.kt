@@ -11,7 +11,13 @@ class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "docvault/pdf_intent"
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+    // ============================================================
+    // FLUTTER ENGINE
+    // ============================================================
+
+    override fun configureFlutterEngine(
+        flutterEngine: FlutterEngine
+    ) {
         super.configureFlutterEngine(flutterEngine)
 
         MethodChannel(
@@ -21,46 +27,69 @@ class MainActivity : FlutterActivity() {
 
             when (call.method) {
 
+                // ====================================================
+                // APP CLOSED → OPEN PDF
+                // ====================================================
+
                 "getInitialPdf" -> {
+
                     val uri = getPdfUri(intent)
 
                     if (uri != null) {
+
                         result.success(
                             mapOf(
                                 "uri" to uri.toString(),
                                 "fileName" to getFileName(uri)
                             )
                         )
+
                     } else {
+
                         result.success(null)
                     }
                 }
 
+                // ====================================================
+                // READ EXTERNAL PDF
+                // ====================================================
+
                 "readPdf" -> {
+
                     try {
-                        val uriString = call.argument<String>("uri")
+
+                        val uriString =
+                            call.argument<String>("uri")
 
                         if (uriString.isNullOrEmpty()) {
+
                             result.error(
                                 "INVALID_URI",
                                 "PDF URI is missing.",
                                 null
                             )
+
                             return@setMethodCallHandler
                         }
 
-                        val uri = Uri.parse(uriString)
+                        val uri =
+                            Uri.parse(uriString)
 
-                        val bytes = contentResolver
-                            .openInputStream(uri)
-                            ?.use { it.readBytes() }
+                        val bytes =
+                            contentResolver
+                                .openInputStream(uri)
+                                ?.use { inputStream ->
+                                    inputStream.readBytes()
+                                }
 
                         if (bytes == null) {
+
                             result.error(
                                 "READ_ERROR",
                                 "Unable to read PDF.",
                                 null
                             )
+
                             return@setMethodCallHandler
                         }
 
@@ -72,13 +101,19 @@ class MainActivity : FlutterActivity() {
                         )
 
                     } catch (e: Exception) {
+
                         result.error(
                             "READ_ERROR",
-                            e.message ?: "Failed to read PDF.",
+                            e.message
+                                ?: "Failed to read PDF.",
                             null
                         )
                     }
                 }
+
+                // ====================================================
+                // UNKNOWN METHOD
+                // ====================================================
 
                 else -> {
                     result.notImplemented()
@@ -87,26 +122,53 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // ============================================================
+    // APP ALREADY OPEN → NEW PDF
+    // ============================================================
+
     override fun onNewIntent(intent: Intent) {
+
         super.onNewIntent(intent)
 
+        // IMPORTANT:
+        // Android ka latest intent Activity mein save karna
         setIntent(intent)
 
         val uri = getPdfUri(intent)
 
         if (uri != null) {
-            MethodChannel(
-                flutterEngine!!.dartExecutor.binaryMessenger,
-                CHANNEL
-            ).invokeMethod(
-                "newPdf",
-                mapOf(
-                    "uri" to uri.toString(),
-                    "fileName" to getFileName(uri)
-                )
-            )
+
+            sendPdfToFlutter(uri)
         }
     }
+
+    // ============================================================
+    // SEND PDF TO FLUTTER
+    // ============================================================
+
+    private fun sendPdfToFlutter(uri: Uri) {
+
+        val engine = flutterEngine
+
+        if (engine == null) {
+            return
+        }
+
+        MethodChannel(
+            engine.dartExecutor.binaryMessenger,
+            CHANNEL
+        ).invokeMethod(
+            "newPdf",
+            mapOf(
+                "uri" to uri.toString(),
+                "fileName" to getFileName(uri)
+            )
+        )
+    }
+
+    // ============================================================
+    // GET PDF URI
+    // ============================================================
 
     private fun getPdfUri(intent: Intent?): Uri? {
 
@@ -114,60 +176,129 @@ class MainActivity : FlutterActivity() {
             return null
         }
 
-        if (intent.action == Intent.ACTION_VIEW) {
+        if (intent.action != Intent.ACTION_VIEW) {
+            return null
+        }
 
-            val uri = intent.data
+        val uri = intent.data ?: return null
 
-            if (uri != null && isPdf(intent, uri)) {
-                return uri
-            }
+        if (isPdf(intent, uri)) {
+            return uri
         }
 
         return null
     }
+
+    // ============================================================
+    // CHECK PDF
+    // ============================================================
 
     private fun isPdf(
         intent: Intent,
         uri: Uri
     ): Boolean {
 
+        // First check MIME type
         val mimeType = intent.type
 
-        return mimeType == "application/pdf" ||
-                uri.toString()
-                    .lowercase()
-                    .contains(".pdf")
+        if (mimeType.equals(
+                "application/pdf",
+                ignoreCase = true
+            )
+        ) {
+            return true
+        }
+
+        // Some file managers don't provide MIME type.
+        // Therefore check URI as fallback.
+        val uriString =
+            uri.toString().lowercase()
+
+        return uriString.endsWith(".pdf") ||
+                uriString.contains(".pdf?")
     }
+
+    // ============================================================
+    // GET FILE NAME
+    // ============================================================
 
     private fun getFileName(uri: Uri): String {
 
         var fileName: String? = null
 
+        // ========================================================
+        // CONTENT URI
+        // ========================================================
+
         if (uri.scheme == "content") {
 
-            val cursor = contentResolver.query(
-                uri,
-                arrayOf("_display_name"),
-                null,
-                null,
-                null
-            )
+            try {
 
-            cursor?.use {
-                if (it.moveToFirst()) {
+                val cursor =
+                    contentResolver.query(
+                        uri,
+                        arrayOf("_display_name"),
+                        null,
+                        null,
+                        null
+                    )
 
-                    val index =
-                        it.getColumnIndex("_display_name")
+                cursor?.use {
 
-                    if (index >= 0) {
-                        fileName = it.getString(index)
+                    if (it.moveToFirst()) {
+
+                        val index =
+                            it.getColumnIndex(
+                                "_display_name"
+                            )
+
+                        if (index >= 0) {
+
+                            fileName =
+                                it.getString(index)
+                        }
                     }
                 }
+
+            } catch (e: Exception) {
+
+                // Ignore and use fallback below
             }
         }
 
+        // ========================================================
+        // FILE URI
+        // ========================================================
+
         if (fileName.isNullOrEmpty()) {
+
+            if (uri.scheme == "file") {
+
+                fileName =
+                    uri.lastPathSegment
+            }
+        }
+
+        // ========================================================
+        // FALLBACK
+        // ========================================================
+
+        if (fileName.isNullOrEmpty()) {
+
             fileName = "Imported_PDF.pdf"
+        }
+
+        // ========================================================
+        // ENSURE .PDF EXTENSION
+        // ========================================================
+
+        if (!fileName!!
+                .lowercase()
+                .endsWith(".pdf")
+        ) {
+
+            fileName =
+                "$fileName.pdf"
         }
 
         return fileName!!

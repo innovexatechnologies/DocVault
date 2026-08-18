@@ -21,6 +21,8 @@ import 'features/pdf_result/result_screen.dart';
 import 'models/pdf_result.dart';
 
 void main() {
+  WidgetsFlutterBinding.ensureInitialized();
+
   runApp(const MyApp());
 }
 
@@ -32,36 +34,48 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
+  // ============================================================
+  // PDF INTENT CHANNEL
+  // ============================================================
+
   static const MethodChannel _channel =
       MethodChannel('docvault/pdf_intent');
+
+  // ============================================================
+  // PDF OPENING STATE
+  // ============================================================
+
+  bool _isOpeningExternalPdf = false;
+
+  String? _lastProcessedUri;
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
 
-    // ============================================================
-    // ANDROID PDF INTENT HANDLING
-    // ============================================================
-    //
-    // MethodChannel sirf Android par use hoga.
-    // Chrome/Web par is code ko run nahi karna.
-    //
-
+    // Android only
     if (!kIsWeb) {
-      _channel.setMethodCallHandler(_handleNativeCall);
+      _channel.setMethodCallHandler(
+        _handleNativeCall,
+      );
 
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        _checkForIncomingPdf();
-      });
+      WidgetsBinding.instance.addPostFrameCallback(
+        (_) {
+          _checkForIncomingPdf();
+        },
+      );
     }
   }
 
   // ============================================================
-  // APP CLOSED → OPEN WITH DOCVAULT
+  // APP CLOSED → OPEN PDF
   // ============================================================
 
   Future<void> _checkForIncomingPdf() async {
-    // Safety check
     if (kIsWeb) {
       return;
     }
@@ -75,21 +89,25 @@ class _MyAppState extends State<MyApp> {
         return;
       }
 
-      final data = Map<Object?, Object?>.from(result);
+      final data =
+          Map<Object?, Object?>.from(result);
 
-      final uri = data['uri']?.toString();
+      final uri =
+          data['uri']?.toString();
 
       if (uri == null || uri.isEmpty) {
         return;
       }
 
       debugPrint(
-        'Incoming PDF URI: $uri',
+        'Initial external PDF: $uri',
       );
 
-      // SplashScreen ko initialize hone ka time
+      // Give Flutter/Splash time to initialize.
       await Future.delayed(
-        const Duration(milliseconds: 500),
+        const Duration(
+          milliseconds: 700,
+        ),
       );
 
       if (!mounted) {
@@ -99,7 +117,7 @@ class _MyAppState extends State<MyApp> {
       await _openIncomingPdf(uri);
     } catch (e) {
       debugPrint(
-        'Error receiving external PDF: $e',
+        'Initial PDF error: $e',
       );
     }
   }
@@ -111,79 +129,119 @@ class _MyAppState extends State<MyApp> {
   Future<void> _handleNativeCall(
     MethodCall call,
   ) async {
-    // Web par Android native calls ignore
     if (kIsWeb) {
       return;
     }
 
-    if (call.method == 'newPdf') {
-      try {
-        final arguments =
-            Map<Object?, Object?>.from(
-          call.arguments as Map,
-        );
+    if (call.method != 'newPdf') {
+      return;
+    }
 
-        final uri =
-            arguments['uri']?.toString();
-
-        if (uri == null || uri.isEmpty) {
-          return;
-        }
-
-        debugPrint(
-          'New incoming PDF: $uri',
-        );
-
-        await _openIncomingPdf(uri);
-      } catch (e) {
-        debugPrint(
-          'Error handling new PDF: $e',
-        );
+    try {
+      if (call.arguments == null) {
+        return;
       }
+
+      final arguments =
+          Map<Object?, Object?>.from(
+        call.arguments as Map,
+      );
+
+      final uri =
+          arguments['uri']?.toString();
+
+      if (uri == null || uri.isEmpty) {
+        return;
+      }
+
+      debugPrint(
+        'New external PDF: $uri',
+      );
+
+      await _openIncomingPdf(uri);
+    } catch (e) {
+      debugPrint(
+        'New PDF handling error: $e',
+      );
     }
   }
 
   // ============================================================
-  // IMPORT + SAVE + VIEW PDF
+  // IMPORT EXTERNAL PDF
   // ============================================================
 
   Future<void> _openIncomingPdf(
     String uri,
   ) async {
-    // Android only
     if (kIsWeb) {
       return;
     }
 
+    // Prevent duplicate processing.
+    if (_isOpeningExternalPdf) {
+      debugPrint(
+        'PDF is already being opened.',
+      );
+      return;
+    }
+
+    if (_lastProcessedUri == uri) {
+      debugPrint(
+        'PDF already processed: $uri',
+      );
+      return;
+    }
+
+    _isOpeningExternalPdf = true;
+
     try {
       debugPrint(
-        'Importing PDF: $uri',
+        'Importing external PDF...',
       );
 
       final result =
-          await ExternalPdfService.importPdfFromUri(
-        uri,
-      );
+          await ExternalPdfService
+              .importPdfFromUri(uri);
 
       if (!mounted) {
         return;
       }
 
       final savedPath =
-          result['filePath'] as String;
+          result['filePath']?.toString();
 
       final fileName =
-          result['fileName'] as String;
+          result['fileName']?.toString();
+
+      if (savedPath == null ||
+          savedPath.isEmpty) {
+        throw Exception(
+          'PDF file path is empty.',
+        );
+      }
+
+      if (fileName == null ||
+          fileName.isEmpty) {
+        throw Exception(
+          'PDF file name is empty.',
+        );
+      }
 
       debugPrint(
-        'PDF saved at: $savedPath',
+        'Imported PDF path: $savedPath',
       );
 
       debugPrint(
-        'PDF file name: $fileName',
+        'Imported PDF name: $fileName',
       );
 
-      Navigator.of(context).push(
+      _lastProcessedUri = uri;
+
+      // ========================================================
+      // OPEN PDF VIEWER
+      // ========================================================
+
+      await Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => PdfViewerScreen(
             filePath: savedPath,
@@ -200,18 +258,36 @@ class _MyAppState extends State<MyApp> {
         return;
       }
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(
             'Unable to open PDF: $e',
           ),
+          behavior:
+              SnackBarBehavior.floating,
         ),
       );
+    } finally {
+      _isOpeningExternalPdf = false;
     }
   }
 
   // ============================================================
-  // UI
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    if (!kIsWeb) {
+      _channel.setMethodCallHandler(null);
+    }
+
+    super.dispose();
+  }
+
+  // ============================================================
+  // BUILD
   // ============================================================
 
   @override
@@ -219,15 +295,16 @@ class _MyAppState extends State<MyApp> {
     return MultiProvider(
       providers: [
         // ========================================================
-        // IMAGE SELECTION PROVIDER
+        // IMAGE SELECTION
         // ========================================================
 
         ChangeNotifierProvider(
-          create: (_) => ImageSelectionProvider(),
+          create: (_) =>
+              ImageSelectionProvider(),
         ),
 
         // ========================================================
-        // THEME PROVIDER
+        // THEME
         // ========================================================
 
         ChangeNotifierProvider(
@@ -254,25 +331,29 @@ class _MyAppState extends State<MyApp> {
             // LIGHT THEME
             // ====================================================
 
-            theme: AppTheme.lightTheme(),
+            theme:
+                AppTheme.lightTheme(),
 
             // ====================================================
             // DARK THEME
             // ====================================================
 
-            darkTheme: AppTheme.darkTheme(),
+            darkTheme:
+                AppTheme.darkTheme(),
 
             // ====================================================
-            // CURRENT THEME
+            // THEME MODE
             // ====================================================
 
-            themeMode: themeProvider.themeMode,
+            themeMode:
+                themeProvider.themeMode,
 
             // ====================================================
             // INITIAL SCREEN
             // ====================================================
 
-            home: const SplashScreen(),
+            home:
+                const SplashScreen(),
 
             // ====================================================
             // ROUTES
@@ -285,8 +366,9 @@ class _MyAppState extends State<MyApp> {
               '/home': (context) =>
                   const HomeScreen(),
 
-              '/source-selection': (context) =>
-                  const SourceSelectionScreen(),
+              '/source-selection':
+                  (context) =>
+                      const SourceSelectionScreen(),
 
               '/camera': (context) =>
                   const CameraScreen(),
@@ -297,23 +379,29 @@ class _MyAppState extends State<MyApp> {
               '/review': (context) =>
                   const ReviewScreen(),
 
-              '/pdf-generation': (context) =>
-                  const PdfGenerationScreen(),
+              '/pdf-generation':
+                  (context) =>
+                      const PdfGenerationScreen(),
             },
 
             // ====================================================
             // DYNAMIC ROUTES
             // ====================================================
 
-            onGenerateRoute: (settings) {
-              if (settings.name == '/result') {
+            onGenerateRoute:
+                (settings) {
+              if (settings.name ==
+                  '/result') {
                 final pdfResult =
-                    settings.arguments as PdfResult;
+                    settings.arguments
+                        as PdfResult;
 
                 return MaterialPageRoute(
-                  builder: (context) =>
-                      ResultScreen(
-                    pdfResult: pdfResult,
+                  builder:
+                      (context) =>
+                          ResultScreen(
+                    pdfResult:
+                        pdfResult,
                   ),
                 );
               }
