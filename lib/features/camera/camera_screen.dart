@@ -267,8 +267,12 @@ class _CameraScreenState extends State<CameraScreen> {
     // ==========================================================
 
     return PopScope(
-      canPop: false,
-
+      canPop: true,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          Navigator.of(context).maybePop();
+        }
+      },
       child: Scaffold(
         // Camera preview naturally remains dark/black.
         backgroundColor: Colors.black,
@@ -297,12 +301,12 @@ class _CameraScreenState extends State<CameraScreen> {
                       MainAxisAlignment.spaceBetween,
                   children: [
                     // =================================================
-                    // CLOSE BUTTON
+                    // BACK BUTTON
                     // =================================================
 
                     GestureDetector(
                       onTap: () {
-                        Navigator.of(context).pop();
+                        Navigator.of(context).maybePop();
                       },
 
                       child: Container(
@@ -325,7 +329,7 @@ class _CameraScreenState extends State<CameraScreen> {
                           ),
                         ),
                         child: Icon(
-                          Icons.close_rounded,
+                          Icons.arrow_back_rounded,
                           color: Colors.white,
                           size:
                               ResponsiveHelper.isMobile(context)

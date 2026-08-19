@@ -81,15 +81,40 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
     return PopScope(
-      canPop: false,
+      canPop: !_isReordering,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_isReordering) {
+          setState(() {
+            _isReordering = false;
+          });
+        }
+      },
       child: Scaffold(
-        backgroundColor: AppTheme.bgLight,
+        backgroundColor: colorScheme.surface,
         appBar: AppBar(
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            tooltip: 'Back',
+            onPressed: () {
+              if (_isReordering) {
+                setState(() {
+                  _isReordering = false;
+                });
+              } else {
+                Navigator.of(context).maybePop();
+              }
+            },
+          ),
           title: const Text(AppConstants.review),
-          backgroundColor: AppTheme.bgWhite,
-          foregroundColor: AppTheme.textPrimary,
-          elevation: 1,
+          backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+          foregroundColor: colorScheme.onSurface,
+          elevation: 0,
           actions: [
             Padding(
               padding: const EdgeInsets.all(8.0),

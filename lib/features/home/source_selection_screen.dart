@@ -135,11 +135,12 @@ class SourceSelectionScreen extends StatelessWidget {
 
         leading: IconButton(
           onPressed: () {
-            Navigator.of(context).pop();
+            Navigator.of(context).maybePop();
           },
           icon: const Icon(
             Icons.arrow_back_rounded,
           ),
+          tooltip: 'Back',
         ),
       ),
 

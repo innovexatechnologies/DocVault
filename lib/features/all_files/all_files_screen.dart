@@ -247,11 +247,25 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
         final docs = provider.documents;
         final hasAny = provider.hasDocuments;
 
-        return Scaffold(
-          backgroundColor: colorScheme.surface,
-          appBar: isSelection
-              ? _buildSelectionAppBar(context, provider, colorScheme, isDark)
-              : _buildNormalAppBar(context, provider, colorScheme, isDark),
+        return PopScope(
+          canPop: !isSelection && !_isSearchVisible,
+          onPopInvokedWithResult: (didPop, result) {
+            if (didPop) return;
+            if (isSelection) {
+              provider.clearSelection();
+            } else if (_isSearchVisible) {
+              setState(() {
+                _isSearchVisible = false;
+                _searchController.clear();
+                provider.clearSearch();
+              });
+            }
+          },
+          child: Scaffold(
+            backgroundColor: colorScheme.surface,
+            appBar: isSelection
+                ? _buildSelectionAppBar(context, provider, colorScheme, isDark)
+                : _buildNormalAppBar(context, provider, colorScheme, isDark),
           body: Column(
             children: [
               // Expandable Search Bar
@@ -451,10 +465,11 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
                 _buildSelectionBottomBar(context, provider, colorScheme, isDark),
             ],
           ),
-        );
-      },
-    );
-  }
+        ),
+      );
+    },
+  );
+}
 
   PreferredSizeWidget _buildNormalAppBar(
     BuildContext context,
@@ -462,10 +477,19 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     ColorScheme colorScheme,
     bool isDark,
   ) {
+    final canPop = Navigator.canPop(context);
+
     return AppBar(
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
       foregroundColor: colorScheme.onSurface,
       elevation: 0,
+      leading: canPop
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back_rounded),
+              onPressed: () => Navigator.of(context).maybePop(),
+              tooltip: 'Back',
+            )
+          : null,
       title: Row(
         children: [
           Container(

@@ -195,13 +195,22 @@ class _ResultScreenState extends State<ResultScreen> {
 
     return PopScope(
       canPop: false,
+      onPopInvokedWithResult: (didPop, result) {
+        if (!didPop) {
+          _createNewPdf();
+        }
+      },
       child: Scaffold(
         backgroundColor: colorScheme.surface,
         appBar: AppBar(
           backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
           foregroundColor: colorScheme.onSurface,
           elevation: 0,
-          automaticallyImplyLeading: false,
+          leading: IconButton(
+            icon: const Icon(Icons.arrow_back_rounded),
+            onPressed: _createNewPdf,
+            tooltip: 'Back to Home',
+          ),
           title: const Text(
             'PDF Created',
             style: TextStyle(

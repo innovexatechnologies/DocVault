@@ -124,7 +124,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
       // ======================================================
 
       appBar: AppBar(
-        automaticallyImplyLeading: true,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+          tooltip: 'Back',
+        ),
 
         title: const Text(
           AppConstants.gallery,

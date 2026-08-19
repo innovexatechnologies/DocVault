@@ -179,6 +179,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     return Scaffold(
       backgroundColor: isDark ? AppTheme.bgDark : const Color(0xFFE8ECEB),
       appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back_rounded),
+          onPressed: () => Navigator.of(context).maybePop(),
+          tooltip: 'Back',
+        ),
         backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
         foregroundColor: colorScheme.onSurface,
         elevation: 0,

@@ -48,16 +48,36 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    return PopScope(
-      canPop: false,
-      child: Scaffold(
-        backgroundColor: colorScheme.surface,
-        body: FutureBuilder<PdfResult>(
-          future: _pdfGenerationFuture,
-          builder: (context, snapshot) {
-            if (snapshot.connectionState == ConnectionState.waiting) {
-              return Center(
-                child: SingleChildScrollView(
+    return FutureBuilder<PdfResult>(
+      future: _pdfGenerationFuture,
+      builder: (context, snapshot) {
+        final isError = snapshot.hasError;
+
+        return PopScope(
+          canPop: isError,
+          onPopInvokedWithResult: (didPop, result) {
+            if (isError && !didPop) {
+              Navigator.of(context).maybePop();
+            }
+          },
+          child: Scaffold(
+            backgroundColor: colorScheme.surface,
+            appBar: isError
+                ? AppBar(
+                    backgroundColor: Colors.transparent,
+                    elevation: 0,
+                    leading: IconButton(
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      tooltip: 'Back to Review',
+                    ),
+                  )
+                : null,
+            body: Builder(
+              builder: (context) {
+                if (snapshot.connectionState == ConnectionState.waiting) {
+                  return Center(
+                    child: SingleChildScrollView(
                   padding: EdgeInsets.all(responsivePadding),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
@@ -282,5 +302,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
         ),
       ),
     );
+  },
+);
   }
 }

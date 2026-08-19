@@ -41,10 +41,20 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
 
     final totalPdfs = context.watch<PdfManagerProvider>().totalCount;
 
-    return Scaffold(
-      backgroundColor: colorScheme.surface,
-      body: IndexedStack(
-        index: _currentIndex,
+    return PopScope(
+      canPop: _currentIndex == 0,
+      onPopInvokedWithResult: (didPop, result) {
+        if (didPop) return;
+        if (_currentIndex != 0) {
+          setState(() {
+            _currentIndex = 0;
+          });
+        }
+      },
+      child: Scaffold(
+        backgroundColor: colorScheme.surface,
+        body: IndexedStack(
+          index: _currentIndex,
         children: [
           HomeScreen(
             onNavigateToAllFiles: () => _onTabSelected(1),
@@ -103,8 +113,9 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
           ),
         ),
       ),
-    );
-  }
+    ),
+  );
+}
 
   Widget _buildNavItem({
     required int index,
