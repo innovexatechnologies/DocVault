@@ -363,10 +363,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
                             child: OutlinedButton.icon(
                               onPressed: _toggleReorderMode,
                               icon: Icon(
-                                _isReordering ? Icons.grid_view_rounded : Icons.swap_vert_rounded,
+                                _isReordering ? Icons.check_rounded : Icons.swap_vert_rounded,
                                 size: 18,
                               ),
-                              label: Text(_isReordering ? 'Grid' : 'Reorder'),
+                              label: Text(_isReordering ? 'Done' : 'Reorder'),
                               style: OutlinedButton.styleFrom(
                                 backgroundColor: _isReordering
                                     ? AppTheme.primaryColor.withValues(alpha: 0.15)

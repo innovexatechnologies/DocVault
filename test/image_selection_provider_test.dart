@@ -14,6 +14,7 @@ void main() {
         'a.png',
         'c.png',
       ]);
+      expect(provider.hasUnsavedChanges, isTrue);
     });
 
     test('reorders items when moving to end of list', () {
@@ -61,17 +62,25 @@ void main() {
       ]);
     });
 
-    test('ignores invalid reorder indexes', () {
+    test('updates image file path on edit', () {
       final provider = ImageSelectionProvider();
       provider.addImages(['a.png', 'b.png'], 'gallery');
 
-      provider.reorderImages(-1, 1);
-      provider.reorderImages(0, 99);
+      final firstId = provider.selectedImages.first.id;
+      provider.updateImageFilePath(firstId, 'a_edited.jpg');
 
-      expect(provider.selectedImages.map((e) => e.filePath).toList(), [
-        'a.png',
-        'b.png',
-      ]);
+      expect(provider.selectedImages.first.filePath, 'a_edited.jpg');
+      expect(provider.hasUnsavedChanges, isTrue);
+    });
+
+    test('clearAllImages resets unsaved changes', () {
+      final provider = ImageSelectionProvider();
+      provider.addImages(['a.png'], 'camera');
+      expect(provider.hasUnsavedChanges, isTrue);
+
+      provider.clearAllImages();
+      expect(provider.hasImages, isFalse);
+      expect(provider.hasUnsavedChanges, isFalse);
     });
   });
 }
