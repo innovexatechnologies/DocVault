@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/conversion_type.dart';
 import '../../../models/pdf_document.dart';
 
 class PdfActionsBottomSheet extends StatelessWidget {
@@ -30,6 +31,10 @@ class PdfActionsBottomSheet extends StatelessWidget {
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
     final screenHeight = MediaQuery.of(context).size.height;
+    final docType = document.documentType;
+    final unitLabel = docType == ConversionType.ppt
+        ? (document.pageCount == 1 ? 'slide' : 'slides')
+        : (document.pageCount == 1 ? 'page' : 'pages');
 
     return SafeArea(
       top: false,
@@ -73,14 +78,14 @@ class PdfActionsBottomSheet extends StatelessWidget {
                         width: 44,
                         height: 44,
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withValues(
+                          color: docType.badgeColor.withValues(
                             alpha: isDark ? 0.20 : 0.12,
                           ),
                           borderRadius: BorderRadius.circular(12),
                         ),
-                        child: const Icon(
-                          Icons.picture_as_pdf_rounded,
-                          color: AppTheme.primaryColor,
+                        child: Icon(
+                          docType.icon,
+                          color: docType.badgeColor,
                           size: 24,
                         ),
                       ),
@@ -102,7 +107,7 @@ class PdfActionsBottomSheet extends StatelessWidget {
                             ),
                             const SizedBox(height: 2),
                             Text(
-                              '${document.formattedFileSize} • ${document.pageCount} ${document.pageCount == 1 ? 'page' : 'pages'}',
+                              '${docType.shortName} • ${document.formattedFileSize} • ${document.pageCount} $unitLabel',
                               style: TextStyle(
                                 fontSize: 12,
                                 color: colorScheme.onSurface.withValues(alpha: 0.6),
@@ -122,7 +127,7 @@ class PdfActionsBottomSheet extends StatelessWidget {
                 _buildActionTile(
                   context,
                   icon: Icons.visibility_outlined,
-                  title: 'Open',
+                  title: 'Open ${docType.shortName}',
                   onTap: () {
                     Navigator.of(context).pop();
                     onOpen();
@@ -132,7 +137,7 @@ class PdfActionsBottomSheet extends StatelessWidget {
                   _buildActionTile(
                     context,
                     icon: Icons.tune_rounded,
-                    title: 'Edit PDF',
+                    title: 'Edit ${docType.shortName}',
                     subtitle: 'Crop, rotate, add/delete pages, and edit document',
                     onTap: () {
                       Navigator.of(context).pop();

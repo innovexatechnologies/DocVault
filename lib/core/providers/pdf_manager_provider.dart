@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../models/conversion_type.dart';
 import '../../models/pdf_document.dart';
 import '../services/pdf_storage_service.dart';
 
@@ -24,6 +25,7 @@ class PdfManagerProvider extends ChangeNotifier {
 
   String _searchQuery = '';
   PdfSortOption _sortOption = PdfSortOption.newestFirst;
+  ConversionType? _typeFilter; // null means 'All'
 
   bool _isSelectionMode = false;
   final Set<String> _selectedIds = {};
@@ -39,15 +41,28 @@ class PdfManagerProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   String get searchQuery => _searchQuery;
   PdfSortOption get sortOption => _sortOption;
+  ConversionType? get typeFilter => _typeFilter;
   bool get isSelectionMode => _isSelectionMode;
   Set<String> get selectedIds => Set.unmodifiable(_selectedIds);
   int get selectedCount => _selectedIds.length;
   int get totalCount => _documents.length;
   bool get hasDocuments => _documents.isNotEmpty;
 
-  /// Returns documents filtered by search query and sorted according to sortOption
+  int get pdfCount =>
+      _documents.where((d) => d.documentType == ConversionType.pdf).length;
+  int get docsCount =>
+      _documents.where((d) => d.documentType == ConversionType.docs).length;
+  int get pptCount =>
+      _documents.where((d) => d.documentType == ConversionType.ppt).length;
+
+  /// Returns documents filtered by search query, format type, and sorted according to sortOption
   List<PdfDocument> get documents {
     List<PdfDocument> list = List.from(_documents);
+
+    // Apply format filter (PDF, DOCS, PPT)
+    if (_typeFilter != null) {
+      list = list.where((doc) => doc.documentType == _typeFilter).toList();
+    }
 
     // Apply search filter
     if (_searchQuery.trim().isNotEmpty) {
@@ -86,7 +101,7 @@ class PdfManagerProvider extends ChangeNotifier {
     return list;
   }
 
-  /// Reloads all PDF documents from storage
+  /// Reloads all documents from storage
   Future<void> loadDocuments() async {
     _isLoading = true;
     _errorMessage = null;
@@ -101,7 +116,7 @@ class PdfManagerProvider extends ChangeNotifier {
         _isSelectionMode = false;
       }
     } catch (e) {
-      _errorMessage = 'Failed to load PDF documents: $e';
+      _errorMessage = 'Failed to load documents: $e';
       debugPrint('Error in PdfManagerProvider.loadDocuments: $e');
     } finally {
       _isLoading = false;
@@ -109,7 +124,7 @@ class PdfManagerProvider extends ChangeNotifier {
     }
   }
 
-  /// Registers a newly generated PDF into the provider
+  /// Registers a newly generated document into the provider
   Future<PdfDocument> registerGeneratedPdf({
     required String filePath,
     required String fileName,
@@ -126,7 +141,7 @@ class PdfManagerProvider extends ChangeNotifier {
     return doc;
   }
 
-  /// Updates content (pages) of an existing PDF document
+  /// Updates content (pages) of an existing document
   Future<PdfDocument> updateDocumentContent(
     String id,
     List<String> newImagePaths,
@@ -143,12 +158,12 @@ class PdfManagerProvider extends ChangeNotifier {
       }
       return updatedDoc;
     } catch (e) {
-      debugPrint('Error updating PDF content in provider: $e');
+      debugPrint('Error updating document content in provider: $e');
       rethrow;
     }
   }
 
-  /// Renames a PDF document
+  /// Renames a document
   Future<PdfDocument> renamePdf(String id, String newName) async {
     try {
       final updatedDoc = await _storageService.renameDocument(id, newName);
@@ -159,12 +174,12 @@ class PdfManagerProvider extends ChangeNotifier {
       }
       return updatedDoc;
     } catch (e) {
-      debugPrint('Error renaming PDF in provider: $e');
+      debugPrint('Error renaming document in provider: $e');
       rethrow;
     }
   }
 
-  /// Deletes a single PDF document
+  /// Deletes a single document
   Future<bool> deletePdf(String id) async {
     try {
       final success = await _storageService.deleteDocument(id);
@@ -178,12 +193,12 @@ class PdfManagerProvider extends ChangeNotifier {
       }
       return success;
     } catch (e) {
-      debugPrint('Error deleting PDF in provider: $e');
+      debugPrint('Error deleting document in provider: $e');
       return false;
     }
   }
 
-  /// Deletes all currently selected PDF documents
+  /// Deletes all currently selected documents
   Future<int> deleteSelected() async {
     if (_selectedIds.isEmpty) return 0;
 
@@ -197,7 +212,7 @@ class PdfManagerProvider extends ChangeNotifier {
     return count;
   }
 
-  /// Shares a single PDF file
+  /// Shares a single file
   Future<void> sharePdf(PdfDocument doc) async {
     await Share.shareXFiles(
       [XFile(doc.filePath)],
@@ -205,7 +220,7 @@ class PdfManagerProvider extends ChangeNotifier {
     );
   }
 
-  /// Shares all currently selected PDF files
+  /// Shares all currently selected files
   Future<void> shareSelected() async {
     if (_selectedIds.isEmpty) return;
 
@@ -220,15 +235,21 @@ class PdfManagerProvider extends ChangeNotifier {
     }
   }
 
-  /// Exports a single PDF document to device storage
+  /// Exports a single document to device storage
   Future<String?> exportPdf(String id) async {
     return await _storageService.exportDocument(id);
   }
 
-  /// Exports all currently selected PDF documents to a directory
+  /// Exports all currently selected documents to a directory
   Future<int> exportSelected() async {
     if (_selectedIds.isEmpty) return 0;
     return await _storageService.exportMultipleDocuments(_selectedIds.toList());
+  }
+
+  /// Updates format filter (null = All, ConversionType.pdf, docs, ppt)
+  void setTypeFilter(ConversionType? filter) {
+    _typeFilter = filter;
+    notifyListeners();
   }
 
   /// Updates search query

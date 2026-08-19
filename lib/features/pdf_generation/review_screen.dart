@@ -1,23 +1,26 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io';
-import '../../core/constants/app_constants.dart';
-import '../../core/models/../providers/pdf_manager_provider.dart';
+import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/services/gallery_service.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/widgets/unsaved_changes_dialog.dart';
+import '../../models/conversion_type.dart';
 import '../../models/pdf_document.dart';
 import '../image_editing/image_editor_screen.dart';
+import 'pdf_generation_screen.dart';
 import 'preview_screen.dart';
 
 class ReviewScreen extends StatefulWidget {
   final PdfDocument? existingDocument;
+  final ConversionType conversionType;
 
   const ReviewScreen({
     super.key,
     this.existingDocument,
+    this.conversionType = ConversionType.pdf,
   });
 
   @override
@@ -27,6 +30,9 @@ class ReviewScreen extends StatefulWidget {
 class _ReviewScreenState extends State<ReviewScreen> {
   bool _isReordering = false;
   bool _isSaving = false;
+
+  ConversionType get _effectiveType =>
+      widget.existingDocument?.documentType ?? widget.conversionType;
 
   bool get _isEditingExisting => widget.existingDocument != null;
 
@@ -39,9 +45,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
   void _removeImage(String imageId) {
     context.read<ImageSelectionProvider>().removeImage(imageId);
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Page removed'),
-        duration: Duration(seconds: 1),
+      SnackBar(
+        content: Text(
+          _effectiveType == ConversionType.ppt ? 'Slide removed' : 'Page removed',
+        ),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -53,7 +61,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
   Future<void> _addMoreImages(String source) async {
     if (source == 'camera') {
       if (mounted) {
-        Navigator.of(context).pushNamed('/camera');
+        Navigator.of(context).pushNamed(
+          '/camera',
+          arguments: _effectiveType,
+        );
       }
     } else {
       final galleryService = GalleryService();
@@ -67,7 +78,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
               );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Added ${imagePaths.length} page(s)'),
+              content: Text(
+                'Added ${imagePaths.length} ${_effectiveType == ConversionType.ppt ? 'slide(s)' : 'page(s)'}',
+              ),
               duration: const Duration(seconds: 1),
             ),
           );
@@ -86,6 +99,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
   }
 
   void _showAddImagesBottomSheet() {
+    final itemLabel = _effectiveType == ConversionType.ppt ? 'Slides' : 'Pages';
+
     showModalBottomSheet(
       context: context,
       shape: const RoundedRectangleBorder(
@@ -108,7 +123,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  _isEditingExisting ? 'Add Pages to Document' : 'Add More Images',
+                  _isEditingExisting
+                      ? 'Add $itemLabel to Document'
+                      : 'Add More $itemLabel',
                   style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
@@ -140,7 +157,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         icon: const Icon(Icons.photo_library_rounded),
                         label: const Text('Gallery'),
                         style: ElevatedButton.styleFrom(
-                          backgroundColor: AppTheme.primaryColor,
+                          backgroundColor: _effectiveType.badgeColor,
                           foregroundColor: Colors.white,
                           padding: const EdgeInsets.symmetric(vertical: 14),
                           shape: RoundedRectangleBorder(
@@ -181,18 +198,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
       MaterialPageRoute(
         builder: (_) => PreviewScreen(
           existingDocument: widget.existingDocument,
-          onSave: _isEditingExisting ? _saveExistingPdfChanges : null,
+          conversionType: _effectiveType,
+          onSave: _isEditingExisting ? _saveExistingDocumentChanges : null,
         ),
       ),
     );
   }
 
-  Future<void> _saveExistingPdfChanges() async {
+  Future<void> _saveExistingDocumentChanges() async {
     final imagePaths = context.read<ImageSelectionProvider>().getImageFilePaths();
     if (imagePaths.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Cannot save empty PDF. At least 1 page is required.'),
+        SnackBar(
+          content: Text(
+            'Cannot save empty document. At least 1 ${_effectiveType == ConversionType.ppt ? 'slide' : 'page'} is required.',
+          ),
           backgroundColor: AppTheme.errorColor,
         ),
       );
@@ -211,8 +231,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
       context.read<ImageSelectionProvider>().clearAllImages();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('PDF updated successfully!'),
+        SnackBar(
+          content: Text('${_effectiveType.shortName} updated successfully!'),
           backgroundColor: AppTheme.successColor,
         ),
       );
@@ -232,11 +252,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
     }
   }
 
-  void _generatePdf() {
+  void _generateDocument() {
     if (_isEditingExisting) {
-      _saveExistingPdfChanges();
+      _saveExistingDocumentChanges();
     } else {
-      Navigator.of(context).pushNamed('/pdf-generation');
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PdfGenerationScreen(conversionType: _effectiveType),
+        ),
+      );
     }
   }
 
@@ -259,14 +283,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
       message: _isEditingExisting
           ? 'You have unsaved changes to "${widget.existingDocument!.fileName}". What would you like to do?'
           : 'You have unsaved changes. What would you like to do?',
-      saveLabel: _isEditingExisting ? 'Save Changes' : 'Generate PDF',
+      saveLabel: _isEditingExisting
+          ? 'Save Changes'
+          : 'Generate ${_effectiveType.shortName}',
       discardLabel: 'Discard Changes',
     );
 
     if (!mounted) return;
 
     if (action == UnsavedChangesAction.save) {
-      _generatePdf();
+      _generateDocument();
     } else if (action == UnsavedChangesAction.discard) {
       context.read<ImageSelectionProvider>().clearAllImages();
       Navigator.of(context).pop();
@@ -278,6 +304,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final itemUnit = _effectiveType == ConversionType.ppt ? 'slides' : 'pages';
 
     return PopScope(
       canPop: false,
@@ -295,7 +322,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
           title: Text(
             _isEditingExisting
                 ? widget.existingDocument!.title
-                : AppConstants.review,
+                : 'Review & Organize (${_effectiveType.shortName})',
             overflow: TextOverflow.ellipsis,
           ),
           backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
@@ -313,15 +340,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                    color: _effectiveType.badgeColor.withValues(alpha: 0.15),
                     borderRadius: BorderRadius.circular(8),
                   ),
                   child: Text(
-                    '${context.watch<ImageSelectionProvider>().imageCount} pages',
-                    style: const TextStyle(
+                    '${context.watch<ImageSelectionProvider>().imageCount} $itemUnit',
+                    style: TextStyle(
                       fontWeight: FontWeight.w700,
                       fontSize: 12,
-                      color: AppTheme.primaryColor,
+                      color: _effectiveType.badgeColor,
                     ),
                   ),
                 ),
@@ -345,7 +372,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'No pages in document',
+                          'No images in document',
                           style: TextStyle(
                             fontSize: 16,
                             color: colorScheme.onSurface.withValues(alpha: 0.6),
@@ -355,7 +382,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
                         ElevatedButton.icon(
                           onPressed: _showAddImagesBottomSheet,
                           icon: const Icon(Icons.add_photo_alternate_rounded),
-                          label: const Text('Add Pages'),
+                          label: Text('Add $itemLabel'),
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: _effectiveType.badgeColor,
+                            foregroundColor: Colors.white,
+                          ),
                         ),
                       ],
                     ),
@@ -387,7 +418,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                 crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
                                 crossAxisSpacing: ResponsiveHelper.getGridSpacing(context),
                                 mainAxisSpacing: ResponsiveHelper.getGridSpacing(context),
-                                childAspectRatio: 0.82,
+                                childAspectRatio: _effectiveType == ConversionType.ppt ? 1.15 : 0.82,
                               ),
                               itemCount: imageProvider.selectedImages.length,
                               itemBuilder: (context, index) {
@@ -397,7 +428,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                             ),
                     ),
 
-                    // Bottom Control Toolbar & Save Button
+                    // Bottom Control Toolbar & Generate Button
                     SafeArea(
                       top: false,
                       child: Container(
@@ -452,7 +483,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                     style: OutlinedButton.styleFrom(
                                       padding: const EdgeInsets.symmetric(vertical: 8),
                                       backgroundColor: _isReordering
-                                          ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                          ? _effectiveType.badgeColor.withValues(alpha: 0.15)
                                           : null,
                                       shape: RoundedRectangleBorder(
                                         borderRadius: BorderRadius.circular(10),
@@ -478,21 +509,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
                             ),
                             const SizedBox(height: 10),
 
-                            // Primary Action Button (Save Changes or Generate PDF)
+                            // Primary Action Button (Save Changes or Generate Format)
                             SizedBox(
                               width: double.infinity,
                               height: ResponsiveHelper.getResponsiveButtonHeight(context),
                               child: ElevatedButton.icon(
-                                onPressed: _generatePdf,
+                                onPressed: _generateDocument,
                                 icon: Icon(
                                   _isEditingExisting
                                       ? Icons.save_rounded
-                                      : Icons.picture_as_pdf_rounded,
+                                      : _effectiveType.icon,
                                 ),
                                 label: Text(
                                   _isEditingExisting
                                       ? 'Save Changes'
-                                      : AppConstants.generatePdf,
+                                      : 'Generate ${_effectiveType.shortName}',
                                   style: TextStyle(
                                     fontSize: ResponsiveHelper.getResponsiveFontSize(
                                       context,
@@ -506,7 +537,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                 style: ElevatedButton.styleFrom(
                                   backgroundColor: _isEditingExisting
                                       ? AppTheme.primaryColor
-                                      : AppTheme.successColor,
+                                      : _effectiveType.badgeColor,
                                   foregroundColor: Colors.white,
                                   shape: RoundedRectangleBorder(
                                     borderRadius: BorderRadius.circular(12),
@@ -535,7 +566,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                           CircularProgressIndicator(color: AppTheme.primaryColor),
                           SizedBox(height: 16),
                           Text(
-                            'Saving PDF changes...',
+                            'Saving document changes...',
                             style: TextStyle(fontWeight: FontWeight.w600),
                           ),
                         ],
@@ -550,7 +581,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
+  String get itemLabel => _effectiveType == ConversionType.ppt ? 'Slides' : 'Pages';
+
   Widget _buildImageItem(dynamic imageItem, int index) {
+    final itemUnit = _effectiveType == ConversionType.ppt ? 'Slide' : '';
     return Card(
       clipBehavior: Clip.antiAlias,
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
@@ -568,18 +602,18 @@ class _ReviewScreenState extends State<ReviewScreen> {
               filterQuality: FilterQuality.medium,
             ),
           ),
-          // Page Number Badge
+          // Page/Slide Number Badge
           Positioned(
             top: 8,
             left: 8,
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
-                color: AppTheme.primaryColor,
+                color: _effectiveType.badgeColor,
                 borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
-                '${index + 1}',
+                itemUnit.isNotEmpty ? '$itemUnit ${index + 1}' : '${index + 1}',
                 style: const TextStyle(
                   color: Colors.white,
                   fontWeight: FontWeight.bold,
@@ -675,6 +709,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   Widget _buildReorderableRowItem(dynamic imageItem, int index) {
     final isDark = Theme.of(context).brightness == Brightness.dark;
+    final itemLabel = _effectiveType == ConversionType.ppt ? 'Slide' : 'Page';
+
     return Card(
       key: ValueKey(imageItem.id),
       margin: const EdgeInsets.symmetric(vertical: 4),
@@ -693,7 +729,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
           ),
         ),
         title: Text(
-          'Page ${index + 1}',
+          '$itemLabel ${index + 1}',
           style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
         ),
         subtitle: Text(
@@ -708,12 +744,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
           children: [
             IconButton(
               icon: const Icon(Icons.tune_rounded, size: 20),
-              tooltip: 'Edit Page',
+              tooltip: 'Edit $itemLabel',
               onPressed: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
             ),
             IconButton(
               icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.errorColor),
-              tooltip: 'Delete Page',
+              tooltip: 'Delete $itemLabel',
               onPressed: () => _removeImage(imageItem.id),
             ),
             ReorderableDragStartListener(

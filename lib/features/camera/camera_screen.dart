@@ -5,12 +5,19 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/camera_service.dart';
 import '../../core/services/gallery_service.dart';
+import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
-import '../../core/providers/image_selection_provider.dart';
+import '../../models/conversion_type.dart';
+import '../pdf_generation/review_screen.dart';
 
 class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key});
+  final ConversionType conversionType;
+
+  const CameraScreen({
+    super.key,
+    this.conversionType = ConversionType.pdf,
+  });
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -101,8 +108,20 @@ class _CameraScreenState extends State<CameraScreen> {
   // NAVIGATION
   // ==========================================================
 
+  ConversionType get _effectiveType {
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    if (routeArgs is ConversionType) {
+      return routeArgs;
+    }
+    return widget.conversionType;
+  }
+
   void _goToReview() {
-    Navigator.of(context).pushReplacementNamed('/review');
+    Navigator.of(context).pushReplacement(
+      MaterialPageRoute(
+        builder: (_) => ReviewScreen(conversionType: _effectiveType),
+      ),
+    );
   }
 
   Future<void> _goToGallery() async {
@@ -117,7 +136,11 @@ class _CameraScreenState extends State<CameraScreen> {
               imagePaths,
               'gallery',
             );
-        Navigator.of(context).pushReplacementNamed('/review');
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => ReviewScreen(conversionType: _effectiveType),
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {

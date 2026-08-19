@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/conversion_type.dart';
 import '../../../models/pdf_document.dart';
 
 class PdfDetailsDialog extends StatelessWidget {
@@ -21,6 +22,10 @@ class PdfDetailsDialog extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final docType = document.documentType;
+    final unitLabel = docType == ConversionType.ppt
+        ? (document.pageCount == 1 ? 'slide' : 'slides')
+        : (document.pageCount == 1 ? 'page' : 'pages');
 
     return AlertDialog(
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
@@ -37,20 +42,14 @@ class PdfDetailsDialog extends StatelessWidget {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(
-                alpha: isDark ? 0.18 : 0.12,
-              ),
+              color: docType.badgeColor.withValues(alpha: isDark ? 0.18 : 0.12),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(
-              Icons.info_outline_rounded,
-              color: AppTheme.primaryColor,
-              size: 22,
-            ),
+            child: Icon(docType.icon, color: docType.badgeColor, size: 22),
           ),
           const SizedBox(width: 12),
           Text(
-            'Document Details',
+            '${docType.shortName} Details',
             style: TextStyle(
               fontSize: 17,
               fontWeight: FontWeight.w700,
@@ -75,16 +74,26 @@ class PdfDetailsDialog extends StatelessWidget {
               const SizedBox(height: 10),
               _buildDetailRow(
                 context,
+                icon: Icons.category_rounded,
+                label: 'Format Type',
+                value: '${docType.label} (.${docType.extension})',
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                context,
                 icon: Icons.data_usage_rounded,
                 label: 'File Size',
-                value: '${document.formattedFileSize} (${document.fileSizeBytes} bytes)',
+                value:
+                    '${document.formattedFileSize} (${document.fileSizeBytes} bytes)',
               ),
               const SizedBox(height: 10),
               _buildDetailRow(
                 context,
                 icon: Icons.auto_stories_rounded,
-                label: 'Page Count',
-                value: '${document.pageCount} ${document.pageCount == 1 ? 'page' : 'pages'}',
+                label: docType == ConversionType.ppt
+                    ? 'Slide Count'
+                    : 'Page Count',
+                value: '${document.pageCount} $unitLabel',
               ),
               const SizedBox(height: 10),
               _buildDetailRow(
@@ -124,7 +133,7 @@ class PdfDetailsDialog extends StatelessWidget {
               },
               icon: const Icon(Icons.share_outlined),
               tooltip: 'Share',
-              color: AppTheme.primaryColor,
+              color: docType.badgeColor,
             ),
             IconButton(
               onPressed: () {
@@ -133,7 +142,7 @@ class PdfDetailsDialog extends StatelessWidget {
               },
               icon: const Icon(Icons.download_rounded),
               tooltip: 'Save to Device',
-              color: AppTheme.primaryColor,
+              color: docType.badgeColor,
             ),
             ElevatedButton.icon(
               onPressed: () {
@@ -141,14 +150,17 @@ class PdfDetailsDialog extends StatelessWidget {
                 onOpen();
               },
               icon: const Icon(Icons.visibility_outlined, size: 18),
-              label: const Text('Open'),
+              label: Text('Open ${docType.shortName}'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: AppTheme.primaryColor,
+                backgroundColor: docType.badgeColor,
                 foregroundColor: Colors.white,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
               ),
             ),
           ],
@@ -181,11 +193,7 @@ class PdfDetailsDialog extends StatelessWidget {
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(
-            icon,
-            size: 18,
-            color: AppTheme.primaryColor,
-          ),
+          Icon(icon, size: 18, color: document.documentType.badgeColor),
           const SizedBox(width: 10),
           Expanded(
             child: Column(

@@ -7,8 +7,11 @@ import 'package:path_provider/path_provider.dart';
 import 'package:pdf/pdf.dart' hide PdfDocument;
 import 'package:pdf/widgets.dart' as pw;
 import 'package:uuid/uuid.dart';
+import '../../models/conversion_type.dart';
 import '../../models/pdf_document.dart';
 import '../utils/file_utils.dart';
+import 'docx_generation_service.dart';
+import 'pptx_generation_service.dart';
 
 class PdfStorageService {
   static const String _metadataFileName = 'pdf_records.json';
@@ -26,7 +29,7 @@ class PdfStorageService {
     return File('${metaDir.path}/$_metadataFileName');
   }
 
-  /// Loads all saved PDF documents and reconciles with physical disk state
+  /// Loads all saved documents (PDF, DOCS, PPT) and reconciles with physical disk state
   Future<List<PdfDocument>> loadAllDocuments() async {
     try {
       final metaFile = await _getMetadataFile();
@@ -45,11 +48,11 @@ class PdfStorageService {
             }
           }
         } catch (e) {
-          debugPrint('Error reading PDF metadata file: $e');
+          debugPrint('Error reading document metadata file: $e');
         }
       }
 
-      // Reconcile with actual physical PDF files on disk
+      // Reconcile with actual physical files on disk (.pdf, .docx, .pptx)
       final pdfDirectory = await FileUtils.getAppDocumentsDirectory();
       final List<PdfDocument> validDocuments = [];
       bool metadataChanged = false;
@@ -59,39 +62,47 @@ class PdfStorageService {
         final Set<String> existingPathsOnDisk = {};
 
         for (final entity in diskEntities) {
-          if (entity is File && entity.path.toLowerCase().endsWith('.pdf')) {
-            existingPathsOnDisk.add(entity.path);
+          if (entity is File) {
+            final pathLower = entity.path.toLowerCase();
+            final isSupported = pathLower.endsWith('.pdf') ||
+                pathLower.endsWith('.docx') ||
+                pathLower.endsWith('.pptx');
 
-            if (documentMap.containsKey(entity.path)) {
-              // Valid existing document
-              final existingDoc = documentMap[entity.path]!;
-              final actualSize = await entity.length();
-              if (existingDoc.fileSizeBytes != actualSize) {
-                validDocuments.add(existingDoc.copyWith(fileSizeBytes: actualSize));
-                metadataChanged = true;
+            if (isSupported) {
+              existingPathsOnDisk.add(entity.path);
+
+              if (documentMap.containsKey(entity.path)) {
+                // Valid existing document
+                final existingDoc = documentMap[entity.path]!;
+                final actualSize = await entity.length();
+                if (existingDoc.fileSizeBytes != actualSize) {
+                  validDocuments.add(existingDoc.copyWith(fileSizeBytes: actualSize));
+                  metadataChanged = true;
+                } else {
+                  validDocuments.add(existingDoc);
+                }
               } else {
-                validDocuments.add(existingDoc);
-              }
-            } else {
-              // Discovered unindexed PDF on disk (e.g. from prior version or external intent)
-              final size = await entity.length();
-              final rawName = entity.uri.pathSegments.isNotEmpty
-                  ? entity.uri.pathSegments.last
-                  : 'Document.pdf';
-              final fileName = FileUtils.normalizePdfFileName(rawName);
-              final fileStat = await entity.stat();
+                // Discovered unindexed document on disk
+                final size = await entity.length();
+                final rawName = entity.uri.pathSegments.isNotEmpty
+                    ? entity.uri.pathSegments.last
+                    : 'Document.pdf';
+                final type = ConversionType.fromFileName(rawName);
+                final fileName = FileUtils.normalizeFileName(rawName, type);
+                final fileStat = await entity.stat();
 
-              final newDoc = PdfDocument(
-                id: const Uuid().v4(),
-                fileName: fileName,
-                filePath: entity.path,
-                fileSizeBytes: size,
-                pageCount: 1,
-                createdAt: fileStat.changed,
-                modifiedAt: fileStat.modified,
-              );
-              validDocuments.add(newDoc);
-              metadataChanged = true;
+                final newDoc = PdfDocument(
+                  id: const Uuid().v4(),
+                  fileName: fileName,
+                  filePath: entity.path,
+                  fileSizeBytes: size,
+                  pageCount: 1,
+                  createdAt: fileStat.changed,
+                  modifiedAt: fileStat.modified,
+                );
+                validDocuments.add(newDoc);
+                metadataChanged = true;
+              }
             }
           }
         }
@@ -111,18 +122,19 @@ class PdfStorageService {
 
       return validDocuments;
     } catch (e) {
-      debugPrint('Error loading PDF documents: $e');
+      debugPrint('Error loading documents: $e');
       return [];
     }
   }
 
-  /// Registers a newly generated PDF document into storage metadata
+  /// Registers a newly generated document into storage metadata
   Future<PdfDocument> saveDocument({
     required String filePath,
     required String fileName,
     required int pageCount,
   }) async {
-    final normalizedFileName = FileUtils.normalizePdfFileName(fileName);
+    final type = ConversionType.fromFileName(fileName);
+    final normalizedFileName = FileUtils.normalizeFileName(fileName, type);
     final file = File(filePath);
     int size = 0;
     if (await file.exists()) {
@@ -147,17 +159,20 @@ class PdfStorageService {
     return doc;
   }
 
-  /// Renames a PDF file both on disk and in persistent metadata
+  /// Renames a document both on disk and in persistent metadata
   Future<PdfDocument> renameDocument(String id, String newBaseName) async {
-    final normalizedFileName = FileUtils.normalizePdfFileName(newBaseName);
-
     final allDocs = await loadAllDocuments();
     final docIndex = allDocs.indexWhere((d) => d.id == id);
     if (docIndex == -1) {
-      throw Exception('PDF document not found in storage');
+      throw Exception('Document not found in storage');
     }
 
     final oldDoc = allDocs[docIndex];
+    final normalizedFileName = FileUtils.normalizeFileName(
+      newBaseName,
+      oldDoc.documentType,
+    );
+
     if (oldDoc.fileName.toLowerCase() == normalizedFileName.toLowerCase()) {
       return oldDoc;
     }
@@ -172,7 +187,7 @@ class PdfStorageService {
 
     final oldFile = File(oldDoc.filePath);
     if (!await oldFile.exists()) {
-      throw Exception('Original PDF file does not exist on disk');
+      throw Exception('Original document file does not exist on disk');
     }
 
     final parentDir = oldFile.parent;
@@ -197,13 +212,13 @@ class PdfStorageService {
     return updatedDoc;
   }
 
-  /// Updates an existing PDF document with modified/new pages
+  /// Updates an existing document (PDF, DOCS, PPT) with modified/new pages
   Future<PdfDocument> updateDocumentContent({
     required String id,
     required List<String> imagePaths,
   }) async {
     if (imagePaths.isEmpty) {
-      throw Exception('Cannot update PDF with 0 pages. At least 1 page is required.');
+      throw Exception('Cannot update document with 0 pages. At least 1 page is required.');
     }
 
     final allDocs = await loadAllDocuments();
@@ -214,71 +229,88 @@ class PdfStorageService {
 
     final existingDoc = allDocs[docIndex];
     final targetFile = File(existingDoc.filePath);
-
-    // Build the updated PDF document in memory
-    final pdf = pw.Document();
-
-    for (final imagePath in imagePaths) {
-      final imageFile = File(imagePath);
-      if (!await imageFile.exists()) {
-        throw Exception('Image file not found: $imagePath');
-      }
-
-      final imageBytes = await imageFile.readAsBytes();
-      final image = pw.MemoryImage(imageBytes);
-
-      final decodedImage = img.decodeImage(imageBytes);
-      if (decodedImage == null) {
-        throw Exception('Failed to decode image: $imagePath');
-      }
-
-      final imageWidth = decodedImage.width.toDouble();
-      final imageHeight = decodedImage.height.toDouble();
-
-      final pageWidth = PdfPageFormat.a4.width;
-      final pageHeight = PdfPageFormat.a4.height;
-      const margin = 20.0;
-
-      final availableWidth = pageWidth - (margin * 2);
-      final availableHeight = pageHeight - (margin * 2);
-
-      double fitWidth = availableWidth;
-      double fitHeight = (availableWidth * imageHeight) / imageWidth;
-
-      if (fitHeight > availableHeight) {
-        fitHeight = availableHeight;
-        fitWidth = (availableHeight * imageWidth) / imageHeight;
-      }
-
-      pdf.addPage(
-        pw.Page(
-          pageFormat: PdfPageFormat.a4,
-          build: (context) {
-            return pw.Center(
-              child: pw.Image(image, width: fitWidth, height: fitHeight),
-            );
-          },
-        ),
-      );
-    }
-
-    final pdfBytes = await pdf.save();
-
-    // Write to a temporary file first for atomic transaction
     final tempDir = await FileUtils.getTempDirectory();
-    final tempSaveFile = File(
-      '${tempDir.path}/temp_update_${DateTime.now().millisecondsSinceEpoch}.pdf',
-    );
-    await tempSaveFile.writeAsBytes(pdfBytes, flush: true);
 
-    if (!await tempSaveFile.exists() || await tempSaveFile.length() == 0) {
-      throw Exception('Failed to generate updated PDF bytes.');
+    if (existingDoc.documentType == ConversionType.docs) {
+      // Re-generate DOCX
+      final docxService = DocxGenerationService();
+      final result = await docxService.generateDocxFromImages(imagePaths);
+      final generatedFile = File(result.filePath);
+
+      await targetFile.parent.create(recursive: true);
+      await generatedFile.copy(targetFile.path);
+      await generatedFile.delete();
+    } else if (existingDoc.documentType == ConversionType.ppt) {
+      // Re-generate PPTX
+      final pptxService = PptxGenerationService();
+      final result = await pptxService.generatePptxFromImages(imagePaths);
+      final generatedFile = File(result.filePath);
+
+      await targetFile.parent.create(recursive: true);
+      await generatedFile.copy(targetFile.path);
+      await generatedFile.delete();
+    } else {
+      // Re-generate PDF
+      final pdf = pw.Document();
+
+      for (final imagePath in imagePaths) {
+        final imageFile = File(imagePath);
+        if (!await imageFile.exists()) {
+          throw Exception('Image file not found: $imagePath');
+        }
+
+        final imageBytes = await imageFile.readAsBytes();
+        final image = pw.MemoryImage(imageBytes);
+
+        final decodedImage = img.decodeImage(imageBytes);
+        if (decodedImage == null) {
+          throw Exception('Failed to decode image: $imagePath');
+        }
+
+        final imageWidth = decodedImage.width.toDouble();
+        final imageHeight = decodedImage.height.toDouble();
+
+        final pageWidth = PdfPageFormat.a4.width;
+        final pageHeight = PdfPageFormat.a4.height;
+        const margin = 20.0;
+
+        final availableWidth = pageWidth - (margin * 2);
+        final availableHeight = pageHeight - (margin * 2);
+
+        double fitWidth = availableWidth;
+        double fitHeight = (availableWidth * imageHeight) / imageWidth;
+
+        if (fitHeight > availableHeight) {
+          fitHeight = availableHeight;
+          fitWidth = (availableHeight * imageWidth) / imageHeight;
+        }
+
+        pdf.addPage(
+          pw.Page(
+            pageFormat: PdfPageFormat.a4,
+            build: (context) {
+              return pw.Center(
+                child: pw.Image(image, width: fitWidth, height: fitHeight),
+              );
+            },
+          ),
+        );
+      }
+
+      final pdfBytes = await pdf.save();
+      final tempSaveFile = File(
+        '${tempDir.path}/temp_update_${DateTime.now().millisecondsSinceEpoch}.pdf',
+      );
+      await tempSaveFile.writeAsBytes(pdfBytes, flush: true);
+
+      if (!await tempSaveFile.exists() || await tempSaveFile.length() == 0) {
+        throw Exception('Failed to generate updated PDF bytes.');
+      }
+
+      await targetFile.parent.create(recursive: true);
+      await tempSaveFile.copy(targetFile.path);
+      await tempSaveFile.delete();
     }
-
-    // Replace physical file in app storage
-    await targetFile.parent.create(recursive: true);
-    await tempSaveFile.copy(targetFile.path);
-    await tempSaveFile.delete();
 
     final newSize = await targetFile.length();
     final updatedDoc = existingDoc.copyWith(
@@ -292,7 +324,7 @@ class PdfStorageService {
     return updatedDoc;
   }
 
-  /// Deletes a PDF file from disk and metadata
+  /// Deletes a document file from disk and metadata
   Future<bool> deleteDocument(String id) async {
     try {
       final allDocs = await loadAllDocuments();
@@ -309,12 +341,12 @@ class PdfStorageService {
       await _saveMetadataToFile(allDocs);
       return true;
     } catch (e) {
-      debugPrint('Error deleting PDF document: $e');
+      debugPrint('Error deleting document: $e');
       return false;
     }
   }
 
-  /// Deletes multiple PDF documents by ID
+  /// Deletes multiple documents by ID
   Future<int> deleteMultipleDocuments(List<String> ids) async {
     int deletedCount = 0;
     final allDocs = await loadAllDocuments();
@@ -341,7 +373,7 @@ class PdfStorageService {
     return deletedCount;
   }
 
-  /// Exports a PDF document to user's chosen location on device with exact name & verification
+  /// Exports a document to user's chosen location on device with exact name & verification
   Future<String?> exportDocument(String id) async {
     final allDocs = await loadAllDocuments();
     final doc = allDocs.firstWhere(
@@ -351,37 +383,37 @@ class PdfStorageService {
 
     final sourceFile = File(doc.filePath);
     if (!await sourceFile.exists() || await sourceFile.length() == 0) {
-      throw Exception('PDF file does not exist or is empty on local storage');
+      throw Exception('File does not exist or is empty on local storage');
     }
 
-    final normalizedFileName = FileUtils.normalizePdfFileName(doc.fileName);
-    final pdfBytes = await sourceFile.readAsBytes();
+    final normalizedFileName = FileUtils.normalizeFileName(
+      doc.fileName,
+      doc.documentType,
+    );
+    final fileBytes = await sourceFile.readAsBytes();
 
     try {
-      // Prompt user to select destination file or folder
       String? outputFile = await FilePicker.platform.saveFile(
-        dialogTitle: 'Save PDF to Device',
+        dialogTitle: 'Save ${doc.documentType.shortName} to Device',
         fileName: normalizedFileName,
         type: FileType.custom,
-        allowedExtensions: ['pdf'],
-        bytes: pdfBytes,
+        allowedExtensions: [doc.documentType.extension],
+        bytes: fileBytes,
       );
 
       if (outputFile == null) {
-        // Fallback: ask user to select directory if saveFile returns null or unsupported
         final selectedDir = await FilePicker.platform.getDirectoryPath(
-          dialogTitle: 'Select Folder to Save PDF',
+          dialogTitle: 'Select Folder to Save Document',
         );
         if (selectedDir != null) {
           outputFile = '$selectedDir/$normalizedFileName';
           final targetFile = File(outputFile);
-          await targetFile.writeAsBytes(pdfBytes, flush: true);
+          await targetFile.writeAsBytes(fileBytes, flush: true);
         }
       } else {
-        // Ensure file is physically saved and non-empty at outputFile path if platform returned path
         final targetFile = File(outputFile);
         if (!await targetFile.exists() || await targetFile.length() == 0) {
-          await targetFile.writeAsBytes(pdfBytes, flush: true);
+          await targetFile.writeAsBytes(fileBytes, flush: true);
         }
       }
 
@@ -393,13 +425,12 @@ class PdfStorageService {
       }
     } catch (e) {
       debugPrint('Export error via FilePicker: $e');
-      // Reliable fallback to Documents/Downloads folder if accessible
       try {
         Directory? targetDir = await getDownloadsDirectory();
         targetDir ??= await getApplicationDocumentsDirectory();
         final destPath = '${targetDir.path}/$normalizedFileName';
         final destFile = File(destPath);
-        await destFile.writeAsBytes(pdfBytes, flush: true);
+        await destFile.writeAsBytes(fileBytes, flush: true);
 
         if (await destFile.exists() && await destFile.length() > 0) {
           return destPath;
@@ -413,10 +444,10 @@ class PdfStorageService {
     return null;
   }
 
-  /// Exports multiple PDF documents to a selected folder with exact filenames
+  /// Exports multiple documents to a selected folder with exact filenames
   Future<int> exportMultipleDocuments(List<String> ids) async {
     final selectedDir = await FilePicker.platform.getDirectoryPath(
-      dialogTitle: 'Select Folder to Export PDFs',
+      dialogTitle: 'Select Folder to Export Documents',
     );
     if (selectedDir == null) return 0;
 
@@ -429,7 +460,10 @@ class PdfStorageService {
         try {
           final sourceFile = File(doc.filePath);
           if (await sourceFile.exists()) {
-            final normalizedName = FileUtils.normalizePdfFileName(doc.fileName);
+            final normalizedName = FileUtils.normalizeFileName(
+              doc.fileName,
+              doc.documentType,
+            );
             final destPath = '$selectedDir/$normalizedName';
             final destFile = File(destPath);
             final bytes = await sourceFile.readAsBytes();
