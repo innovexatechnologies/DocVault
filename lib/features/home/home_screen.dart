@@ -8,7 +8,9 @@ import '../../core/providers/theme_provider.dart';
 import '../../core/services/permission_service.dart';
 
 class HomeScreen extends StatelessWidget {
-  const HomeScreen({super.key});
+  final VoidCallback? onNavigateToAllFiles;
+
+  const HomeScreen({super.key, this.onNavigateToAllFiles});
 
   // ==========================================================
   // PERMISSION SERVICE
@@ -607,7 +609,93 @@ class HomeScreen extends StatelessWidget {
 
                 SizedBox(
                   height:
-                      isMobile ? 30 : 42,
+                      isMobile ? 16 : 24,
+                ),
+
+                // ==========================================================
+                // ALL FILES QUICK ACCESS BANNER
+                // ==========================================================
+
+                Material(
+                  color: Colors.transparent,
+                  child: InkWell(
+                    onTap: () {
+                      if (onNavigateToAllFiles != null) {
+                        onNavigateToAllFiles!();
+                      } else {
+                        Navigator.of(context).pushNamed('/all-files');
+                      }
+                    },
+                    borderRadius: BorderRadius.circular(18),
+                    child: Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(16),
+                      decoration: BoxDecoration(
+                        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                        borderRadius: BorderRadius.circular(18),
+                        border: Border.all(
+                          color: isDark
+                              ? AppTheme.dividerDark
+                              : AppTheme.dividerColor,
+                        ),
+                      ),
+                      child: Row(
+                        children: [
+                          Container(
+                            width: 44,
+                            height: 44,
+                            decoration: BoxDecoration(
+                              color: AppTheme.primaryColor.withValues(
+                                alpha: isDark ? 0.18 : 0.10,
+                              ),
+                              borderRadius: BorderRadius.circular(13),
+                            ),
+                            child: const Icon(
+                              Icons.folder_rounded,
+                              color: AppTheme.primaryColor,
+                              size: 22,
+                            ),
+                          ),
+                          const SizedBox(width: 14),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  'Saved Documents',
+                                  style: TextStyle(
+                                    fontSize: 14,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  'View, share, rename and export all your PDFs',
+                                  style: TextStyle(
+                                    fontSize: 11,
+                                    color: colorScheme.onSurface.withValues(
+                                      alpha: 0.55,
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          Icon(
+                            Icons.arrow_forward_ios_rounded,
+                            size: 14,
+                            color: colorScheme.onSurface.withValues(alpha: 0.4),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+
+                SizedBox(
+                  height:
+                      isMobile ? 24 : 32,
                 ),
 
                 // ==========================================================

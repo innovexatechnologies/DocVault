@@ -1,5 +1,11 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import '../../core/providers/pdf_manager_provider.dart';
+import '../../core/theme/app_theme.dart';
+import '../../models/pdf_document.dart' as model;
 
 class PdfViewerScreen extends StatefulWidget {
   final String filePath;
@@ -17,10 +23,21 @@ class PdfViewerScreen extends StatefulWidget {
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   late final PdfControllerPinch _pdfController;
+  int _actualPageCount = 0;
+  int _currentPage = 1;
+  bool _isLoading = true;
+  String? _errorMessage;
 
   @override
   void initState() {
     super.initState();
+
+    final file = File(widget.filePath);
+    if (!file.existsSync()) {
+      _errorMessage = 'PDF file not found on device';
+      _isLoading = false;
+      return;
+    }
 
     _pdfController = PdfControllerPinch(
       document: PdfDocument.openFile(widget.filePath),
@@ -29,39 +46,190 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   void dispose() {
-    _pdfController.dispose();
+    if (_errorMessage == null) {
+      _pdfController.dispose();
+    }
     super.dispose();
+  }
+
+  Future<void> _sharePdf() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Share.shareXFiles(
+        [XFile(widget.filePath)],
+        text: 'Sharing ${widget.fileName} from DocVault',
+      );
+    } catch (e) {
+      messenger.showSnackBar(
+        const SnackBar(
+          content: Text('Failed to share PDF'),
+          backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
+    }
+  }
+
+  Future<void> _exportPdf() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final provider = context.read<PdfManagerProvider>();
+      final doc = provider.documents.firstWhere(
+        (d) => d.filePath == widget.filePath || d.fileName == widget.fileName,
+        orElse: () => model.PdfDocument(
+          id: '',
+          fileName: widget.fileName,
+          filePath: widget.filePath,
+          fileSizeBytes: 0,
+          pageCount: _actualPageCount,
+          createdAt: DateTime.now(),
+          modifiedAt: DateTime.now(),
+        ),
+      );
+
+      final exportedPath = await provider.exportPdf(doc.id);
+      if (exportedPath != null && mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Saved to $exportedPath'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.successColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.errorColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
-      backgroundColor: colorScheme.surface,
-
+      backgroundColor: isDark ? AppTheme.bgDark : const Color(0xFFE8ECEB),
       appBar: AppBar(
-        title: Text(
-          widget.fileName,
-          overflow: TextOverflow.ellipsis,
-        ),
-        backgroundColor: colorScheme.surface,
+        backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
         foregroundColor: colorScheme.onSurface,
         elevation: 0,
+        title: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(
+              widget.fileName,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (_actualPageCount > 0)
+              Text(
+                'Page $_currentPage of $_actualPageCount',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+          ],
+        ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.share_outlined),
+            onPressed: _sharePdf,
+            tooltip: 'Share PDF',
+          ),
+          IconButton(
+            icon: const Icon(Icons.download_rounded),
+            onPressed: _exportPdf,
+            tooltip: 'Save to Device',
+          ),
+        ],
       ),
-
-      body: PdfViewPinch(
-        controller: _pdfController,
-
-        onDocumentLoaded: (document) {
-          debugPrint('PDF loaded successfully');
-        },
-
-        onDocumentError: (error) {
-          debugPrint('PDF viewer error: $error');
-        },
-      ),
+      body: _errorMessage != null
+          ? Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    const Icon(
+                      Icons.error_outline_rounded,
+                      size: 48,
+                      color: AppTheme.errorColor,
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      _errorMessage!,
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      child: const Text('Go Back'),
+                    ),
+                  ],
+                ),
+              ),
+            )
+          : Stack(
+              children: [
+                PdfViewPinch(
+                  controller: _pdfController,
+                  onDocumentLoaded: (document) {
+                    if (mounted) {
+                      setState(() {
+                        _actualPageCount = document.pagesCount;
+                        _isLoading = false;
+                      });
+                    }
+                  },
+                  onPageChanged: (page) {
+                    if (mounted) {
+                      setState(() {
+                        _currentPage = page;
+                      });
+                    }
+                  },
+                  onDocumentError: (error) {
+                    if (mounted) {
+                      setState(() {
+                        _errorMessage = 'Failed to display PDF: $error';
+                        _isLoading = false;
+                      });
+                    }
+                  },
+                ),
+                if (_isLoading)
+                  const Center(
+                    child: CircularProgressIndicator(
+                      color: AppTheme.primaryColor,
+                    ),
+                  ),
+              ],
+            ),
     );
   }
 }

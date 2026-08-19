@@ -4,6 +4,7 @@ import 'package:pdf/widgets.dart' as pw;
 import 'package:image/image.dart' as img;
 import 'package:flutter/foundation.dart';
 import '../utils/file_utils.dart';
+import 'pdf_storage_service.dart';
 import '../../models/pdf_result.dart';
 
 class PdfGenerationService {
@@ -66,11 +67,18 @@ class PdfGenerationService {
         );
       }
 
-      // Save PDF
+      // Save PDF to app-private storage
       final fileName = await FileUtils.generatePdfFileName();
       final filePath = await FileUtils.getFullPdfPath(fileName);
       final file = File(filePath);
       await file.writeAsBytes(await pdf.save());
+
+      // Register persistent metadata
+      await PdfStorageService().saveDocument(
+        filePath: filePath,
+        fileName: fileName,
+        pageCount: imagePaths.length,
+      );
 
       return PdfResult(
         filePath: filePath,

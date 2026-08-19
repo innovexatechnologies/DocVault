@@ -45,10 +45,13 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
     final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
     final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
 
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppTheme.bgLight,
+        backgroundColor: colorScheme.surface,
         body: FutureBuilder<PdfResult>(
           future: _pdfGenerationFuture,
           builder: (context, snapshot) {
@@ -82,7 +85,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                             desktopSize: 21,
                           ),
                           fontWeight: FontWeight.w600,
-                          color: AppTheme.textPrimary,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       SizedBox(height: responsivePadding * 0.33),
@@ -95,7 +98,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                             tabletSize: 14,
                             desktopSize: 15,
                           ),
-                          color: AppTheme.textSecondary,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                     ],
@@ -127,7 +130,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                             tabletSize: 16,
                             desktopSize: 17,
                           ),
-                          color: AppTheme.textPrimary,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       SizedBox(height: responsivePadding * 0.33),
@@ -141,7 +144,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                             tabletSize: 12,
                             desktopSize: 13,
                           ),
-                          color: AppTheme.textSecondary,
+                          color: colorScheme.onSurface.withValues(alpha: 0.6),
                         ),
                       ),
                       SizedBox(height: responsivePadding * 1.33),
@@ -234,7 +237,7 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                             desktopSize: 24,
                           ),
                           fontWeight: FontWeight.bold,
-                          color: AppTheme.textPrimary,
+                          color: colorScheme.onSurface,
                         ),
                       ),
                       SizedBox(height: responsivePadding * 1.33),

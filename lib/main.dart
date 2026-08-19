@@ -6,11 +6,12 @@ import 'package:provider/provider.dart';
 
 import 'core/theme/app_theme.dart';
 import 'core/providers/image_selection_provider.dart';
+import 'core/providers/pdf_manager_provider.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/services/external_pdf_service.dart';
 
 import 'features/splash/splash_screen.dart';
-import 'features/home/home_screen.dart';
+import 'features/home/main_navigation_screen.dart';
 import 'features/home/source_selection_screen.dart';
 import 'features/camera/camera_screen.dart';
 import 'features/image_selection/gallery_screen.dart';
@@ -304,6 +305,15 @@ class _MyAppState extends State<MyApp> {
         ),
 
         // ========================================================
+        // PDF MANAGER
+        // ========================================================
+
+        ChangeNotifierProvider(
+          create: (_) =>
+              PdfManagerProvider(),
+        ),
+
+        // ========================================================
         // THEME
         // ========================================================
 
@@ -364,7 +374,10 @@ class _MyAppState extends State<MyApp> {
                   const SplashScreen(),
 
               '/home': (context) =>
-                  const HomeScreen(),
+                  const MainNavigationScreen(),
+
+              '/all-files': (context) =>
+                  const MainNavigationScreen(initialIndex: 1),
 
               '/source-selection':
                   (context) =>
@@ -390,6 +403,19 @@ class _MyAppState extends State<MyApp> {
 
             onGenerateRoute:
                 (settings) {
+              if (settings.name == '/home') {
+                int initialIndex = 0;
+                if (settings.arguments is Map) {
+                  final map = settings.arguments as Map;
+                  initialIndex = (map['initialIndex'] as num?)?.toInt() ?? 0;
+                }
+                return MaterialPageRoute(
+                  builder: (context) => MainNavigationScreen(
+                    initialIndex: initialIndex,
+                  ),
+                );
+              }
+
               if (settings.name ==
                   '/result') {
                 final pdfResult =

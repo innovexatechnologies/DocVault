@@ -1,348 +1,469 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
-// import 'package:open_file/open_file.dart';
-import '../../core/constants/app_constants.dart';
+import '../../core/providers/image_selection_provider.dart';
+import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
+import '../../models/pdf_document.dart';
 import '../../models/pdf_result.dart';
+import '../all_files/widgets/rename_pdf_dialog.dart';
 import 'pdf_viewer_screen.dart';
 
-class ResultScreen extends StatelessWidget {
+class ResultScreen extends StatefulWidget {
   final PdfResult pdfResult;
 
   const ResultScreen({super.key, required this.pdfResult});
 
-void _openPdf(BuildContext context) {
-  Navigator.of(context).push(
-    MaterialPageRoute(
-      builder: (_) => PdfViewerScreen(
-        filePath: pdfResult.filePath,
-        fileName: pdfResult.fileName,
-      ),
-    ),
-  );
+  @override
+  State<ResultScreen> createState() => _ResultScreenState();
 }
 
-  Future<void> _sharePdf(BuildContext context) async {
-    final messenger = ScaffoldMessenger.maybeOf(context);
+class _ResultScreenState extends State<ResultScreen> {
+  late String _currentFilePath;
+  late String _currentFileName;
+  int _fileSizeBytes = 0;
 
+  @override
+  void initState() {
+    super.initState();
+    _currentFilePath = widget.pdfResult.filePath;
+    _currentFileName = widget.pdfResult.fileName;
+    _loadFileSizeBytes();
+
+    // Clear image selection so subsequent conversions start fresh
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      context.read<ImageSelectionProvider>().clearAllImages();
+      context.read<PdfManagerProvider>().loadDocuments();
+    });
+  }
+
+  Future<void> _loadFileSizeBytes() async {
     try {
-      await Share.shareXFiles([
-        XFile(pdfResult.filePath),
-      ], text: 'Check out my document: ${pdfResult.fileName}');
+      final file = File(_currentFilePath);
+      if (await file.exists()) {
+        final size = await file.length();
+        if (mounted) {
+          setState(() {
+            _fileSizeBytes = size;
+          });
+        }
+      }
+    } catch (_) {}
+  }
+
+  String get _formattedSize {
+    if (_fileSizeBytes < 1024) {
+      return '$_fileSizeBytes B';
+    } else if (_fileSizeBytes < 1024 * 1024) {
+      return '${(_fileSizeBytes / 1024).toStringAsFixed(1)} KB';
+    } else {
+      return '${(_fileSizeBytes / (1024 * 1024)).toStringAsFixed(2)} MB';
+    }
+  }
+
+  void _openPdf() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PdfViewerScreen(
+          filePath: _currentFilePath,
+          fileName: _currentFileName,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _sharePdf() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      await Share.shareXFiles(
+        [XFile(_currentFilePath)],
+        text: 'Document created with DocVault: $_currentFileName',
+      );
     } catch (e) {
-      messenger?.showSnackBar(
+      messenger.showSnackBar(
         const SnackBar(
           content: Text('Failed to share PDF'),
           backgroundColor: AppTheme.errorColor,
+          behavior: SnackBarBehavior.floating,
         ),
       );
     }
   }
 
-  void _createNewPdf(BuildContext context) {
+  Future<void> _exportPdf() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final provider = context.read<PdfManagerProvider>();
+      final doc = provider.documents.firstWhere(
+        (d) => d.filePath == _currentFilePath || d.fileName == _currentFileName,
+        orElse: () => PdfDocument(
+          id: '',
+          fileName: _currentFileName,
+          filePath: _currentFilePath,
+          fileSizeBytes: _fileSizeBytes,
+          pageCount: widget.pdfResult.pageCount,
+          createdAt: widget.pdfResult.generatedAt,
+          modifiedAt: DateTime.now(),
+        ),
+      );
+
+      final exportedPath = await provider.exportPdf(doc.id);
+      if (exportedPath != null && mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Saved to $exportedPath'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.successColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Export failed: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.errorColor,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(10),
+            ),
+          ),
+        );
+      }
+    }
+  }
+
+  void _showRenameDialog() {
+    final doc = PdfDocument(
+      id: '',
+      fileName: _currentFileName,
+      filePath: _currentFilePath,
+      fileSizeBytes: _fileSizeBytes,
+      pageCount: widget.pdfResult.pageCount,
+      createdAt: widget.pdfResult.generatedAt,
+      modifiedAt: DateTime.now(),
+    );
+
+    showDialog(
+      context: context,
+      builder: (_) => RenamePdfDialog(
+        document: doc,
+        onRename: (newName) async {
+          final provider = context.read<PdfManagerProvider>();
+          final matchedDoc = provider.documents.firstWhere(
+            (d) => d.filePath == _currentFilePath,
+            orElse: () => doc,
+          );
+
+          if (matchedDoc.id.isNotEmpty) {
+            final updated = await provider.renamePdf(matchedDoc.id, newName);
+            if (mounted) {
+              setState(() {
+                _currentFileName = updated.fileName;
+                _currentFilePath = updated.filePath;
+              });
+            }
+          }
+        },
+      ),
+    );
+  }
+
+  void _navigateToAllFiles() {
+    Navigator.of(context).pushNamedAndRemoveUntil(
+      '/home',
+      (route) => false,
+      arguments: {'initialIndex': 1},
+    );
+  }
+
+  void _createNewPdf() {
     Navigator.of(context).pushNamedAndRemoveUntil('/home', (route) => false);
   }
 
   @override
   Widget build(BuildContext context) {
-    final isTablet = ResponsiveHelper.isTablet(context);
-    final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
-    final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
-    final titleFontSize = ResponsiveHelper.getResponsiveFontSize(
-      context,
-      mobileSize: 22,
-      tabletSize: 26,
-      desktopSize: 28,
-    );
-    final labelFontSize = ResponsiveHelper.getResponsiveFontSize(
-      context,
-      mobileSize: 11,
-      tabletSize: 12,
-      desktopSize: 13,
-    );
-    final valueFontSize = ResponsiveHelper.getResponsiveFontSize(
-      context,
-      mobileSize: 11,
-      tabletSize: 12,
-      desktopSize: 13,
-    );
-    final buttonLabelFontSize = ResponsiveHelper.getResponsiveFontSize(
-      context,
-      mobileSize: 14,
-      tabletSize: 16,
-      desktopSize: 18,
-    );
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+    final padding = ResponsiveHelper.getResponsivePadding(context);
+    final isMobile = ResponsiveHelper.isMobile(context);
 
     return PopScope(
       canPop: false,
       child: Scaffold(
-        backgroundColor: AppTheme.bgLight,
+        backgroundColor: colorScheme.surface,
         appBar: AppBar(
-          title: const Text('PDF Generated'),
-          backgroundColor: AppTheme.bgWhite,
-          foregroundColor: AppTheme.textPrimary,
-          elevation: 1,
+          backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+          foregroundColor: colorScheme.onSurface,
+          elevation: 0,
           automaticallyImplyLeading: false,
+          title: const Text(
+            'PDF Created',
+            style: TextStyle(
+              fontWeight: FontWeight.w800,
+              letterSpacing: -0.3,
+            ),
+          ),
+          actions: [
+            IconButton(
+              icon: const Icon(Icons.close_rounded),
+              onPressed: _createNewPdf,
+              tooltip: 'Close',
+            ),
+          ],
         ),
         body: SafeArea(
           child: SingleChildScrollView(
-            padding: EdgeInsets.all(responsivePadding),
+            physics: const BouncingScrollPhysics(),
+            padding: EdgeInsets.symmetric(
+              horizontal: padding,
+              vertical: isMobile ? 16 : 28,
+            ),
             child: Column(
-              mainAxisAlignment: MainAxisAlignment.center,
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                // Success Icon
+                // Success Badge Animation / Icon
                 Center(
                   child: Container(
-                    width: isTablet ? 120.0 : 100.0,
-                    height: isTablet ? 120.0 : 100.0,
+                    width: isMobile ? 90 : 110,
+                    height: isMobile ? 90 : 110,
                     decoration: BoxDecoration(
-                      color: AppTheme.successColor.withValues(alpha: 0.1),
-                      borderRadius: BorderRadius.circular(20),
+                      color: AppTheme.successColor.withValues(
+                        alpha: isDark ? 0.20 : 0.12,
+                      ),
+                      shape: BoxShape.circle,
+                      boxShadow: [
+                        BoxShadow(
+                          color: AppTheme.successColor.withValues(
+                            alpha: isDark ? 0.22 : 0.15,
+                          ),
+                          blurRadius: 28,
+                          offset: const Offset(0, 8),
+                        ),
+                      ],
                     ),
                     child: Center(
                       child: Icon(
-                        Icons.picture_as_pdf,
-                        size: isTablet ? 70.0 : 60.0,
+                        Icons.check_circle_rounded,
+                        size: isMobile ? 54 : 64,
                         color: AppTheme.successColor,
                       ),
                     ),
                   ),
                 ),
-                SizedBox(height: responsivePadding),
-                // Title
+
+                const SizedBox(height: 20),
+
+                // Congratulatory Title
                 Text(
-                  'PDF Ready!',
+                  'Congratulations!',
                   textAlign: TextAlign.center,
                   style: TextStyle(
-                    fontSize: titleFontSize,
-                    fontWeight: FontWeight.bold,
-                    color: AppTheme.textPrimary,
+                    fontSize: isMobile ? 24 : 28,
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.5,
+                    color: colorScheme.onSurface,
                   ),
                 ),
-                SizedBox(height: responsivePadding * 0.67),
-                // File Details
+
+                const SizedBox(height: 6),
+
+                Text(
+                  'Your PDF has been created and saved locally in DocVault storage.',
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 14,
+                    height: 1.45,
+                    color: colorScheme.onSurface.withValues(alpha: 0.65),
+                  ),
+                ),
+
+                const SizedBox(height: 24),
+
+                // Document Summary Card
                 Container(
-                  padding: EdgeInsets.all(responsivePadding * 0.67),
+                  padding: const EdgeInsets.all(18),
                   decoration: BoxDecoration(
-                    color: AppTheme.bgWhite,
-                    borderRadius: BorderRadius.circular(12),
-                    border: Border.all(color: AppTheme.dividerColor),
+                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                    borderRadius: BorderRadius.circular(20),
+                    border: Border.all(
+                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(
+                          alpha: isDark ? 0.25 : 0.04,
+                        ),
+                        blurRadius: 16,
+                        offset: const Offset(0, 4),
+                      ),
+                    ],
                   ),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Row(
                         children: [
-                          Text(
-                            'File Name:',
-                            style: TextStyle(
-                              fontSize: labelFontSize,
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(width: responsivePadding * 0.33),
-                          Expanded(
-                            child: Text(
-                              pdfResult.fileName,
-                              style: TextStyle(
-                                fontSize: valueFontSize,
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.w500,
+                          Container(
+                            width: 44,
+                            height: 48,
+                            decoration: BoxDecoration(
+                              gradient: LinearGradient(
+                                colors: [
+                                  AppTheme.primaryColor.withValues(alpha: 0.2),
+                                  AppTheme.accentColor.withValues(alpha: 0.1),
+                                ],
+                                begin: Alignment.topLeft,
+                                end: Alignment.bottomRight,
                               ),
-                              overflow: TextOverflow.ellipsis,
+                              borderRadius: BorderRadius.circular(12),
+                            ),
+                            child: const Icon(
+                              Icons.picture_as_pdf_rounded,
+                              color: AppTheme.primaryColor,
+                              size: 24,
                             ),
                           ),
-                        ],
-                      ),
-                      SizedBox(height: responsivePadding * 0.5),
-                      Row(
-                        children: [
-                          Text(
-                            'Pages:',
-                            style: TextStyle(
-                              fontSize: labelFontSize,
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(width: responsivePadding * 0.33),
-                          Text(
-                            '${pdfResult.pageCount}',
-                            style: TextStyle(
-                              fontSize: valueFontSize,
-                              color: AppTheme.textPrimary,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ],
-                      ),
-                      SizedBox(height: responsivePadding * 0.5),
-                      Row(
-                        children: [
-                          Text(
-                            'Generated:',
-                            style: TextStyle(
-                              fontSize: labelFontSize,
-                              color: AppTheme.textSecondary,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                          SizedBox(width: responsivePadding * 0.33),
+                          const SizedBox(width: 14),
                           Expanded(
-                            child: Text(
-                              _formatDateTime(pdfResult.generatedAt),
-                              style: TextStyle(
-                                fontSize: valueFontSize,
-                                color: AppTheme.textPrimary,
-                                fontWeight: FontWeight.w500,
-                              ),
-                              overflow: TextOverflow.ellipsis,
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  _currentFileName,
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(
+                                    fontSize: 16,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                ),
+                                const SizedBox(height: 3),
+                                Text(
+                                  '${widget.pdfResult.pageCount} ${widget.pdfResult.pageCount == 1 ? 'page' : 'pages'}'
+                                  '${_fileSizeBytes > 0 ? ' • $_formattedSize' : ''}',
+                                  style: TextStyle(
+                                    fontSize: 12,
+                                    color: colorScheme.onSurface.withValues(alpha: 0.6),
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+                          IconButton(
+                            onPressed: _showRenameDialog,
+                            icon: const Icon(Icons.edit_outlined, size: 20),
+                            tooltip: 'Rename PDF',
+                            color: AppTheme.primaryColor,
                           ),
                         ],
                       ),
                     ],
                   ),
                 ),
-                SizedBox(height: responsivePadding * 1.67),
-                // Action Buttons - Stack on mobile, side by side on tablet
-                if (isTablet)
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Row(
-                        children: [
-                          Expanded(
-                            child: SizedBox(
-                              height: buttonHeight,
-                              child: ElevatedButton.icon(
-                              onPressed: () => _openPdf(context),
-                                icon: const Icon(Icons.open_in_new),
-                                label: Text(
-                                  AppConstants.open,
-                                  style: TextStyle(
-                                    fontSize: buttonLabelFontSize,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: AppTheme.primaryColor,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(width: responsivePadding * 0.5),
-                          Expanded(
-                            child: SizedBox(
-                              height: buttonHeight,
-                              child: OutlinedButton.icon(
-                                onPressed: () => _sharePdf(context),
-                                icon: const Icon(Icons.share),
-                                label: Text(
-                                  AppConstants.share,
-                                  style: TextStyle(
-                                    fontSize: buttonLabelFontSize,
-                                  ),
-                                ),
-                                style: OutlinedButton.styleFrom(
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                  side: const BorderSide(
-                                    color: AppTheme.primaryColor,
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+
+                const SizedBox(height: 24),
+
+                // Primary Action Button: Open PDF
+                SizedBox(
+                  height: ResponsiveHelper.getResponsiveButtonHeight(context),
+                  child: ElevatedButton.icon(
+                    onPressed: _openPdf,
+                    icon: const Icon(Icons.visibility_rounded, size: 20),
+                    label: const Text(
+                      'Open PDF',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w700,
                       ),
-                      SizedBox(height: responsivePadding * 0.5),
-                      SizedBox(
-                        height: buttonHeight,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _createNewPdf(context),
-                          icon: const Icon(Icons.add),
-                          label: Text(
-                            'Create New PDF',
-                            style: TextStyle(fontSize: buttonLabelFontSize),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            side: const BorderSide(color: AppTheme.accentColor),
-                          ),
-                        ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      foregroundColor: Colors.white,
+                      elevation: 0,
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(14),
                       ),
-                    ],
-                  )
-                else
-                  Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        height: buttonHeight,
-                        child: ElevatedButton.icon(
-                          onPressed: () => _openPdf(context),
-                          icon: const Icon(Icons.open_in_new),
-                          label: Text(
-                            AppConstants.open,
-                            style: TextStyle(fontSize: buttonLabelFontSize),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 0.5),
-                      SizedBox(
-                        height: buttonHeight,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _sharePdf(context),
-                          icon: const Icon(Icons.share),
-                          label: Text(
-                            AppConstants.share,
-                            style: TextStyle(fontSize: buttonLabelFontSize),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            side: const BorderSide(
-                              color: AppTheme.primaryColor,
-                            ),
-                          ),
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 0.5),
-                      SizedBox(
-                        height: buttonHeight,
-                        child: OutlinedButton.icon(
-                          onPressed: () => _createNewPdf(context),
-                          icon: const Icon(Icons.add),
-                          label: Text(
-                            'Create New PDF',
-                            style: TextStyle(fontSize: buttonLabelFontSize),
-                          ),
-                          style: OutlinedButton.styleFrom(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
-                            ),
-                            side: const BorderSide(color: AppTheme.accentColor),
-                          ),
-                        ),
-                      ),
-                    ],
+                    ),
                   ),
+                ),
+
+                const SizedBox(height: 16),
+
+                // Quick Action Grid (Share, Save to Device, Rename, All Files)
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildActionButton(
+                        context,
+                        icon: Icons.share_outlined,
+                        label: 'Share',
+                        onTap: _sharePdf,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildActionButton(
+                        context,
+                        icon: Icons.download_rounded,
+                        label: 'Save to Device',
+                        onTap: _exportPdf,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 12),
+
+                Row(
+                  children: [
+                    Expanded(
+                      child: _buildActionButton(
+                        context,
+                        icon: Icons.edit_outlined,
+                        label: 'Rename',
+                        onTap: _showRenameDialog,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: _buildActionButton(
+                        context,
+                        icon: Icons.folder_rounded,
+                        label: 'All Files',
+                        onTap: _navigateToAllFiles,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 24),
+
+                // Secondary Action: Create Another PDF
+                OutlinedButton.icon(
+                  onPressed: _createNewPdf,
+                  icon: const Icon(Icons.add_rounded, size: 20),
+                  label: const Text(
+                    'Create Another PDF',
+                    style: TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
@@ -351,7 +472,51 @@ void _openPdf(BuildContext context) {
     );
   }
 
-  String _formatDateTime(DateTime dateTime) {
-    return '${dateTime.day}/${dateTime.month}/${dateTime.year} ${dateTime.hour}:${dateTime.minute.toString().padLeft(2, '0')}';
+  Widget _buildActionButton(
+    BuildContext context, {
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+  }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
+
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(14),
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 12),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(14),
+            border: Border.all(
+              color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+            ),
+          ),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                color: AppTheme.primaryColor,
+                size: 22,
+              ),
+              const SizedBox(height: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
   }
 }
