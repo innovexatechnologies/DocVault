@@ -1,13 +1,40 @@
+import 'dart:io';
 import 'package:doc_vault/core/providers/image_selection_provider.dart';
 import 'package:doc_vault/features/pdf_generation/review_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('ReviewScreen reorder mode toggles safely and moves items', (tester) async {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late Directory tempDir;
+  late String imgA;
+  late String imgB;
+  late String imgC;
+
+  setUpAll(() async {
+    tempDir = await Directory.systemTemp.createTemp('reorder_test');
+    imgA = '${tempDir.path}/a.png';
+    imgB = '${tempDir.path}/b.png';
+    imgC = '${tempDir.path}/c.png';
+
+    final sampleImg = img.Image(width: 50, height: 50);
+    await File(imgA).writeAsBytes(img.encodePng(sampleImg));
+    await File(imgB).writeAsBytes(img.encodePng(sampleImg));
+    await File(imgC).writeAsBytes(img.encodePng(sampleImg));
+  });
+
+  tearDownAll(() async {
+    if (await tempDir.exists()) {
+      await tempDir.delete(recursive: true);
+    }
+  });
+
+  testWidgets('ReviewScreen reorder mode toggles safely and displays drag handles', (tester) async {
     final provider = ImageSelectionProvider();
-    provider.addImages(['a.png', 'b.png', 'c.png'], 'gallery');
+    provider.addImages([imgA, imgB, imgC], 'gallery');
 
     await tester.pumpWidget(
       ChangeNotifierProvider.value(
@@ -16,32 +43,31 @@ void main() {
       ),
     );
 
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Reorder'), findsOneWidget);
     await tester.tap(find.text('Reorder'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Done'), findsOneWidget);
-    expect(find.byIcon(Icons.arrow_upward), findsWidgets);
-    expect(find.byIcon(Icons.arrow_downward), findsWidgets);
+    expect(find.byType(ReorderableListView), findsOneWidget);
+    expect(find.byIcon(Icons.drag_handle_rounded), findsNWidgets(3));
 
-    // Tap move down on the first item
-    final downButtons = find.byIcon(Icons.arrow_downward);
-    await tester.tap(downButtons.first);
-    await tester.pump();
+    // Reorder items programmatically via provider to simulate drag completion
+    provider.reorderImages(0, 2);
+    await tester.pumpAndSettle();
 
-    // Check that items swapped: 'b.png' is now at index 0, 'a.png' at index 1
     expect(provider.selectedImages.map((e) => e.filePath).toList(), [
-      'b.png',
-      'a.png',
-      'c.png',
+      imgB,
+      imgA,
+      imgC,
     ]);
 
     // Tap Done to exit reorder mode
     await tester.tap(find.text('Done'));
-    await tester.pump();
+    await tester.pumpAndSettle();
 
     expect(find.text('Reorder'), findsOneWidget);
+    expect(find.byType(GridView), findsOneWidget);
   });
 }
