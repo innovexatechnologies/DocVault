@@ -7,5 +7,7 @@ void main() {
 
     expect(find.text('DocVault'), findsOneWidget);
     expect(find.text('Your Documents. Secured.'), findsOneWidget);
+
+    await tester.pump(const Duration(seconds: 3));
   });
 }

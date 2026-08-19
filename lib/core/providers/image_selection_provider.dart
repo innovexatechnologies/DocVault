@@ -36,7 +36,7 @@ class ImageSelectionProvider extends ChangeNotifier {
     if (oldIndex < 0 ||
         newIndex < 0 ||
         oldIndex >= _selectedImages.length ||
-        newIndex >= _selectedImages.length) {
+        newIndex > _selectedImages.length) {
       return;
     }
 
@@ -45,22 +45,30 @@ class ImageSelectionProvider extends ChangeNotifier {
     }
 
     final reorderedItems = List<ImageItem>.from(_selectedImages);
-    final item = reorderedItems.removeAt(oldIndex);
-
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
-
-    if (newIndex < 0) {
-      newIndex = 0;
-    } else if (newIndex > reorderedItems.length) {
-      newIndex = reorderedItems.length;
-    }
-
+    final item = reorderedItems.removeAt(oldIndex);
     reorderedItems.insert(newIndex, item);
+
     _selectedImages
       ..clear()
       ..addAll(reorderedItems);
+    notifyListeners();
+  }
+
+  void swapImages(int indexA, int indexB) {
+    if (indexA < 0 ||
+        indexB < 0 ||
+        indexA >= _selectedImages.length ||
+        indexB >= _selectedImages.length ||
+        indexA == indexB) {
+      return;
+    }
+
+    final temp = _selectedImages[indexA];
+    _selectedImages[indexA] = _selectedImages[indexB];
+    _selectedImages[indexB] = temp;
     notifyListeners();
   }
 

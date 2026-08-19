@@ -37,6 +37,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
     context.read<ImageSelectionProvider>().reorderImages(oldIndex, newIndex);
   }
 
+  void _swapImages(int indexA, int indexB) {
+    context.read<ImageSelectionProvider>().swapImages(indexA, indexB);
+  }
+
   Future<void> _addMoreImages(String source) async {
     if (source == 'camera') {
       if (mounted) {
@@ -131,11 +135,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 // Image Grid
                 Expanded(
                   child: _isReordering
-                      ? ListView.builder(
+                      ? ReorderableListView.builder(
+                          buildDefaultDragHandles: false,
                           padding: EdgeInsets.all(
                             ResponsiveHelper.getGridSpacing(context),
                           ),
                           itemCount: imageProvider.selectedImages.length,
+                          onReorder: _reorderImages,
                           itemBuilder: (context, index) {
                             final imageItem =
                                 imageProvider.selectedImages[index];
@@ -383,68 +389,153 @@ class _ReviewScreenState extends State<ReviewScreen> {
         index < context.read<ImageSelectionProvider>().imageCount - 1;
 
     return Container(
+      key: ValueKey(imageItem.id),
       margin: const EdgeInsets.only(bottom: 12),
+      height: 100,
+      decoration: BoxDecoration(
+        color: AppTheme.bgWhite,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(color: AppTheme.dividerColor),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.04),
+            blurRadius: 6,
+            offset: const Offset(0, 2),
+          ),
+        ],
+      ),
+      clipBehavior: Clip.antiAlias,
       child: Row(
         children: [
-          Expanded(
-            child: Card(
-              clipBehavior: Clip.antiAlias,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  SizedBox(
-                    height: 180,
-                    child: Image.file(
-                      File(imageItem.filePath),
-                      fit: BoxFit.cover,
-                      cacheWidth: 220,
-                      cacheHeight: 220,
-                      filterQuality: FilterQuality.medium,
-                    ),
-                  ),
-                  Positioned(
-                    top: 8,
-                    left: 8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 8,
-                        vertical: 4,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        '${index + 1}',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                    ),
-                  ),
-                ],
+          ReorderableDragStartListener(
+            index: index,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              color: Colors.transparent,
+              child: const Icon(
+                Icons.drag_indicator,
+                color: AppTheme.textSecondary,
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          SizedBox(
+            width: 80,
+            height: 100,
+            child: Stack(
+              fit: StackFit.expand,
+              children: [
+                Image.file(
+                  File(imageItem.filePath),
+                  fit: BoxFit.cover,
+                  cacheWidth: 200,
+                  cacheHeight: 200,
+                  filterQuality: FilterQuality.medium,
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    color: AppTheme.bgLight,
+                    child: const Icon(
+                      Icons.broken_image,
+                      color: AppTheme.textSecondary,
+                    ),
+                  ),
+                ),
+                Positioned(
+                  top: 6,
+                  left: 6,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 2,
+                    ),
+                    decoration: BoxDecoration(
+                      color: AppTheme.primaryColor,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: Text(
+                      '${index + 1}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Page ${index + 1}',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                    fontSize: 15,
+                    color: AppTheme.textPrimary,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 6,
+                    vertical: 2,
+                  ),
+                  decoration: BoxDecoration(
+                    color: (imageItem.source == 'camera'
+                            ? AppTheme.primaryColor
+                            : AppTheme.accentColor)
+                        .withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(4),
+                  ),
+                  child: Text(
+                    imageItem.source.toString().toUpperCase(),
+                    style: TextStyle(
+                      fontSize: 10,
+                      fontWeight: FontWeight.bold,
+                      color: imageItem.source == 'camera'
+                          ? AppTheme.primaryColor
+                          : AppTheme.accentColor,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
           Column(
-            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              IconButton(
-                onPressed: canMoveUp
-                    ? () => _reorderImages(index, index - 1)
-                    : null,
-                icon: const Icon(Icons.arrow_upward),
+              SizedBox(
+                height: 36,
+                width: 36,
+                child: IconButton(
+                  iconSize: 20,
+                  padding: EdgeInsets.zero,
+                  onPressed: canMoveUp
+                      ? () => _swapImages(index, index - 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_upward),
+                  tooltip: 'Move Up',
+                ),
               ),
-              IconButton(
-                onPressed: canMoveDown
-                    ? () => _reorderImages(index, index + 1)
-                    : null,
-                icon: const Icon(Icons.arrow_downward),
+              SizedBox(
+                height: 36,
+                width: 36,
+                child: IconButton(
+                  iconSize: 20,
+                  padding: EdgeInsets.zero,
+                  onPressed: canMoveDown
+                      ? () => _swapImages(index, index + 1)
+                      : null,
+                  icon: const Icon(Icons.arrow_downward),
+                  tooltip: 'Move Down',
+                ),
               ),
             ],
           ),
+          const SizedBox(width: 4),
         ],
       ),
     );

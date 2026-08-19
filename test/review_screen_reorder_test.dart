@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 void main() {
-  testWidgets('ReviewScreen reorder mode toggles safely', (tester) async {
+  testWidgets('ReviewScreen reorder mode toggles safely and moves items', (tester) async {
     final provider = ImageSelectionProvider();
     provider.addImages(['a.png', 'b.png', 'c.png'], 'gallery');
 
@@ -25,5 +25,23 @@ void main() {
     expect(find.text('Done'), findsOneWidget);
     expect(find.byIcon(Icons.arrow_upward), findsWidgets);
     expect(find.byIcon(Icons.arrow_downward), findsWidgets);
+
+    // Tap move down on the first item
+    final downButtons = find.byIcon(Icons.arrow_downward);
+    await tester.tap(downButtons.first);
+    await tester.pump();
+
+    // Check that items swapped: 'b.png' is now at index 0, 'a.png' at index 1
+    expect(provider.selectedImages.map((e) => e.filePath).toList(), [
+      'b.png',
+      'a.png',
+      'c.png',
+    ]);
+
+    // Tap Done to exit reorder mode
+    await tester.tap(find.text('Done'));
+    await tester.pump();
+
+    expect(find.text('Reorder'), findsOneWidget);
   });
 }
