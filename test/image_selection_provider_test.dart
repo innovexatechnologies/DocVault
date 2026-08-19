@@ -3,7 +3,15 @@ import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   group('ImageSelectionProvider reorder logic', () {
-    test('reorders items when moving down', () {
+    test('initial addImages does not mark unsaved changes', () {
+      final provider = ImageSelectionProvider();
+      provider.addImages(['a.png', 'b.png'], 'gallery');
+
+      expect(provider.hasImages, isTrue);
+      expect(provider.hasUnsavedChanges, isFalse);
+    });
+
+    test('reorders items when moving down and marks unsaved', () {
       final provider = ImageSelectionProvider();
       provider.addImages(['a.png', 'b.png', 'c.png'], 'gallery');
 
@@ -62,7 +70,7 @@ void main() {
       ]);
     });
 
-    test('updates image file path on edit', () {
+    test('updates image file path on edit and marks unsaved', () {
       final provider = ImageSelectionProvider();
       provider.addImages(['a.png', 'b.png'], 'gallery');
 
@@ -75,7 +83,7 @@ void main() {
 
     test('clearAllImages resets unsaved changes', () {
       final provider = ImageSelectionProvider();
-      provider.addImages(['a.png'], 'camera');
+      provider.addImages(['a.png'], 'camera', markUnsaved: true);
       expect(provider.hasUnsavedChanges, isTrue);
 
       provider.clearAllImages();

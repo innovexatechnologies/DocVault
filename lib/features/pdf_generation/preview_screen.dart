@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
-import '../../core/widgets/unsaved_changes_dialog.dart';
 import '../image_editing/image_editor_screen.dart';
 
 class PreviewScreen extends StatefulWidget {
@@ -49,28 +48,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
     Navigator.of(context).pushNamed('/pdf-generation');
   }
 
-  Future<void> _handleBack() async {
-    final hasUnsaved = context.read<ImageSelectionProvider>().hasUnsavedChanges;
-    if (!hasUnsaved) {
-      Navigator.of(context).pop();
-      return;
-    }
-
-    final action = await UnsavedChangesDialog.show(
-      context,
-      title: 'Leave Preview?',
-      message: 'You have modified pages in this document. What would you like to do?',
-      saveLabel: 'Generate PDF',
-      discardLabel: 'Leave',
-    );
-
-    if (!mounted) return;
-
-    if (action == UnsavedChangesAction.save) {
-      _generatePdf();
-    } else if (action == UnsavedChangesAction.discard) {
-      Navigator.of(context).pop();
-    }
+  void _handleBack() {
+    Navigator.of(context).pop();
   }
 
   @override
@@ -93,7 +72,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final currentImage = images[_currentPageIndex.clamp(0, totalPages - 1)];
 
     return PopScope(
-      canPop: false,
+      canPop: true,
       onPopInvokedWithResult: (didPop, result) {
         if (!didPop) _handleBack();
       },

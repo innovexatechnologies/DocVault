@@ -57,6 +57,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
           context.read<ImageSelectionProvider>().addImages(
                 imagePaths,
                 'gallery',
+                markUnsaved: true,
               );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
@@ -181,18 +182,19 @@ class _ReviewScreenState extends State<ReviewScreen> {
       return;
     }
 
-    final hasImages = context.read<ImageSelectionProvider>().hasImages;
-    if (!hasImages) {
+    final hasUnsaved = context.read<ImageSelectionProvider>().hasUnsavedChanges;
+    if (!hasUnsaved) {
+      context.read<ImageSelectionProvider>().clearAllImages();
       Navigator.of(context).pop();
       return;
     }
 
     final action = await UnsavedChangesDialog.show(
       context,
-      title: 'Discard Selection?',
-      message: 'You have images selected for PDF creation. Are you sure you want to go back?',
+      title: 'Discard Changes?',
+      message: 'You have unsaved changes. What would you like to do?',
       saveLabel: 'Generate PDF',
-      discardLabel: 'Discard & Exit',
+      discardLabel: 'Discard Changes',
     );
 
     if (!mounted) return;

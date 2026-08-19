@@ -18,7 +18,7 @@ class ImageSelectionProvider extends ChangeNotifier {
     }
   }
 
-  void addImages(List<String> filePaths, String source) {
+  void addImages(List<String> filePaths, String source, {bool markUnsaved = false}) {
     const uuid = Uuid();
     for (final filePath in filePaths) {
       final imageItem = ImageItem(
@@ -29,7 +29,9 @@ class ImageSelectionProvider extends ChangeNotifier {
       );
       _selectedImages.add(imageItem);
     }
-    _hasUnsavedChanges = true;
+    if (markUnsaved) {
+      _hasUnsavedChanges = true;
+    }
     notifyListeners();
   }
 
