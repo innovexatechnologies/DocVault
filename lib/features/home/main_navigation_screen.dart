@@ -85,28 +85,32 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
         ),
         child: SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
             child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
               children: [
-                _buildNavItem(
-                  index: 0,
-                  icon: Icons.add_photo_alternate_outlined,
-                  activeIcon: Icons.add_photo_alternate_rounded,
-                  label: 'Convert',
-                  isSelected: _currentIndex == 0,
-                  colorScheme: colorScheme,
-                  isDark: isDark,
+                Expanded(
+                  child: _buildNavItem(
+                    index: 0,
+                    icon: Icons.add_photo_alternate_outlined,
+                    activeIcon: Icons.add_photo_alternate_rounded,
+                    label: 'Convert',
+                    isSelected: _currentIndex == 0,
+                    colorScheme: colorScheme,
+                    isDark: isDark,
+                  ),
                 ),
-                _buildNavItem(
-                  index: 1,
-                  icon: Icons.folder_outlined,
-                  activeIcon: Icons.folder_rounded,
-                  label: 'All Files',
-                  badgeCount: totalPdfs,
-                  isSelected: _currentIndex == 1,
-                  colorScheme: colorScheme,
-                  isDark: isDark,
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _buildNavItem(
+                    index: 1,
+                    icon: Icons.folder_outlined,
+                    activeIcon: Icons.folder_rounded,
+                    label: 'All Files',
+                    badgeCount: totalPdfs,
+                    isSelected: _currentIndex == 1,
+                    colorScheme: colorScheme,
+                    isDark: isDark,
+                  ),
                 ),
               ],
             ),
@@ -132,7 +136,7 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
       borderRadius: BorderRadius.circular(16),
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 200),
-        padding: const EdgeInsets.symmetric(horizontal: 18, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
         decoration: BoxDecoration(
           color: isSelected
               ? AppTheme.primaryColor.withValues(
@@ -141,60 +145,64 @@ class _MainNavigationScreenState extends State<MainNavigationScreen> {
               : Colors.transparent,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Icon(
-                  isSelected ? activeIcon : icon,
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : colorScheme.onSurface.withValues(alpha: 0.55),
-                  size: 24,
-                ),
-                if (badgeCount != null && badgeCount > 0)
-                  Positioned(
-                    top: -4,
-                    right: -8,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 5,
-                        vertical: 1,
-                      ),
-                      decoration: BoxDecoration(
-                        color: isSelected
-                            ? AppTheme.primaryColor
-                            : colorScheme.onSurface.withValues(alpha: 0.4),
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                      constraints: const BoxConstraints(minWidth: 16),
-                      child: Text(
-                        badgeCount > 99 ? '99+' : '$badgeCount',
-                        textAlign: TextAlign.center,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
+        child: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Stack(
+                clipBehavior: Clip.none,
+                children: [
+                  Icon(
+                    isSelected ? activeIcon : icon,
+                    color: isSelected
+                        ? AppTheme.primaryColor
+                        : colorScheme.onSurface.withValues(alpha: 0.55),
+                    size: 22,
+                  ),
+                  if (badgeCount != null && badgeCount > 0)
+                    Positioned(
+                      top: -4,
+                      right: -8,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 5,
+                          vertical: 1,
+                        ),
+                        decoration: BoxDecoration(
+                          color: isSelected
+                              ? AppTheme.primaryColor
+                              : colorScheme.onSurface.withValues(alpha: 0.4),
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                        constraints: const BoxConstraints(minWidth: 16),
+                        child: Text(
+                          badgeCount > 99 ? '99+' : '$badgeCount',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 10,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ),
                     ),
-                  ),
-              ],
-            ),
-            const SizedBox(width: 8),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 13,
-                fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
-                color: isSelected
-                    ? AppTheme.primaryColor
-                    : colorScheme.onSurface.withValues(alpha: 0.6),
+                ],
               ),
-            ),
-          ],
+              const SizedBox(width: 6),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: isSelected ? FontWeight.w800 : FontWeight.w600,
+                  color: isSelected
+                      ? AppTheme.primaryColor
+                      : colorScheme.onSurface.withValues(alpha: 0.6),
+                ),
+              ),
+            ],
+          ),
         ),
       ),
     );

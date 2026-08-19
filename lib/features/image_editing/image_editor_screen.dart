@@ -432,30 +432,37 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
                       // Primary tool bar tabs
                       Container(
-                        padding: const EdgeInsets.symmetric(vertical: 8),
+                        padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 4),
                         child: Row(
-                          mainAxisAlignment: MainAxisAlignment.spaceAround,
                           children: [
-                            _buildToolTab(
-                              icon: Icons.crop_rounded,
-                              label: 'Crop',
-                              mode: EditorMode.crop,
+                            Expanded(
+                              child: _buildToolTab(
+                                icon: Icons.crop_rounded,
+                                label: 'Crop',
+                                mode: EditorMode.crop,
+                              ),
                             ),
-                            _buildToolTab(
-                              icon: Icons.rotate_right_rounded,
-                              label: 'Rotate',
-                              mode: EditorMode.rotate,
+                            Expanded(
+                              child: _buildToolTab(
+                                icon: Icons.rotate_right_rounded,
+                                label: 'Rotate',
+                                mode: EditorMode.rotate,
+                              ),
                             ),
-                            _buildToolTab(
-                              icon: Icons.text_fields_rounded,
-                              label: 'Text',
-                              mode: EditorMode.text,
-                              onTap: _openTextDialog,
+                            Expanded(
+                              child: _buildToolTab(
+                                icon: Icons.text_fields_rounded,
+                                label: 'Text',
+                                mode: EditorMode.text,
+                                onTap: _openTextDialog,
+                              ),
                             ),
-                            _buildToolTab(
-                              icon: Icons.filter_b_and_w_rounded,
-                              label: 'Filters',
-                              mode: EditorMode.filters,
+                            Expanded(
+                              child: _buildToolTab(
+                                icon: Icons.filter_b_and_w_rounded,
+                                label: 'Filters',
+                                mode: EditorMode.filters,
+                              ),
                             ),
                           ],
                         ),
@@ -487,7 +494,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           },
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 6),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [

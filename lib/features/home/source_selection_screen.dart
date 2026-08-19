@@ -691,37 +691,29 @@ class SourceSelectionScreen extends StatelessWidget {
                     ),
                   ),
 
-                  child: Row(
-                    mainAxisAlignment:
-                        MainAxisAlignment
-                            .center,
-
-                    children: [
-                      Icon(
-                        icon,
-                        size: 19,
-                      ),
-
-                      const SizedBox(
-                        width: 8,
-                      ),
-
-                      Text(
-                        title ==
-                                AppConstants
-                                    .camera
-                            ? 'Scan Document'
-                            : 'Choose Images',
-
-                        style:
-                            const TextStyle(
-                          fontSize: 14,
-                          fontWeight:
-                              FontWeight
-                                  .w700,
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        Icon(
+                          icon,
+                          size: 19,
                         ),
-                      ),
-                    ],
+                        const SizedBox(
+                          width: 8,
+                        ),
+                        Text(
+                          title == AppConstants.camera
+                              ? 'Scan Document'
+                              : 'Choose Images',
+                          style: const TextStyle(
+                            fontSize: 14,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
                   ),
                 ),
               ),
