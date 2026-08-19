@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:permission_handler/permission_handler.dart';
+import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
+import '../../core/providers/image_selection_provider.dart';
+import '../../core/services/gallery_service.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
@@ -57,7 +60,18 @@ class SourceSelectionScreen extends StatelessWidget {
       if (!context.mounted) return;
 
       if (status.isGranted) {
-        Navigator.of(context).pushNamed('/gallery');
+        final galleryService = GalleryService();
+        final imagePaths = await galleryService.pickImages();
+
+        if (!context.mounted) return;
+
+        if (imagePaths.isNotEmpty) {
+          context.read<ImageSelectionProvider>().addImages(
+                imagePaths,
+                'gallery',
+              );
+          Navigator.of(context).pushNamed('/review');
+        }
       } else {
         _showDeniedMessage(
           context,

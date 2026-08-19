@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/camera_service.dart';
+import '../../core/services/gallery_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/image_selection_provider.dart';
@@ -104,10 +105,30 @@ class _CameraScreenState extends State<CameraScreen> {
     Navigator.of(context).pushReplacementNamed('/review');
   }
 
-  void _goToGallery() {
-    Navigator.of(context).pop();
+  Future<void> _goToGallery() async {
+    try {
+      final galleryService = GalleryService();
+      final imagePaths = await galleryService.pickImages();
 
-    Navigator.of(context).pushNamed('/gallery');
+      if (!mounted) return;
+
+      if (imagePaths.isNotEmpty) {
+        context.read<ImageSelectionProvider>().addImages(
+              imagePaths,
+              'gallery',
+            );
+        Navigator.of(context).pushReplacementNamed('/review');
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Failed to open gallery'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
   }
 
   // ==========================================================
