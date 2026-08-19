@@ -1,10 +1,84 @@
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
+import 'package:pdfx/pdfx.dart' as pdfx;
 
 class FileUtils {
   static const String _pdfDirName = 'DocVault/PDFs';
   static const String _tempDirName = 'DocVault/Temp';
   static const String _cacheDirName = 'DocVault/Cache';
+
+  /// Normalizes and cleans a user-provided or internal PDF filename:
+  /// - Strips invalid filesystem characters: \ / : * ? " < > |
+  /// - Strips repetitive or malformed .pdf extensions (e.g. doc.pdf.pdf -> doc.pdf)
+  /// - Preserves user's actual base name, letters, digits, and spaces
+  /// - Guarantees exactly one .pdf extension
+  static String normalizePdfFileName(String name) {
+    var clean = name.trim();
+    if (clean.isEmpty) {
+      return 'DocVault_Document.pdf';
+    }
+
+    // Replace illegal characters with underscore
+    clean = clean.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+
+    // Remove any trailing .pdf extensions (case-insensitive)
+    final pdfRegex = RegExp(r'(\.pdf)+$', caseSensitive: false);
+    clean = clean.replaceAll(pdfRegex, '');
+    clean = clean.trim();
+
+    if (clean.isEmpty) {
+      clean = 'DocVault_Document';
+    }
+
+    return '$clean.pdf';
+  }
+
+  /// Extracts/rasterizes all pages of an existing PDF to temporary high-resolution images.
+  /// Returns the ordered list of extracted JPEG file paths.
+  static Future<List<String>> extractPdfPagesToImages(String pdfPath) async {
+    final file = File(pdfPath);
+    if (!await file.exists()) {
+      throw Exception('PDF file does not exist on disk: $pdfPath');
+    }
+
+    final document = await pdfx.PdfDocument.openFile(pdfPath);
+    final tempDir = await getTempDirectory();
+    final sessionDir = Directory(
+      '${tempDir.path}/edit_${DateTime.now().millisecondsSinceEpoch}',
+    );
+    await sessionDir.create(recursive: true);
+
+    final List<String> extractedPaths = [];
+
+    try {
+      for (int i = 1; i <= document.pagesCount; i++) {
+        final page = await document.getPage(i);
+        // Render at 2x resolution for crisp high-quality editing
+        final pageImage = await page.render(
+          width: page.width * 2,
+          height: page.height * 2,
+          format: pdfx.PdfPageImageFormat.jpeg,
+          backgroundColor: '#FFFFFF',
+        );
+
+        if (pageImage != null && pageImage.bytes.isNotEmpty) {
+          final pagePath = '${sessionDir.path}/page_$i.jpg';
+          final pageFile = File(pagePath);
+          await pageFile.writeAsBytes(pageImage.bytes, flush: true);
+          extractedPaths.add(pagePath);
+        }
+        await page.close();
+      }
+    } finally {
+      await document.close();
+    }
+
+    if (extractedPaths.isEmpty) {
+      throw Exception('Failed to extract pages from PDF: no readable pages found.');
+    }
+
+    return extractedPaths;
+  }
 
   // Get PDF storage directory
   static Future<Directory> getAppDocumentsDirectory() async {
@@ -51,7 +125,8 @@ class FileUtils {
   // Get full PDF file path
   static Future<String> getFullPdfPath(String fileName) async {
     final directory = await getAppDocumentsDirectory();
-    return '${directory.path}/$fileName';
+    final normalized = normalizePdfFileName(fileName);
+    return '${directory.path}/$normalized';
   }
 
   // Check if PDF file exists

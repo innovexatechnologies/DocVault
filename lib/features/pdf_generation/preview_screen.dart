@@ -3,18 +3,28 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/pdf_document.dart';
 import '../image_editing/image_editor_screen.dart';
 
 class PreviewScreen extends StatefulWidget {
-  const PreviewScreen({super.key});
+  final PdfDocument? existingDocument;
+  final VoidCallback? onSave;
+
+  const PreviewScreen({
+    super.key,
+    this.existingDocument,
+    this.onSave,
+  });
 
   @override
   State<PreviewScreen> createState() => _PreviewScreenState();
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  late final PageController _pageController;
+  late PageController _pageController;
   int _currentPageIndex = 0;
+
+  bool get _isEditingExisting => widget.existingDocument != null;
 
   @override
   void initState() {
@@ -45,7 +55,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
   }
 
   void _generatePdf() {
-    Navigator.of(context).pushNamed('/pdf-generation');
+    if (_isEditingExisting && widget.onSave != null) {
+      Navigator.of(context).pop();
+      widget.onSave!();
+    } else {
+      Navigator.of(context).pushNamed('/pdf-generation');
+    }
   }
 
   void _handleBack() {
@@ -90,9 +105,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
           title: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              const Text(
-                'Document Preview',
-                style: TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
+              Text(
+                _isEditingExisting
+                    ? 'Preview: ${widget.existingDocument!.title}'
+                    : 'Document Preview',
+                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                overflow: TextOverflow.ellipsis,
               ),
               Text(
                 'Page ${_currentPageIndex + 1} of $totalPages',
@@ -105,8 +123,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
           ),
           actions: [
             IconButton(
-              icon: const Icon(Icons.edit_rounded),
-              tooltip: 'Edit Current Page',
+              icon: const Icon(Icons.tune_rounded),
+              tooltip: 'Edit Page',
               onPressed: () => _openEditorForCurrentPage(
                 currentImage.id,
                 currentImage.filePath,
@@ -116,48 +134,65 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ),
         body: Column(
           children: [
-            // Page Viewer
+            // Page Preview Viewer
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
                 itemCount: totalPages,
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentPageIndex = index;
-                  });
+                onPageChanged: (idx) {
+                  setState(() => _currentPageIndex = idx);
                 },
                 itemBuilder: (context, index) {
-                  final item = images[index];
-                  final file = File(item.filePath);
-
+                  final imgItem = images[index];
                   return Center(
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: Container(
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(12),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: isDark ? 0.4 : 0.12),
-                              blurRadius: 16,
-                              offset: const Offset(0, 4),
-                            ),
-                          ],
-                        ),
-                        clipBehavior: Clip.antiAlias,
-                        child: InteractiveViewer(
-                          minScale: 1.0,
-                          maxScale: 3.5,
-                          child: file.existsSync()
-                              ? Image.file(
-                                  file,
-                                  fit: BoxFit.contain,
-                                  key: ValueKey(item.filePath),
-                                )
-                              : const Center(
-                                  child: Icon(Icons.broken_image, size: 48, color: Colors.grey),
+                      child: AspectRatio(
+                        aspectRatio: 1 / 1.414, // A4 aspect ratio
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: Colors.white,
+                            borderRadius: BorderRadius.circular(8),
+                            boxShadow: [
+                              BoxShadow(
+                                color: Colors.black.withValues(alpha: 0.15),
+                                blurRadius: 16,
+                                offset: const Offset(0, 4),
+                              ),
+                            ],
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              Image.file(
+                                File(imgItem.filePath),
+                                fit: BoxFit.contain,
+                              ),
+                              Positioned(
+                                bottom: 8,
+                                right: 8,
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 8,
+                                    vertical: 4,
+                                  ),
+                                  decoration: BoxDecoration(
+                                    color: Colors.black54,
+                                    borderRadius: BorderRadius.circular(6),
+                                  ),
+                                  child: Text(
+                                    '${index + 1}',
+                                    style: const TextStyle(
+                                      color: Colors.white,
+                                      fontSize: 11,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
                                 ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
                     ),
@@ -166,53 +201,57 @@ class _PreviewScreenState extends State<PreviewScreen> {
               ),
             ),
 
-            // Bottom Thumbnail Strip & Generate Action
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              decoration: BoxDecoration(
-                color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                border: Border(
-                  top: BorderSide(
-                    color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+            // Bottom Navigation & Edit Actions Dock
+            SafeArea(
+              top: false,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                  border: Border(
+                    top: BorderSide(
+                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                    ),
                   ),
                 ),
-              ),
-              child: SafeArea(
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Thumbnails list
+                    // Thumbnail Carousel (for >1 pages)
                     if (totalPages > 1)
                       SizedBox(
-                        height: 60,
-                        child: ListView.builder(
+                        height: 54,
+                        child: ListView.separated(
                           scrollDirection: Axis.horizontal,
                           itemCount: totalPages,
+                          separatorBuilder: (context, index) => const SizedBox(width: 8),
                           itemBuilder: (context, idx) {
                             final isSelected = idx == _currentPageIndex;
-                            final thumbItem = images[idx];
                             return GestureDetector(
                               onTap: () {
                                 _pageController.animateToPage(
                                   idx,
-                                  duration: const Duration(milliseconds: 250),
+                                  duration: const Duration(milliseconds: 300),
                                   curve: Curves.easeInOut,
                                 );
                               },
                               child: Container(
-                                margin: const EdgeInsets.only(right: 8),
-                                width: 44,
+                                width: 42,
                                 decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(8),
+                                  borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
-                                    color: isSelected ? AppTheme.primaryColor : Colors.transparent,
-                                    width: 2.5,
+                                    color: isSelected
+                                        ? AppTheme.primaryColor
+                                        : Colors.transparent,
+                                    width: 2,
                                   ),
                                 ),
                                 clipBehavior: Clip.antiAlias,
                                 child: Image.file(
-                                  File(thumbItem.filePath),
+                                  File(images[idx].filePath),
                                   fit: BoxFit.cover,
+                                  cacheWidth: 84,
+                                  cacheHeight: 108,
                                 ),
                               ),
                             );
@@ -240,13 +279,20 @@ class _PreviewScreenState extends State<PreviewScreen> {
                         Expanded(
                           child: ElevatedButton.icon(
                             onPressed: _generatePdf,
-                            icon: const Icon(Icons.picture_as_pdf_rounded, size: 18),
-                            label: const Text(
-                              'Generate PDF',
-                              style: TextStyle(fontWeight: FontWeight.w700),
+                            icon: Icon(
+                              _isEditingExisting
+                                  ? Icons.save_rounded
+                                  : Icons.picture_as_pdf_rounded,
+                              size: 18,
+                            ),
+                            label: Text(
+                              _isEditingExisting ? 'Save Changes' : 'Generate PDF',
+                              style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
                             style: ElevatedButton.styleFrom(
-                              backgroundColor: AppTheme.successColor,
+                              backgroundColor: _isEditingExisting
+                                  ? AppTheme.primaryColor
+                                  : AppTheme.successColor,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

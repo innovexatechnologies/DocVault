@@ -27,6 +27,9 @@ class PdfDocument {
     return fileName;
   }
 
+  /// Title alias for base name
+  String get title => baseName;
+
   /// Formatted human-readable file size (e.g. 1.25 MB, 450 KB)
   String get formattedFileSize {
     if (fileSizeBytes < 1024) {

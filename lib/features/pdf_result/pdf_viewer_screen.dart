@@ -3,10 +3,12 @@ import 'package:flutter/material.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import '../../core/providers/image_selection_provider.dart';
 import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/file_utils.dart';
 import '../../models/pdf_document.dart' as model;
+import '../pdf_generation/review_screen.dart';
 
 class PdfViewerScreen extends StatefulWidget {
   final String filePath;
@@ -120,6 +122,87 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
   }
 
+  Future<void> _editPdf() async {
+    final provider = context.read<PdfManagerProvider>();
+    final doc = provider.documents.firstWhere(
+      (d) => d.filePath == widget.filePath || d.fileName == widget.fileName,
+      orElse: () => model.PdfDocument(
+        id: '',
+        fileName: widget.fileName,
+        filePath: widget.filePath,
+        fileSizeBytes: 0,
+        pageCount: _actualPageCount,
+        createdAt: DateTime.now(),
+        modifiedAt: DateTime.now(),
+      ),
+    );
+
+    if (doc.id.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Please save document to DocVault before editing.'),
+        ),
+      );
+      return;
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: AppTheme.primaryColor),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading PDF for editing...',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    try {
+      final imagePaths = await FileUtils.extractPdfPagesToImages(doc.filePath);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close loading
+
+      final imageSelectionProvider = context.read<ImageSelectionProvider>();
+      imageSelectionProvider.clearAllImages();
+      imageSelectionProvider.addImages(imagePaths, 'existing_pdf', markUnsaved: false);
+
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => ReviewScreen(existingDocument: doc),
+        ),
+      );
+
+      if (result == true && mounted) {
+        Navigator.of(context).pop(); // Close viewer to reload updated PDF
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load PDF for editing: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
+  }
+
   Future<void> _saveToDocVaultLibrary() async {
     if (_isSavingToDocVault) return;
     setState(() => _isSavingToDocVault = true);
@@ -210,6 +293,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ],
         ),
         actions: [
+          if (!widget.isExternal)
+            IconButton(
+              icon: const Icon(Icons.tune_rounded),
+              onPressed: _editPdf,
+              tooltip: 'Edit PDF',
+            ),
           if (widget.isExternal)
             IconButton(
               icon: _isSavingToDocVault

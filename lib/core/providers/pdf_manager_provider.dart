@@ -126,6 +126,28 @@ class PdfManagerProvider extends ChangeNotifier {
     return doc;
   }
 
+  /// Updates content (pages) of an existing PDF document
+  Future<PdfDocument> updateDocumentContent(
+    String id,
+    List<String> newImagePaths,
+  ) async {
+    try {
+      final updatedDoc = await _storageService.updateDocumentContent(
+        id: id,
+        imagePaths: newImagePaths,
+      );
+      final index = _documents.indexWhere((d) => d.id == id);
+      if (index != -1) {
+        _documents[index] = updatedDoc;
+        notifyListeners();
+      }
+      return updatedDoc;
+    } catch (e) {
+      debugPrint('Error updating PDF content in provider: $e');
+      rethrow;
+    }
+  }
+
   /// Renames a PDF document
   Future<PdfDocument> renamePdf(String id, String newName) async {
     try {

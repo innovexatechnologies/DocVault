@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../core/providers/image_selection_provider.dart';
 import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/file_utils.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/pdf_document.dart';
+import '../pdf_generation/review_screen.dart';
 import '../pdf_result/pdf_viewer_screen.dart';
-import 'pdf_reorder_pages_screen.dart';
 import 'widgets/all_files_empty_state.dart';
 import 'widgets/delete_confirmation_dialog.dart';
 import 'widgets/pdf_actions_bottom_sheet.dart';
@@ -217,12 +219,62 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     );
   }
 
-  void _openReorderPages(PdfDocument doc) {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => PdfReorderPagesScreen(document: doc),
+  Future<void> _handleEditPdf(PdfDocument doc) async {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24.0),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(color: AppTheme.primaryColor),
+                  SizedBox(height: 16),
+                  Text(
+                    'Loading PDF for editing...',
+                    style: TextStyle(fontWeight: FontWeight.w600),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
       ),
     );
+
+    try {
+      final imagePaths = await FileUtils.extractPdfPagesToImages(doc.filePath);
+      if (!mounted) return;
+      Navigator.of(context).pop(); // Close loading dialog
+
+      final imageSelectionProvider = context.read<ImageSelectionProvider>();
+      imageSelectionProvider.clearAllImages();
+      imageSelectionProvider.addImages(imagePaths, 'existing_pdf', markUnsaved: false);
+
+      final result = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => ReviewScreen(existingDocument: doc),
+        ),
+      );
+
+      if (result == true && mounted) {
+        context.read<PdfManagerProvider>().loadDocuments();
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context).pop(); // Close loading dialog if still open
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to load PDF for editing: $e'),
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    }
   }
 
   void _showActionsBottomSheet(PdfDocument doc) {
@@ -236,7 +288,7 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
         onOpen: () => _openPdfViewer(doc),
         onShare: () => context.read<PdfManagerProvider>().sharePdf(doc),
         onRename: () => _showRenameDialog(doc),
-        onReorderPages: () => _openReorderPages(doc),
+        onEdit: () => _handleEditPdf(doc),
         onExport: () => _handleExportSingle(doc),
         onDetails: () => _showDetailsDialog(doc),
         onDelete: () => _showDeleteDialog(doc),
