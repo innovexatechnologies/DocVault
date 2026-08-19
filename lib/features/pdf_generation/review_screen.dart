@@ -325,102 +325,108 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
 
                 // Bottom Control Toolbar & Generate Button
-                Container(
-                  padding: EdgeInsets.all(
-                    ResponsiveHelper.getResponsivePadding(context),
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                    border: Border(
-                      top: BorderSide(
-                        color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
-                      ),
+                SafeArea(
+                  top: false,
+                  child: Container(
+                    padding: EdgeInsets.all(
+                      ResponsiveHelper.getResponsivePadding(context),
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-                        blurRadius: 8,
-                        offset: const Offset(0, -2),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                      border: Border(
+                        top: BorderSide(
+                          color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                        ),
                       ),
-                    ],
-                  ),
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      // Action buttons row: Add Images, Reorder, Preview
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _showAddImagesBottomSheet,
-                              icon: const Icon(Icons.add_rounded, size: 18),
-                              label: const Text('Add'),
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                          blurRadius: 8,
+                          offset: const Offset(0, -2),
+                        ),
+                      ],
+                    ),
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // Action buttons row: Add Images, Reorder, Preview
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _showAddImagesBottomSheet,
+                                icon: const Icon(Icons.add_rounded, size: 18),
+                                label: const Text('Add'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _toggleReorderMode,
-                              icon: Icon(
-                                _isReordering ? Icons.check_rounded : Icons.swap_vert_rounded,
-                                size: 18,
-                              ),
-                              label: Text(_isReordering ? 'Done' : 'Reorder'),
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: _isReordering
-                                    ? AppTheme.primaryColor.withValues(alpha: 0.15)
-                                    : null,
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              onPressed: _openPreview,
-                              icon: const Icon(Icons.preview_rounded, size: 18),
-                              label: const Text('Preview'),
-                              style: OutlinedButton.styleFrom(
-                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _toggleReorderMode,
+                                icon: Icon(
+                                  _isReordering ? Icons.check_rounded : Icons.swap_vert_rounded,
+                                  size: 18,
+                                ),
+                                label: Text(_isReordering ? 'Done' : 'Reorder'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  backgroundColor: _isReordering
+                                      ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                      : null,
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 10),
+                            const SizedBox(width: 8),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                onPressed: _openPreview,
+                                icon: const Icon(Icons.preview_rounded, size: 18),
+                                label: const Text('Preview'),
+                                style: OutlinedButton.styleFrom(
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 10),
 
-                      // Generate PDF Button
-                      SizedBox(
-                        width: double.infinity,
-                        height: ResponsiveHelper.getResponsiveButtonHeight(context),
-                        child: ElevatedButton.icon(
-                          onPressed: _generatePdf,
-                          icon: const Icon(Icons.picture_as_pdf_rounded),
-                          label: Text(
-                            AppConstants.generatePdf,
-                            style: TextStyle(
-                              fontSize: ResponsiveHelper.getResponsiveFontSize(
-                                context,
-                                mobileSize: 14,
-                                tabletSize: 16,
-                                desktopSize: 18,
+                        // Generate PDF Button
+                        SizedBox(
+                          width: double.infinity,
+                          height: ResponsiveHelper.getResponsiveButtonHeight(context),
+                          child: ElevatedButton.icon(
+                            onPressed: _generatePdf,
+                            icon: const Icon(Icons.picture_as_pdf_rounded),
+                            label: Text(
+                              AppConstants.generatePdf,
+                              style: TextStyle(
+                                fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                  context,
+                                  mobileSize: 14,
+                                  tabletSize: 16,
+                                  desktopSize: 18,
+                                ),
+                                fontWeight: FontWeight.w700,
                               ),
-                              fontWeight: FontWeight.w700,
                             ),
-                          ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.successColor,
-                            foregroundColor: Colors.white,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                            style: ElevatedButton.styleFrom(
+                              backgroundColor: AppTheme.successColor,
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ],
+                      ],
+                    ),
                   ),
                 ),
               ],

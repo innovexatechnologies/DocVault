@@ -548,32 +548,39 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       color: Colors.black26,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          ...ratios.map((r) {
-            final isSelected = _selectedCropRatio == r;
-            return ChoiceChip(
-              label: Text(r, style: TextStyle(color: isSelected ? Colors.white : Colors.white70)),
-              selected: isSelected,
-              selectedColor: AppTheme.primaryColor,
-              backgroundColor: Colors.white10,
-              onSelected: (selected) {
-                if (selected) {
-                  setState(() => _selectedCropRatio = r);
-                }
-              },
-            );
-          }),
-          ElevatedButton(
-            onPressed: _handleApplyCrop,
-            style: ElevatedButton.styleFrom(
-              backgroundColor: AppTheme.primaryColor,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            ...ratios.map((r) {
+              final isSelected = _selectedCropRatio == r;
+              return Padding(
+                padding: const EdgeInsets.only(right: 8),
+                child: ChoiceChip(
+                  label: Text(r, style: TextStyle(color: isSelected ? Colors.white : Colors.white70, fontSize: 12)),
+                  selected: isSelected,
+                  selectedColor: AppTheme.primaryColor,
+                  backgroundColor: Colors.white10,
+                  onSelected: (selected) {
+                    if (selected) {
+                      setState(() => _selectedCropRatio = r);
+                    }
+                  },
+                ),
+              );
+            }),
+            ElevatedButton(
+              onPressed: _handleApplyCrop,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: AppTheme.primaryColor,
+                padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+              ),
+              child: const Text('Apply Crop'),
             ),
-            child: const Text('Apply Crop'),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -582,14 +589,20 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     return Container(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 12),
       color: Colors.black26,
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceAround,
-        children: [
-          _filterButton('Original', ImageFilterType.none),
-          _filterButton('Document', ImageFilterType.document),
-          _filterButton('Grayscale', ImageFilterType.grayscale),
-          _filterButton('Enhance', ImageFilterType.enhance),
-        ],
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        child: Row(
+          children: [
+            _filterButton('Original', ImageFilterType.none),
+            const SizedBox(width: 8),
+            _filterButton('Document', ImageFilterType.document),
+            const SizedBox(width: 8),
+            _filterButton('Grayscale', ImageFilterType.grayscale),
+            const SizedBox(width: 8),
+            _filterButton('Enhance', ImageFilterType.enhance),
+          ],
+        ),
       ),
     );
   }
