@@ -5,6 +5,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/pdf_document.dart';
 import '../pdf_result/pdf_viewer_screen.dart';
+import 'pdf_reorder_pages_screen.dart';
 import 'widgets/all_files_empty_state.dart';
 import 'widgets/delete_confirmation_dialog.dart';
 import 'widgets/pdf_actions_bottom_sheet.dart';
@@ -216,6 +217,14 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     );
   }
 
+  void _openReorderPages(PdfDocument doc) {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => PdfReorderPagesScreen(document: doc),
+      ),
+    );
+  }
+
   void _showActionsBottomSheet(PdfDocument doc) {
     showModalBottomSheet(
       context: context,
@@ -227,6 +236,7 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
         onOpen: () => _openPdfViewer(doc),
         onShare: () => context.read<PdfManagerProvider>().sharePdf(doc),
         onRename: () => _showRenameDialog(doc),
+        onReorderPages: () => _openReorderPages(doc),
         onExport: () => _handleExportSingle(doc),
         onDetails: () => _showDetailsDialog(doc),
         onDelete: () => _showDeleteDialog(doc),

@@ -8,6 +8,7 @@ class PdfActionsBottomSheet extends StatelessWidget {
   final VoidCallback onShare;
   final VoidCallback onRename;
   final VoidCallback onExport;
+  final VoidCallback? onReorderPages;
   final VoidCallback onDetails;
   final VoidCallback onDelete;
 
@@ -18,6 +19,7 @@ class PdfActionsBottomSheet extends StatelessWidget {
     required this.onShare,
     required this.onRename,
     required this.onExport,
+    this.onReorderPages,
     required this.onDetails,
     required this.onDelete,
   });
@@ -144,6 +146,17 @@ class PdfActionsBottomSheet extends StatelessWidget {
                     onRename();
                   },
                 ),
+                if (onReorderPages != null)
+                  _buildActionTile(
+                    context,
+                    icon: Icons.reorder_rounded,
+                    title: 'Reorder Pages',
+                    subtitle: 'Reorder or delete pages in this PDF',
+                    onTap: () {
+                      Navigator.of(context).pop();
+                      onReorderPages!();
+                    },
+                  ),
                 _buildActionTile(
                   context,
                   icon: Icons.download_rounded,

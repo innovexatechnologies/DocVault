@@ -6,6 +6,9 @@ import '../../core/theme/app_theme.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/services/gallery_service.dart';
 import '../../core/utils/responsive_helper.dart';
+import '../../core/widgets/unsaved_changes_dialog.dart';
+import '../image_editing/image_editor_screen.dart';
+import 'preview_screen.dart';
 
 class ReviewScreen extends StatefulWidget {
   const ReviewScreen({super.key});
@@ -52,9 +55,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
         final imagePaths = await galleryService.pickImages();
         if (imagePaths.isNotEmpty && mounted) {
           context.read<ImageSelectionProvider>().addImages(
-            imagePaths,
-            'gallery',
-          );
+                imagePaths,
+                'gallery',
+              );
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
               content: Text('Added ${imagePaths.length} image(s)'),
@@ -75,8 +78,131 @@ class _ReviewScreenState extends State<ReviewScreen> {
     }
   }
 
+  void _showAddImagesBottomSheet() {
+    showModalBottomSheet(
+      context: context,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 36,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                const Text(
+                  'Add More Images',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                ),
+                const SizedBox(height: 16),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _addMoreImages('camera');
+                        },
+                        icon: const Icon(Icons.camera_alt_rounded),
+                        label: const Text('Camera'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: () {
+                          Navigator.of(ctx).pop();
+                          _addMoreImages('gallery');
+                        },
+                        icon: const Icon(Icons.photo_library_rounded),
+                        label: const Text('Gallery'),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: AppTheme.primaryColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  void _openImageEditor(String imageId, String imagePath, int index) async {
+    final updatedPath = await Navigator.of(context).push<String>(
+      MaterialPageRoute(
+        builder: (_) => ImageEditorScreen(
+          imageId: imageId,
+          imagePath: imagePath,
+          pageIndex: index,
+        ),
+      ),
+    );
+
+    if (updatedPath != null && mounted) {
+      setState(() {});
+    }
+  }
+
+  void _openPreview() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const PreviewScreen()),
+    );
+  }
+
   void _generatePdf() {
     Navigator.of(context).pushNamed('/pdf-generation');
+  }
+
+  Future<void> _handleBack() async {
+    if (_isReordering) {
+      setState(() => _isReordering = false);
+      return;
+    }
+
+    final hasImages = context.read<ImageSelectionProvider>().hasImages;
+    if (!hasImages) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    final action = await UnsavedChangesDialog.show(
+      context,
+      title: 'Discard Selection?',
+      message: 'You have images selected for PDF creation. Are you sure you want to go back?',
+      saveLabel: 'Generate PDF',
+      discardLabel: 'Discard & Exit',
+    );
+
+    if (!mounted) return;
+
+    if (action == UnsavedChangesAction.save) {
+      _generatePdf();
+    } else if (action == UnsavedChangesAction.discard) {
+      context.read<ImageSelectionProvider>().clearAllImages();
+      Navigator.of(context).pop();
+    }
   }
 
   @override
@@ -86,14 +212,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     return PopScope(
-      canPop: !_isReordering,
+      canPop: false,
       onPopInvokedWithResult: (didPop, result) {
-        if (didPop) return;
-        if (_isReordering) {
-          setState(() {
-            _isReordering = false;
-          });
-        }
+        if (!didPop) _handleBack();
       },
       child: Scaffold(
         backgroundColor: colorScheme.surface,
@@ -101,29 +222,34 @@ class _ReviewScreenState extends State<ReviewScreen> {
           leading: IconButton(
             icon: const Icon(Icons.arrow_back_rounded),
             tooltip: 'Back',
-            onPressed: () {
-              if (_isReordering) {
-                setState(() {
-                  _isReordering = false;
-                });
-              } else {
-                Navigator.of(context).maybePop();
-              }
-            },
+            onPressed: _handleBack,
           ),
           title: const Text(AppConstants.review),
           backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
           foregroundColor: colorScheme.onSurface,
           elevation: 0,
           actions: [
+            IconButton(
+              icon: const Icon(Icons.preview_rounded),
+              tooltip: 'Preview PDF',
+              onPressed: _openPreview,
+            ),
             Padding(
-              padding: const EdgeInsets.all(8.0),
+              padding: const EdgeInsets.only(right: 12.0),
               child: Center(
-                child: Text(
-                  '${context.watch<ImageSelectionProvider>().imageCount} images',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    color: AppTheme.textSecondary,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.15),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    '${context.watch<ImageSelectionProvider>().imageCount} pages',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w700,
+                      fontSize: 12,
+                      color: AppTheme.primaryColor,
+                    ),
                   ),
                 ),
               ),
@@ -140,15 +266,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     Icon(
                       Icons.image_not_supported,
                       size: 60,
-                      color: AppTheme.textSecondary.withValues(alpha: 0.5),
+                      color: colorScheme.onSurface.withValues(alpha: 0.3),
                     ),
                     const SizedBox(height: 16),
-                    const Text(
+                    Text(
                       'No images selected',
                       style: TextStyle(
                         fontSize: 16,
-                        color: AppTheme.textSecondary,
+                        color: colorScheme.onSurface.withValues(alpha: 0.6),
                       ),
+                    ),
+                    const SizedBox(height: 16),
+                    ElevatedButton.icon(
+                      onPressed: _showAddImagesBottomSheet,
+                      icon: const Icon(Icons.add_photo_alternate_rounded),
+                      label: const Text('Add Images'),
                     ),
                   ],
                 ),
@@ -157,7 +289,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
             return Column(
               children: [
-                // Image Grid
+                // Image Grid or Reorderable List
                 Expanded(
                   child: _isReordering
                       ? ReorderableListView.builder(
@@ -168,8 +300,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                           itemCount: imageProvider.selectedImages.length,
                           onReorder: _reorderImages,
                           itemBuilder: (context, index) {
-                            final imageItem =
-                                imageProvider.selectedImages[index];
+                            final imageItem = imageProvider.selectedImages[index];
                             return _buildReorderableRowItem(imageItem, index);
                           },
                         )
@@ -177,134 +308,95 @@ class _ReviewScreenState extends State<ReviewScreen> {
                           padding: EdgeInsets.all(
                             ResponsiveHelper.getGridSpacing(context),
                           ),
-                          gridDelegate:
-                              SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount:
-                                    ResponsiveHelper.getGridCrossAxisCount(
-                                      context,
-                                    ),
-                                crossAxisSpacing:
-                                    ResponsiveHelper.getGridSpacing(context),
-                                mainAxisSpacing:
-                                    ResponsiveHelper.getGridSpacing(context),
-                              ),
+                          gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                            crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
+                            crossAxisSpacing: ResponsiveHelper.getGridSpacing(context),
+                            mainAxisSpacing: ResponsiveHelper.getGridSpacing(context),
+                            childAspectRatio: 0.82,
+                          ),
                           itemCount: imageProvider.selectedImages.length,
                           itemBuilder: (context, index) {
-                            return _buildImageItem(
-                              imageProvider.selectedImages[index],
-                              index,
-                            );
+                            final imageItem = imageProvider.selectedImages[index];
+                            return _buildImageItem(imageItem, index);
                           },
                         ),
                 ),
-                // Bottom Controls
+
+                // Bottom Control Toolbar & Generate Button
                 Container(
-                  color: AppTheme.bgWhite,
                   padding: EdgeInsets.all(
                     ResponsiveHelper.getResponsivePadding(context),
                   ),
+                  decoration: BoxDecoration(
+                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                    border: Border(
+                      top: BorderSide(
+                        color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                      ),
+                    ),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
+                        blurRadius: 8,
+                        offset: const Offset(0, -2),
+                      ),
+                    ],
+                  ),
                   child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
-                      // Mode Toggle Button
-                      if (!_isReordering)
-                        SizedBox(
-                          height: ResponsiveHelper.getResponsiveButtonHeight(
-                            context,
-                          ),
-                          child: OutlinedButton.icon(
-                            onPressed: _toggleReorderMode,
-                            icon: const Icon(Icons.drag_handle),
-                            label: const Text(AppConstants.reorder),
-                          ),
-                        ),
-                      if (_isReordering)
-                        SizedBox(
-                          height: ResponsiveHelper.getResponsiveButtonHeight(
-                            context,
-                          ),
-                          child: ElevatedButton.icon(
-                            onPressed: _toggleReorderMode,
-                            icon: const Icon(Icons.check),
-                            label: const Text('Done'),
-                          ),
-                        ),
-                      SizedBox(
-                        height: ResponsiveHelper.isMobile(context) ? 10 : 16,
-                      ),
-                      // Add More Options
-                      ResponsiveHelper.isMobile(context)
-                          ? Column(
-                              children: [
-                                SizedBox(
-                                  height:
-                                      ResponsiveHelper.getResponsiveButtonHeight(
-                                        context,
-                                      ),
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _addMoreImages('camera'),
-                                    icon: const Icon(Icons.camera_alt),
-                                    label: const Text('Camera'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primaryColor,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(height: 8),
-                                SizedBox(
-                                  height:
-                                      ResponsiveHelper.getResponsiveButtonHeight(
-                                        context,
-                                      ),
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _addMoreImages('gallery'),
-                                    icon: const Icon(Icons.image),
-                                    label: const Text('Gallery'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.accentColor,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            )
-                          : Row(
-                              children: [
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _addMoreImages('camera'),
-                                    icon: const Icon(Icons.camera_alt, size: 18),
-                                    label: const Text('Camera'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.primaryColor,
-                                      foregroundColor: Colors.white,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: ElevatedButton.icon(
-                                    onPressed: () => _addMoreImages('gallery'),
-                                    icon: const Icon(Icons.image, size: 18),
-                                    label: const Text('Gallery'),
-                                    style: ElevatedButton.styleFrom(
-                                      backgroundColor: AppTheme.accentColor,
-                                      foregroundColor: AppTheme.bgDark,
-                                    ),
-                                  ),
-                                ),
-                              ],
+                      // Action buttons row: Add Images, Reorder, Preview
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _showAddImagesBottomSheet,
+                              icon: const Icon(Icons.add_rounded, size: 18),
+                              label: const Text('Add'),
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
                             ),
-                      SizedBox(
-                        height: ResponsiveHelper.isMobile(context) ? 10 : 16,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _toggleReorderMode,
+                              icon: Icon(
+                                _isReordering ? Icons.grid_view_rounded : Icons.swap_vert_rounded,
+                                size: 18,
+                              ),
+                              label: Text(_isReordering ? 'Grid' : 'Reorder'),
+                              style: OutlinedButton.styleFrom(
+                                backgroundColor: _isReordering
+                                    ? AppTheme.primaryColor.withValues(alpha: 0.15)
+                                    : null,
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              onPressed: _openPreview,
+                              icon: const Icon(Icons.preview_rounded, size: 18),
+                              label: const Text('Preview'),
+                              style: OutlinedButton.styleFrom(
+                                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
+                      const SizedBox(height: 10),
+
                       // Generate PDF Button
                       SizedBox(
-                        height: ResponsiveHelper.getResponsiveButtonHeight(
-                          context,
-                        ),
+                        width: double.infinity,
+                        height: ResponsiveHelper.getResponsiveButtonHeight(context),
                         child: ElevatedButton.icon(
                           onPressed: _generatePdf,
-                          icon: const Icon(Icons.picture_as_pdf),
+                          icon: const Icon(Icons.picture_as_pdf_rounded),
                           label: Text(
                             AppConstants.generatePdf,
                             style: TextStyle(
@@ -314,12 +406,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                 tabletSize: 16,
                                 desktopSize: 18,
                               ),
+                              fontWeight: FontWeight.w700,
                             ),
                           ),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: AppTheme.successColor,
+                            foregroundColor: Colors.white,
                             shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(8),
+                              borderRadius: BorderRadius.circular(12),
                             ),
                           ),
                         ),
@@ -338,15 +432,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
   Widget _buildImageItem(dynamic imageItem, int index) {
     return Card(
       clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      elevation: 2,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          Image.file(
-            File(imageItem.filePath),
-            fit: BoxFit.cover,
-            cacheWidth: 220,
-            cacheHeight: 220,
-            filterQuality: FilterQuality.medium,
+          GestureDetector(
+            onTap: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
+            child: Image.file(
+              File(imageItem.filePath),
+              fit: BoxFit.cover,
+              cacheWidth: 220,
+              cacheHeight: 220,
+              filterQuality: FilterQuality.medium,
+            ),
           ),
           // Page Number Badge
           Positioned(
@@ -356,7 +455,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor,
-                borderRadius: BorderRadius.circular(4),
+                borderRadius: BorderRadius.circular(8),
               ),
               child: Text(
                 '${index + 1}',
@@ -368,19 +467,50 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ),
             ),
           ),
-          // Remove Button
+          // Delete Button
           Positioned(
             top: 8,
             right: 8,
             child: GestureDetector(
               onTap: () => _removeImage(imageItem.id),
               child: Container(
-                padding: const EdgeInsets.all(4),
-                decoration: BoxDecoration(
+                padding: const EdgeInsets.all(5),
+                decoration: const BoxDecoration(
                   color: AppTheme.errorColor,
                   shape: BoxShape.circle,
                 ),
-                child: const Icon(Icons.close, color: Colors.white, size: 16),
+                child: const Icon(Icons.close, color: Colors.white, size: 15),
+              ),
+            ),
+          ),
+          // Edit Button
+          Positioned(
+            bottom: 8,
+            left: 8,
+            child: GestureDetector(
+              onTap: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                decoration: BoxDecoration(
+                  color: Colors.black.withValues(alpha: 0.70),
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: Colors.white24),
+                ),
+                child: const Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.tune_rounded, color: Colors.white, size: 13),
+                    SizedBox(width: 4),
+                    Text(
+                      'Edit',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
@@ -389,18 +519,19 @@ class _ReviewScreenState extends State<ReviewScreen> {
             bottom: 8,
             right: 8,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
               decoration: BoxDecoration(
-                color: imageItem.source == 'camera'
-                    ? AppTheme.primaryColor
-                    : AppTheme.accentColor,
-                borderRadius: BorderRadius.circular(3),
+                color: (imageItem.source == 'camera'
+                        ? AppTheme.primaryColor
+                        : AppTheme.accentColor)
+                    .withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(6),
               ),
               child: Text(
-                imageItem.source.toUpperCase(),
+                imageItem.source.toString().toUpperCase(),
                 style: const TextStyle(
                   color: Colors.white,
-                  fontSize: 10,
+                  fontSize: 9,
                   fontWeight: FontWeight.bold,
                 ),
               ),
@@ -418,12 +549,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
     return Container(
       key: ValueKey(imageItem.id),
-      margin: const EdgeInsets.only(bottom: 12),
-      height: 100,
+      margin: const EdgeInsets.only(bottom: 10),
+      height: 90,
       decoration: BoxDecoration(
-        color: AppTheme.bgWhite,
+        color: Theme.of(context).colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: AppTheme.dividerColor),
+        border: Border.all(color: Theme.of(context).dividerColor),
         boxShadow: [
           BoxShadow(
             color: Colors.black.withValues(alpha: 0.04),
@@ -447,8 +578,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
             ),
           ),
           SizedBox(
-            width: 80,
-            height: 100,
+            width: 70,
+            height: 90,
             child: Stack(
               fit: StackFit.expand,
               children: [
@@ -458,22 +589,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   cacheWidth: 200,
                   cacheHeight: 200,
                   filterQuality: FilterQuality.medium,
-                  errorBuilder: (context, error, stackTrace) => Container(
-                    color: AppTheme.bgLight,
-                    child: const Icon(
-                      Icons.broken_image,
-                      color: AppTheme.textSecondary,
-                    ),
-                  ),
                 ),
                 Positioned(
-                  top: 6,
-                  left: 6,
+                  top: 4,
+                  left: 4,
                   child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 2,
-                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
                     decoration: BoxDecoration(
                       color: AppTheme.primaryColor,
                       borderRadius: BorderRadius.circular(4),
@@ -482,8 +603,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
                       '${index + 1}',
                       style: const TextStyle(
                         color: Colors.white,
+                        fontSize: 10,
                         fontWeight: FontWeight.bold,
-                        fontSize: 11,
                       ),
                     ),
                   ),
@@ -500,17 +621,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 Text(
                   'Page ${index + 1}',
                   style: const TextStyle(
-                    fontWeight: FontWeight.w600,
-                    fontSize: 15,
-                    color: AppTheme.textPrimary,
+                    fontWeight: FontWeight.bold,
+                    fontSize: 14,
                   ),
                 ),
                 const SizedBox(height: 4),
                 Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 6,
-                    vertical: 2,
-                  ),
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                   decoration: BoxDecoration(
                     color: (imageItem.source == 'camera'
                             ? AppTheme.primaryColor
@@ -532,33 +649,32 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ],
             ),
           ),
+          IconButton(
+            icon: const Icon(Icons.tune_rounded, size: 20),
+            tooltip: 'Edit Page',
+            onPressed: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
+          ),
           Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               SizedBox(
-                height: 36,
-                width: 36,
+                height: 32,
+                width: 32,
                 child: IconButton(
-                  iconSize: 20,
+                  iconSize: 18,
                   padding: EdgeInsets.zero,
-                  onPressed: canMoveUp
-                      ? () => _swapImages(index, index - 1)
-                      : null,
+                  onPressed: canMoveUp ? () => _swapImages(index, index - 1) : null,
                   icon: const Icon(Icons.arrow_upward),
-                  tooltip: 'Move Up',
                 ),
               ),
               SizedBox(
-                height: 36,
-                width: 36,
+                height: 32,
+                width: 32,
                 child: IconButton(
-                  iconSize: 20,
+                  iconSize: 18,
                   padding: EdgeInsets.zero,
-                  onPressed: canMoveDown
-                      ? () => _swapImages(index, index + 1)
-                      : null,
+                  onPressed: canMoveDown ? () => _swapImages(index, index + 1) : null,
                   icon: const Icon(Icons.arrow_downward),
-                  tooltip: 'Move Down',
                 ),
               ),
             ],

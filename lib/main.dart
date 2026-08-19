@@ -16,6 +16,7 @@ import 'features/home/source_selection_screen.dart';
 import 'features/camera/camera_screen.dart';
 import 'features/image_selection/gallery_screen.dart';
 import 'features/pdf_generation/review_screen.dart';
+import 'features/pdf_generation/preview_screen.dart';
 import 'features/pdf_generation/pdf_generation_screen.dart';
 import 'features/pdf_result/result_screen.dart';
 
@@ -386,6 +387,9 @@ class _MyAppState extends State<MyApp> {
 
               '/review': (context) =>
                   const ReviewScreen(),
+
+              '/preview': (context) =>
+                  const PreviewScreen(),
 
               '/pdf-generation':
                   (context) =>

@@ -399,18 +399,16 @@ class _CameraScreenState extends State<CameraScreen> {
               bottom: 0,
               left: 0,
               right: 0,
-
               child: SafeArea(
                 child: Container(
-                  padding: EdgeInsets.all(
-                    ResponsiveHelper.getGridSpacing(context),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 20,
                   ),
-
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(
                       alpha: 0.78,
                     ),
-
                     border: Border(
                       top: BorderSide(
                         color: Colors.white.withValues(
@@ -419,215 +417,125 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
                   ),
-
-                  child: Column(
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
                       // ==================================================
-                      // CAPTURE BUTTON
+                      // GALLERY SHORTCUT
                       // ==================================================
-
-                      Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.center,
-                        children: [
-                          GestureDetector(
-                            onTap: _capturePhoto,
-
+                      Flexible(
+                        child: Center(
+                          child: InkWell(
+                            onTap: _goToGallery,
+                            borderRadius: BorderRadius.circular(16),
                             child: Container(
-                              width:
-                                  ResponsiveHelper.isTablet(
-                                    context,
-                                  )
-                                      ? 80.0
-                                      : 70.0,
-
-                              height:
-                                  ResponsiveHelper.isTablet(
-                                    context,
-                                  )
-                                      ? 80.0
-                                      : 70.0,
-
+                              padding: const EdgeInsets.all(12),
                               decoration: BoxDecoration(
-                                color: AppTheme.primaryColor,
-                                shape: BoxShape.circle,
-
+                                color: Colors.white.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(16),
                                 border: Border.all(
-                                  color: Colors.white
-                                      .withValues(
-                                    alpha: 0.90,
-                                  ),
-                                  width: 4,
+                                  color: Colors.white.withValues(alpha: 0.20),
                                 ),
+                              ),
+                              child: const Icon(
+                                Icons.photo_library_outlined,
+                                color: Colors.white,
+                                size: 26,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
 
-                                boxShadow: [
-                                  BoxShadow(
-                                    color: AppTheme.primaryColor
-                                        .withValues(
-                                      alpha: 0.50,
-                                    ),
-                                    blurRadius: 18,
-                                    spreadRadius: 3,
+                      // ==================================================
+                      // SHUTTER CAPTURE BUTTON
+                      // ==================================================
+                      GestureDetector(
+                        onTap: _capturePhoto,
+                        child: Container(
+                          width: 74,
+                          height: 74,
+                          decoration: BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            shape: BoxShape.circle,
+                            border: Border.all(
+                              color: Colors.white.withValues(alpha: 0.90),
+                              width: 4,
+                            ),
+                            boxShadow: [
+                              BoxShadow(
+                                color: AppTheme.primaryColor.withValues(alpha: 0.50),
+                                blurRadius: 18,
+                                spreadRadius: 3,
+                              ),
+                            ],
+                          ),
+                          child: const Center(
+                            child: Icon(
+                              Icons.camera_alt_rounded,
+                              color: Colors.white,
+                              size: 32,
+                            ),
+                          ),
+                        ),
+                      ),
+
+                      // ==================================================
+                      // DONE / REVIEW BUTTON
+                      // ==================================================
+                      Flexible(
+                        child: Center(
+                          child: InkWell(
+                            onTap: _captureCount > 0 ? _goToReview : null,
+                            borderRadius: BorderRadius.circular(16),
+                            child: AnimatedContainer(
+                              duration: const Duration(milliseconds: 200),
+                              padding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 12,
+                              ),
+                              decoration: BoxDecoration(
+                                color: _captureCount > 0
+                                    ? AppTheme.successColor
+                                    : Colors.white.withValues(alpha: 0.10),
+                                borderRadius: BorderRadius.circular(16),
+                                boxShadow: _captureCount > 0
+                                    ? [
+                                        BoxShadow(
+                                          color: AppTheme.successColor.withValues(alpha: 0.4),
+                                          blurRadius: 10,
+                                          offset: const Offset(0, 3),
+                                        ),
+                                      ]
+                                    : null,
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  Icon(
+                                    Icons.check_rounded,
+                                    color: _captureCount > 0
+                                        ? Colors.white
+                                        : Colors.white38,
+                                    size: 22,
                                   ),
+                                  if (_captureCount > 0) ...[
+                                    const SizedBox(width: 4),
+                                    Text(
+                                      '$_captureCount',
+                                      style: const TextStyle(
+                                        color: Colors.white,
+                                        fontWeight: FontWeight.bold,
+                                        fontSize: 15,
+                                      ),
+                                    ),
+                                  ],
                                 ],
                               ),
-
-                              child: Center(
-                                child: Icon(
-                                  Icons.camera_alt_rounded,
-                                  color: Colors.white,
-                                  size:
-                                      ResponsiveHelper.isTablet(
-                                    context,
-                                  )
-                                          ? 36
-                                          : 32,
-                                ),
-                              ),
                             ),
                           ),
-                        ],
-                      ),
-
-                      SizedBox(
-                        height:
-                            ResponsiveHelper.getGridSpacing(
-                              context,
-                            ),
-                      ),
-
-                      // ==================================================
-                      // BOTTOM BUTTONS
-                      // ==================================================
-
-                      Row(
-                        mainAxisAlignment:
-                            MainAxisAlignment.spaceEvenly,
-                        children: [
-                          // ==============================================
-                          // GALLERY BUTTON
-                          // ==============================================
-
-                          Expanded(
-                            child: SizedBox(
-                              height:
-                                  ResponsiveHelper
-                                      .getResponsiveButtonHeight(
-                                context,
-                              ) *
-                                  0.75,
-
-                              child: OutlinedButton.icon(
-                                onPressed: _goToGallery,
-
-                                icon: const Icon(
-                                  Icons.photo_library_outlined,
-                                  color: Colors.white,
-                                ),
-
-                                label: Text(
-                                  'Gallery',
-                                  style: TextStyle(
-                                    color: Colors.white,
-                                    fontSize:
-                                        ResponsiveHelper
-                                            .getResponsiveFontSize(
-                                      context,
-                                      mobileSize: 13,
-                                      tabletSize: 14,
-                                      desktopSize: 15,
-                                    ),
-                                  ),
-                                ),
-
-                                style: OutlinedButton.styleFrom(
-                                  side: BorderSide(
-                                    color: Colors.white
-                                        .withValues(
-                                      alpha: 0.70,
-                                    ),
-                                  ),
-
-                                  shape:
-                                      RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-
-                          SizedBox(
-                            width:
-                                ResponsiveHelper
-                                        .getGridSpacing(context) *
-                                    0.5,
-                          ),
-
-                          // ==============================================
-                          // DONE BUTTON
-                          // ==============================================
-
-                          Expanded(
-                            child: SizedBox(
-                              height:
-                                  ResponsiveHelper
-                                      .getResponsiveButtonHeight(
-                                context,
-                              ) *
-                                  0.75,
-
-                              child: ElevatedButton.icon(
-                                onPressed: _captureCount > 0
-                                    ? _goToReview
-                                    : null,
-
-                                icon: const Icon(
-                                  Icons.check_rounded,
-                                ),
-
-                                label: Text(
-                                  AppConstants.done,
-                                  style: TextStyle(
-                                    fontSize:
-                                        ResponsiveHelper
-                                            .getResponsiveFontSize(
-                                      context,
-                                      mobileSize: 13,
-                                      tabletSize: 14,
-                                      desktopSize: 15,
-                                    ),
-                                  ),
-                                ),
-
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor:
-                                      _captureCount > 0
-                                          ? AppTheme.successColor
-                                          : Colors.grey.shade700,
-
-                                  foregroundColor:
-                                      Colors.white,
-
-                                  disabledBackgroundColor:
-                                      Colors.grey.shade800,
-
-                                  disabledForegroundColor:
-                                      Colors.white54,
-
-                                  elevation: 0,
-
-                                  shape:
-                                      RoundedRectangleBorder(
-                                    borderRadius:
-                                        BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                        ),
                       ),
                     ],
                   ),
