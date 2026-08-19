@@ -5,16 +5,19 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../core/utils/file_utils.dart';
 import '../../models/pdf_document.dart' as model;
 
 class PdfViewerScreen extends StatefulWidget {
   final String filePath;
   final String fileName;
+  final bool isExternal;
 
   const PdfViewerScreen({
     super.key,
     required this.filePath,
     required this.fileName,
+    this.isExternal = false,
   });
 
   @override
@@ -26,6 +29,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   int _actualPageCount = 0;
   int _currentPage = 1;
   bool _isLoading = true;
+  bool _isSavingToDocVault = false;
   String? _errorMessage;
 
   @override
@@ -116,6 +120,56 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
   }
 
+  Future<void> _saveToDocVaultLibrary() async {
+    if (_isSavingToDocVault) return;
+    setState(() => _isSavingToDocVault = true);
+
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final srcFile = File(widget.filePath);
+      if (!await srcFile.exists()) {
+        throw Exception('Source file not found');
+      }
+
+      final destPath = await FileUtils.getFullPdfPath(widget.fileName);
+      final destFile = File(destPath);
+      await destFile.parent.create(recursive: true);
+      await srcFile.copy(destPath);
+
+      if (!mounted) return;
+      final provider = context.read<PdfManagerProvider>();
+      await provider.registerGeneratedPdf(
+        filePath: destPath,
+        fileName: widget.fileName,
+        pageCount: _actualPageCount > 0 ? _actualPageCount : 1,
+      );
+
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Saved "${widget.fileName}" to DocVault'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.successColor,
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        messenger.showSnackBar(
+          SnackBar(
+            content: Text('Failed to save to DocVault: $e'),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.errorColor,
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isSavingToDocVault = false);
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -151,6 +205,21 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ],
         ),
         actions: [
+          if (widget.isExternal)
+            IconButton(
+              icon: _isSavingToDocVault
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: AppTheme.primaryColor,
+                      ),
+                    )
+                  : const Icon(Icons.bookmark_add_outlined),
+              onPressed: _saveToDocVaultLibrary,
+              tooltip: 'Save to DocVault',
+            ),
           IconButton(
             icon: const Icon(Icons.share_outlined),
             onPressed: _sharePdf,

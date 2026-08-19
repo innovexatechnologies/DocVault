@@ -204,6 +204,8 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     final provider = context.read<PdfManagerProvider>();
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => SortOptionsBottomSheet(
         currentOption: provider.sortOption,
@@ -217,6 +219,8 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
   void _showActionsBottomSheet(PdfDocument doc) {
     showModalBottomSheet(
       context: context,
+      isScrollControlled: true,
+      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => PdfActionsBottomSheet(
         document: doc,

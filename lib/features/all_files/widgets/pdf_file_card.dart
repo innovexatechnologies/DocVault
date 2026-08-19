@@ -57,8 +57,9 @@ class PdfFileCard extends StatelessWidget {
           onLongPress: onLongPress,
           borderRadius: BorderRadius.circular(16),
           child: Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
             child: Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
               children: [
                 // Selection Checkbox or File Icon
                 if (isSelectionMode)
@@ -90,10 +91,11 @@ class PdfFileCard extends StatelessWidget {
 
                 // PDF Thumbnail Icon with Badge
                 Stack(
+                  clipBehavior: Clip.none,
                   children: [
                     Container(
-                      width: 50,
-                      height: 54,
+                      width: 48,
+                      height: 52,
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
@@ -140,51 +142,50 @@ class PdfFileCard extends StatelessWidget {
 
                 const SizedBox(width: 14),
 
-                // File Info
+                // File Info with 2-line flexible filename
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       Text(
                         document.fileName,
-                        maxLines: 1,
+                        maxLines: 2,
+                        softWrap: true,
                         overflow: TextOverflow.ellipsis,
                         style: TextStyle(
-                          fontSize: 15,
+                          fontSize: 14,
                           fontWeight: FontWeight.w700,
+                          height: 1.25,
                           color: colorScheme.onSurface,
                         ),
                       ),
-                      const SizedBox(height: 5),
-                      Row(
+                      const SizedBox(height: 4),
+                      Wrap(
+                        crossAxisAlignment: WrapCrossAlignment.center,
+                        spacing: 6,
+                        runSpacing: 2,
                         children: [
                           Text(
                             document.formattedFileSize,
-                            style: TextStyle(
-                              fontSize: 12,
-                              fontWeight: FontWeight.w600,
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w700,
                               color: AppTheme.primaryColor,
                             ),
                           ),
-                          Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 6),
-                            child: Text(
-                              '•',
-                              style: TextStyle(
-                                color: colorScheme.onSurface.withValues(alpha: 0.35),
-                                fontSize: 12,
-                              ),
+                          Text(
+                            '•',
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withValues(alpha: 0.35),
+                              fontSize: 11,
                             ),
                           ),
-                          Expanded(
-                            child: Text(
-                              document.formattedCreatedDate,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: TextStyle(
-                                fontSize: 11,
-                                color: colorScheme.onSurface.withValues(alpha: 0.55),
-                              ),
+                          Text(
+                            document.formattedCreatedDate,
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: colorScheme.onSurface.withValues(alpha: 0.55),
                             ),
                           ),
                         ],

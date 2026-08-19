@@ -176,9 +176,8 @@ class _ResultScreenState extends State<ResultScreen> {
 
   void _navigateToAllFiles() {
     Navigator.of(context).pushNamedAndRemoveUntil(
-      '/home',
+      '/all-files',
       (route) => false,
-      arguments: {'initialIndex': 1},
     );
   }
 
@@ -337,10 +336,11 @@ class _ResultScreenState extends State<ResultScreen> {
                               children: [
                                 Text(
                                   _currentFileName,
-                                  maxLines: 1,
+                                  maxLines: 2,
+                                  softWrap: true,
                                   overflow: TextOverflow.ellipsis,
                                   style: TextStyle(
-                                    fontSize: 16,
+                                    fontSize: 15,
                                     fontWeight: FontWeight.w700,
                                     color: colorScheme.onSurface,
                                   ),

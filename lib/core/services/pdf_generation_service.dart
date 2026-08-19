@@ -71,7 +71,15 @@ class PdfGenerationService {
       final fileName = await FileUtils.generatePdfFileName();
       final filePath = await FileUtils.getFullPdfPath(fileName);
       final file = File(filePath);
-      await file.writeAsBytes(await pdf.save());
+      await file.parent.create(recursive: true);
+
+      final pdfBytes = await pdf.save();
+      await file.writeAsBytes(pdfBytes, flush: true);
+
+      // Verify actual physical persistence on phone storage
+      if (!await file.exists() || await file.length() == 0) {
+        throw Exception('Failed to write PDF to local storage: file is missing or empty.');
+      }
 
       // Register persistent metadata
       await PdfStorageService().saveDocument(

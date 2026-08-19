@@ -17,82 +17,98 @@ class SortOptionsBottomSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return Container(
-      padding: const EdgeInsets.only(top: 16, bottom: 24),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: screenHeight * 0.80,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          const SizedBox(height: 16),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(top: 12, bottom: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Icon(Icons.sort_rounded, color: AppTheme.primaryColor),
-                const SizedBox(width: 10),
-                Text(
-                  'Sort Files By',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.w700,
-                    color: colorScheme.onSurface,
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
                 ),
+                const SizedBox(height: 14),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.sort_rounded, color: AppTheme.primaryColor),
+                      const SizedBox(width: 10),
+                      Text(
+                        'Sort Files By',
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 10),
+                const Divider(height: 1),
+                ...PdfSortOption.values.map((option) {
+                  final isSelected = option == currentOption;
+                  return ListTile(
+                    dense: true,
+                    contentPadding: const EdgeInsets.symmetric(
+                      horizontal: 20,
+                      vertical: 2,
+                    ),
+                    leading: Icon(
+                      _getSortIcon(option),
+                      color: isSelected
+                          ? AppTheme.primaryColor
+                          : colorScheme.onSurface.withValues(alpha: 0.6),
+                      size: 22,
+                    ),
+                    title: Text(
+                      option.label,
+                      style: TextStyle(
+                        fontSize: 14,
+                        fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
+                        color: isSelected
+                            ? AppTheme.primaryColor
+                            : colorScheme.onSurface,
+                      ),
+                    ),
+                    trailing: isSelected
+                        ? const Icon(
+                            Icons.check_circle_rounded,
+                            color: AppTheme.primaryColor,
+                            size: 20,
+                          )
+                        : null,
+                    onTap: () {
+                      onSelect(option);
+                      Navigator.of(context).pop();
+                    },
+                  );
+                }),
               ],
             ),
           ),
-          const SizedBox(height: 12),
-          const Divider(height: 1),
-          ...PdfSortOption.values.map((option) {
-            final isSelected = option == currentOption;
-            return ListTile(
-              contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
-              leading: Icon(
-                _getSortIcon(option),
-                color: isSelected
-                    ? AppTheme.primaryColor
-                    : colorScheme.onSurface.withValues(alpha: 0.6),
-                size: 22,
-              ),
-              title: Text(
-                option.label,
-                style: TextStyle(
-                  fontSize: 15,
-                  fontWeight: isSelected ? FontWeight.w700 : FontWeight.w500,
-                  color: isSelected
-                      ? AppTheme.primaryColor
-                      : colorScheme.onSurface,
-                ),
-              ),
-              trailing: isSelected
-                  ? const Icon(
-                      Icons.check_circle_rounded,
-                      color: AppTheme.primaryColor,
-                      size: 22,
-                    )
-                  : null,
-              onTap: () {
-                onSelect(option);
-                Navigator.of(context).pop();
-              },
-            );
-          }),
-        ],
+        ),
       ),
     );
   }

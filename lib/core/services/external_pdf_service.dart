@@ -1,11 +1,15 @@
+import 'dart:io';
 import 'package:flutter/services.dart';
-
 import '../utils/file_utils.dart';
 
 class ExternalPdfService {
   static const MethodChannel _channel =
       MethodChannel('docvault/pdf_intent');
 
+  /// Processes an incoming external PDF content/file URI.
+  /// Reads the bytes natively and writes them to a temporary cache location
+  /// so that the in-app viewer can read it without automatically adding it
+  /// to the persistent library (All Files).
   static Future<Map<String, dynamic>> importPdfFromUri(
     String uri,
   ) async {
@@ -17,7 +21,7 @@ class ExternalPdfService {
     );
 
     if (result == null) {
-      throw Exception('PDF import failed.');
+      throw Exception('Failed to read external PDF document.');
     }
 
     final data = Map<Object?, Object?>.from(result);
@@ -27,7 +31,7 @@ class ExternalPdfService {
     );
 
     final originalFileName =
-        data['fileName']?.toString() ?? 'Imported_PDF.pdf';
+        data['fileName']?.toString() ?? 'External_Document.pdf';
 
     String fileName = _sanitizeFileName(originalFileName);
 
@@ -35,50 +39,18 @@ class ExternalPdfService {
       fileName = '$fileName.pdf';
     }
 
-    fileName = await _getUniqueFileName(fileName);
-
-    // IMPORTANT:
-    // This uses the exact same storage location
-    // used by your generated PDFs.
-    final filePath = await FileUtils.getFullPdfPath(fileName);
-
-    final file = await FileUtils.getPdfFile(filePath);
-
+    // Save to Cache directory (temporary, not in permanent All Files catalog)
+    final cacheDir = await FileUtils.getCacheDirectory();
+    final tempFilePath = '${cacheDir.path}/$fileName';
+    final file = File(tempFilePath);
+    
+    await file.parent.create(recursive: true);
     await file.writeAsBytes(bytes, flush: true);
 
     return {
-      'filePath': filePath,
+      'filePath': tempFilePath,
       'fileName': fileName,
     };
-  }
-
-  static Future<String> _getUniqueFileName(
-    String fileName,
-  ) async {
-    String name = fileName;
-
-    final dotIndex = fileName.lastIndexOf('.');
-
-    final baseName = dotIndex > 0
-        ? fileName.substring(0, dotIndex)
-        : fileName;
-
-    final extension = dotIndex > 0
-        ? fileName.substring(dotIndex)
-        : '.pdf';
-
-    int counter = 1;
-
-    while (true) {
-      final path = await FileUtils.getFullPdfPath(name);
-
-      if (!await FileUtils.pdfFileExists(path)) {
-        return name;
-      }
-
-      name = '${baseName}_$counter$extension';
-      counter++;
-    }
   }
 
   static String _sanitizeFileName(String fileName) {
@@ -90,7 +62,7 @@ class ExternalPdfService {
         .trim();
 
     if (cleaned.isEmpty) {
-      return 'Imported_PDF.pdf';
+      return 'External_Document.pdf';
     }
 
     return cleaned;

@@ -27,137 +27,156 @@ class PdfActionsBottomSheet extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final screenHeight = MediaQuery.of(context).size.height;
 
-    return Container(
-      padding: const EdgeInsets.only(top: 16, bottom: 28),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-        borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Center(
-            child: Container(
-              width: 40,
-              height: 4,
-              decoration: BoxDecoration(
-                color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
-                borderRadius: BorderRadius.circular(2),
-              ),
-            ),
+    return SafeArea(
+      top: false,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(
+          maxHeight: screenHeight * 0.85,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
           ),
-          const SizedBox(height: 16),
-          // Document Header Info
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
+          child: SingleChildScrollView(
+            physics: const BouncingScrollPhysics(),
+            padding: const EdgeInsets.only(top: 12, bottom: 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Container(
-                  width: 44,
-                  height: 44,
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor.withValues(
-                      alpha: isDark ? 0.20 : 0.12,
+                // Drag handle pill
+                Center(
+                  child: Container(
+                    width: 38,
+                    height: 4,
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                      borderRadius: BorderRadius.circular(2),
                     ),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: const Icon(
-                    Icons.picture_as_pdf_rounded,
-                    color: AppTheme.primaryColor,
-                    size: 24,
                   ),
                 ),
-                const SizedBox(width: 14),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
+
+                const SizedBox(height: 14),
+
+                // Document Header Info with 2-line flexible filename
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 20),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Text(
-                        document.fileName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.w700,
-                          color: colorScheme.onSurface,
+                      Container(
+                        width: 44,
+                        height: 44,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(
+                            alpha: isDark ? 0.20 : 0.12,
+                          ),
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: const Icon(
+                          Icons.picture_as_pdf_rounded,
+                          color: AppTheme.primaryColor,
+                          size: 24,
                         ),
                       ),
-                      const SizedBox(height: 2),
-                      Text(
-                        '${document.formattedFileSize} • ${document.pageCount} ${document.pageCount == 1 ? 'page' : 'pages'}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
+                      const SizedBox(width: 14),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              document.fileName,
+                              maxLines: 2,
+                              softWrap: true,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.w700,
+                                color: colorScheme.onSurface,
+                              ),
+                            ),
+                            const SizedBox(height: 2),
+                            Text(
+                              '${document.formattedFileSize} • ${document.pageCount} ${document.pageCount == 1 ? 'page' : 'pages'}',
+                              style: TextStyle(
+                                fontSize: 12,
+                                color: colorScheme.onSurface.withValues(alpha: 0.6),
+                              ),
+                            ),
+                          ],
                         ),
                       ),
                     ],
                   ),
                 ),
+
+                const SizedBox(height: 14),
+                const Divider(height: 1),
+                const SizedBox(height: 6),
+
+                _buildActionTile(
+                  context,
+                  icon: Icons.visibility_outlined,
+                  title: 'Open',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onOpen();
+                  },
+                ),
+                _buildActionTile(
+                  context,
+                  icon: Icons.share_outlined,
+                  title: 'Share',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onShare();
+                  },
+                ),
+                _buildActionTile(
+                  context,
+                  icon: Icons.edit_outlined,
+                  title: 'Rename',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onRename();
+                  },
+                ),
+                _buildActionTile(
+                  context,
+                  icon: Icons.download_rounded,
+                  title: 'Save to Device',
+                  subtitle: 'Export copy to phone storage',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onExport();
+                  },
+                ),
+                _buildActionTile(
+                  context,
+                  icon: Icons.info_outline_rounded,
+                  title: 'Details',
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onDetails();
+                  },
+                ),
+                _buildActionTile(
+                  context,
+                  icon: Icons.delete_outline_rounded,
+                  title: 'Delete',
+                  isDestructive: true,
+                  onTap: () {
+                    Navigator.of(context).pop();
+                    onDelete();
+                  },
+                ),
               ],
             ),
           ),
-          const SizedBox(height: 16),
-          const Divider(height: 1),
-          const SizedBox(height: 8),
-          _buildActionTile(
-            context,
-            icon: Icons.visibility_outlined,
-            title: 'Open',
-            onTap: () {
-              Navigator.of(context).pop();
-              onOpen();
-            },
-          ),
-          _buildActionTile(
-            context,
-            icon: Icons.share_outlined,
-            title: 'Share',
-            onTap: () {
-              Navigator.of(context).pop();
-              onShare();
-            },
-          ),
-          _buildActionTile(
-            context,
-            icon: Icons.edit_outlined,
-            title: 'Rename',
-            onTap: () {
-              Navigator.of(context).pop();
-              onRename();
-            },
-          ),
-          _buildActionTile(
-            context,
-            icon: Icons.download_rounded,
-            title: 'Save to Device',
-            subtitle: 'Export copy to phone storage',
-            onTap: () {
-              Navigator.of(context).pop();
-              onExport();
-            },
-          ),
-          _buildActionTile(
-            context,
-            icon: Icons.info_outline_rounded,
-            title: 'Details',
-            onTap: () {
-              Navigator.of(context).pop();
-              onDetails();
-            },
-          ),
-          _buildActionTile(
-            context,
-            icon: Icons.delete_outline_rounded,
-            title: 'Delete',
-            isDestructive: true,
-            onTap: () {
-              Navigator.of(context).pop();
-              onDelete();
-            },
-          ),
-        ],
+        ),
       ),
     );
   }
@@ -172,32 +191,32 @@ class PdfActionsBottomSheet extends StatelessWidget {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final isDark = theme.brightness == Brightness.dark;
 
     final color = isDestructive ? AppTheme.errorColor : colorScheme.onSurface;
 
     return ListTile(
-      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 2),
+      dense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 0),
       leading: Container(
-        width: 38,
-        height: 38,
+        width: 36,
+        height: 36,
         decoration: BoxDecoration(
           color: isDestructive
               ? AppTheme.errorColor.withValues(alpha: 0.10)
-              : (Theme.of(context).brightness == Brightness.dark
-                  ? AppTheme.bgDark
-                  : AppTheme.bgLight),
+              : (isDark ? AppTheme.bgDark : AppTheme.bgLight),
           borderRadius: BorderRadius.circular(10),
         ),
         child: Icon(
           icon,
           color: color,
-          size: 20,
+          size: 19,
         ),
       ),
       title: Text(
         title,
         style: TextStyle(
-          fontSize: 15,
+          fontSize: 14,
           fontWeight: isDestructive ? FontWeight.w700 : FontWeight.w600,
           color: color,
         ),
@@ -206,7 +225,7 @@ class PdfActionsBottomSheet extends StatelessWidget {
           ? Text(
               subtitle,
               style: TextStyle(
-                fontSize: 12,
+                fontSize: 11,
                 color: colorScheme.onSurface.withValues(alpha: 0.5),
               ),
             )

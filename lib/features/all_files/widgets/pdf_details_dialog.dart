@@ -30,6 +30,8 @@ class PdfDetailsDialog extends StatelessWidget {
           color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
         ),
       ),
+      titlePadding: const EdgeInsets.fromLTRB(20, 20, 20, 10),
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
       title: Row(
         children: [
           Container(
@@ -50,60 +52,64 @@ class PdfDetailsDialog extends StatelessWidget {
           Text(
             'Document Details',
             style: TextStyle(
-              fontSize: 18,
+              fontSize: 17,
               fontWeight: FontWeight.w700,
               color: colorScheme.onSurface,
             ),
           ),
         ],
       ),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _buildDetailRow(
-              context,
-              icon: Icons.title_rounded,
-              label: 'File Name',
-              value: document.fileName,
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow(
-              context,
-              icon: Icons.data_usage_rounded,
-              label: 'File Size',
-              value: '${document.formattedFileSize} (${document.fileSizeBytes} bytes)',
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow(
-              context,
-              icon: Icons.auto_stories_rounded,
-              label: 'Page Count',
-              value: '${document.pageCount} ${document.pageCount == 1 ? 'page' : 'pages'}',
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow(
-              context,
-              icon: Icons.calendar_today_rounded,
-              label: 'Created',
-              value: document.formattedCreatedDate,
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow(
-              context,
-              icon: Icons.update_rounded,
-              label: 'Modified',
-              value: document.formattedModifiedDate,
-            ),
-            const SizedBox(height: 12),
-            _buildDetailRow(
-              context,
-              icon: Icons.folder_outlined,
-              label: 'Storage Path',
-              value: document.filePath,
-              isPath: true,
-            ),
-          ],
+      content: ConstrainedBox(
+        constraints: const BoxConstraints(maxWidth: 400),
+        child: SingleChildScrollView(
+          physics: const BouncingScrollPhysics(),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              _buildDetailRow(
+                context,
+                icon: Icons.title_rounded,
+                label: 'File Name',
+                value: document.fileName,
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                context,
+                icon: Icons.data_usage_rounded,
+                label: 'File Size',
+                value: '${document.formattedFileSize} (${document.fileSizeBytes} bytes)',
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                context,
+                icon: Icons.auto_stories_rounded,
+                label: 'Page Count',
+                value: '${document.pageCount} ${document.pageCount == 1 ? 'page' : 'pages'}',
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                context,
+                icon: Icons.calendar_today_rounded,
+                label: 'Created',
+                value: document.formattedCreatedDate,
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                context,
+                icon: Icons.update_rounded,
+                label: 'Modified',
+                value: document.formattedModifiedDate,
+              ),
+              const SizedBox(height: 10),
+              _buildDetailRow(
+                context,
+                icon: Icons.folder_outlined,
+                label: 'Storage Path',
+                value: document.filePath,
+                isPath: true,
+              ),
+            ],
+          ),
         ),
       ),
       actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
@@ -163,6 +169,7 @@ class PdfDetailsDialog extends StatelessWidget {
     final isDark = theme.brightness == Brightness.dark;
 
     return Container(
+      width: double.infinity,
       padding: const EdgeInsets.all(12),
       decoration: BoxDecoration(
         color: isDark ? AppTheme.bgDark : AppTheme.bgLight,
@@ -193,7 +200,7 @@ class PdfDetailsDialog extends StatelessWidget {
                   ),
                 ),
                 const SizedBox(height: 3),
-                Text(
+                SelectableText(
                   value,
                   style: TextStyle(
                     fontSize: isPath ? 11 : 13,

@@ -242,29 +242,32 @@ class _ReviewScreenState extends State<ReviewScreen> {
                                 ),
                               ],
                             )
-                          : SingleChildScrollView(
-                              scrollDirection: Axis.horizontal,
-                              child: Row(
-                                children: [
-                                  ElevatedButton.icon(
+                          : Row(
+                              children: [
+                                Expanded(
+                                  child: ElevatedButton.icon(
                                     onPressed: () => _addMoreImages('camera'),
-                                    icon: const Icon(Icons.camera_alt),
+                                    icon: const Icon(Icons.camera_alt, size: 18),
                                     label: const Text('Camera'),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.primaryColor,
+                                      foregroundColor: Colors.white,
                                     ),
                                   ),
-                                  const SizedBox(width: 8),
-                                  ElevatedButton.icon(
+                                ),
+                                const SizedBox(width: 8),
+                                Expanded(
+                                  child: ElevatedButton.icon(
                                     onPressed: () => _addMoreImages('gallery'),
-                                    icon: const Icon(Icons.image),
+                                    icon: const Icon(Icons.image, size: 18),
                                     label: const Text('Gallery'),
                                     style: ElevatedButton.styleFrom(
                                       backgroundColor: AppTheme.accentColor,
+                                      foregroundColor: AppTheme.bgDark,
                                     ),
                                   ),
-                                ],
-                              ),
+                                ),
+                              ],
                             ),
                       SizedBox(
                         height: ResponsiveHelper.isMobile(context) ? 10 : 16,

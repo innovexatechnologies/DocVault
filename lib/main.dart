@@ -30,6 +30,9 @@ void main() {
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
 
+  static final GlobalKey<NavigatorState> navigatorKey =
+      GlobalKey<NavigatorState>();
+
   @override
   State<MyApp> createState() => _MyAppState();
 }
@@ -47,7 +50,6 @@ class _MyAppState extends State<MyApp> {
   // ============================================================
 
   bool _isOpeningExternalPdf = false;
-
   String? _lastProcessedUri;
 
   // ============================================================
@@ -107,7 +109,7 @@ class _MyAppState extends State<MyApp> {
       // Give Flutter/Splash time to initialize.
       await Future.delayed(
         const Duration(
-          milliseconds: 700,
+          milliseconds: 800,
         ),
       );
 
@@ -239,14 +241,15 @@ class _MyAppState extends State<MyApp> {
       _lastProcessedUri = uri;
 
       // ========================================================
-      // OPEN PDF VIEWER
+      // OPEN PDF VIEWER VIA GLOBAL NAVIGATOR KEY
       // ========================================================
 
-      await Navigator.of(context).push(
+      MyApp.navigatorKey.currentState?.push(
         MaterialPageRoute(
           builder: (_) => PdfViewerScreen(
             filePath: savedPath,
             fileName: fileName,
+            isExternal: true,
           ),
         ),
       );
@@ -255,12 +258,8 @@ class _MyAppState extends State<MyApp> {
         'External PDF import error: $e',
       );
 
-      if (!mounted) {
-        return;
-      }
-
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      final messenger = ScaffoldMessenger.maybeOf(context);
+      messenger?.showSnackBar(
         SnackBar(
           content: Text(
             'Unable to open PDF: $e',
@@ -329,6 +328,8 @@ class _MyAppState extends State<MyApp> {
           child,
         ) {
           return MaterialApp(
+            navigatorKey: MyApp.navigatorKey,
+
             // ====================================================
             // APP INFORMATION
             // ====================================================
@@ -366,18 +367,12 @@ class _MyAppState extends State<MyApp> {
                 const SplashScreen(),
 
             // ====================================================
-            // ROUTES
+            // STATIC ROUTES
             // ====================================================
 
             routes: {
               '/splash': (context) =>
                   const SplashScreen(),
-
-              '/home': (context) =>
-                  const MainNavigationScreen(),
-
-              '/all-files': (context) =>
-                  const MainNavigationScreen(initialIndex: 1),
 
               '/source-selection':
                   (context) =>
@@ -401,8 +396,7 @@ class _MyAppState extends State<MyApp> {
             // DYNAMIC ROUTES
             // ====================================================
 
-            onGenerateRoute:
-                (settings) {
+            onGenerateRoute: (settings) {
               if (settings.name == '/home') {
                 int initialIndex = 0;
                 if (settings.arguments is Map) {
@@ -416,18 +410,21 @@ class _MyAppState extends State<MyApp> {
                 );
               }
 
-              if (settings.name ==
-                  '/result') {
+              if (settings.name == '/all-files') {
+                return MaterialPageRoute(
+                  builder: (context) => const MainNavigationScreen(
+                    initialIndex: 1,
+                  ),
+                );
+              }
+
+              if (settings.name == '/result') {
                 final pdfResult =
-                    settings.arguments
-                        as PdfResult;
+                    settings.arguments as PdfResult;
 
                 return MaterialPageRoute(
-                  builder:
-                      (context) =>
-                          ResultScreen(
-                    pdfResult:
-                        pdfResult,
+                  builder: (context) => ResultScreen(
+                    pdfResult: pdfResult,
                   ),
                 );
               }
