@@ -11,6 +11,18 @@ class MainActivity : FlutterActivity() {
 
     private val CHANNEL = "docvault/pdf_intent"
 
+    private var pendingPdfUri: Uri? = null
+
+    // ============================================================
+    // ACTIVITY CREATED
+    // ============================================================
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+
+        pendingPdfUri = getPdfUri(intent)
+    }
+
     // ============================================================
     // FLUTTER ENGINE
     // ============================================================
@@ -33,7 +45,9 @@ class MainActivity : FlutterActivity() {
 
                 "getInitialPdf" -> {
 
-                    val uri = getPdfUri(intent)
+                    val uri =
+                        pendingPdfUri
+                            ?: getPdfUri(intent)
 
                     if (uri != null) {
 
@@ -43,6 +57,8 @@ class MainActivity : FlutterActivity() {
                                 "fileName" to getFileName(uri)
                             )
                         )
+
+                        pendingPdfUri = null
 
                     } else {
 
@@ -111,10 +127,6 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                // ====================================================
-                // UNKNOWN METHOD
-                // ====================================================
-
                 else -> {
                     result.notImplemented()
                 }
@@ -126,18 +138,17 @@ class MainActivity : FlutterActivity() {
     // APP ALREADY OPEN → NEW PDF
     // ============================================================
 
-    override fun onNewIntent(intent: Intent) {
-
+    override fun onNewIntent(
+        intent: Intent
+    ) {
         super.onNewIntent(intent)
 
-        // IMPORTANT:
-        // Android ka latest intent Activity mein save karna
         setIntent(intent)
 
-        val uri = getPdfUri(intent)
+        val uri =
+            getPdfUri(intent)
 
         if (uri != null) {
-
             sendPdfToFlutter(uri)
         }
     }
@@ -146,13 +157,12 @@ class MainActivity : FlutterActivity() {
     // SEND PDF TO FLUTTER
     // ============================================================
 
-    private fun sendPdfToFlutter(uri: Uri) {
+    private fun sendPdfToFlutter(
+        uri: Uri
+    ) {
 
-        val engine = flutterEngine
-
-        if (engine == null) {
-            return
-        }
+        val engine =
+            flutterEngine ?: return
 
         MethodChannel(
             engine.dartExecutor.binaryMessenger,
@@ -170,7 +180,9 @@ class MainActivity : FlutterActivity() {
     // GET PDF URI
     // ============================================================
 
-    private fun getPdfUri(intent: Intent?): Uri? {
+    private fun getPdfUri(
+        intent: Intent?
+    ): Uri? {
 
         if (intent == null) {
             return null
@@ -180,13 +192,14 @@ class MainActivity : FlutterActivity() {
             return null
         }
 
-        val uri = intent.data ?: return null
+        val uri =
+            intent.data ?: return null
 
-        if (isPdf(intent, uri)) {
-            return uri
+        return if (isPdf(intent, uri)) {
+            uri
+        } else {
+            null
         }
-
-        return null
     }
 
     // ============================================================
@@ -198,8 +211,8 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ): Boolean {
 
-        // First check MIME type
-        val mimeType = intent.type
+        val mimeType =
+            intent.type
 
         if (mimeType.equals(
                 "application/pdf",
@@ -209,8 +222,6 @@ class MainActivity : FlutterActivity() {
             return true
         }
 
-        // Some file managers don't provide MIME type.
-        // Therefore check URI as fallback.
         val uriString =
             uri.toString().lowercase()
 
@@ -222,13 +233,11 @@ class MainActivity : FlutterActivity() {
     // GET FILE NAME
     // ============================================================
 
-    private fun getFileName(uri: Uri): String {
+    private fun getFileName(
+        uri: Uri
+    ): String {
 
         var fileName: String? = null
-
-        // ========================================================
-        // CONTENT URI
-        // ========================================================
 
         if (uri.scheme == "content") {
 
@@ -253,50 +262,33 @@ class MainActivity : FlutterActivity() {
                             )
 
                         if (index >= 0) {
-
                             fileName =
                                 it.getString(index)
                         }
                     }
                 }
 
-            } catch (e: Exception) {
-
-                // Ignore and use fallback below
+            } catch (_: Exception) {
+                // Fallback below.
             }
         }
 
-        // ========================================================
-        // FILE URI
-        // ========================================================
-
-        if (fileName.isNullOrEmpty()) {
-
-            if (uri.scheme == "file") {
-
-                fileName =
-                    uri.lastPathSegment
-            }
+        if (fileName.isNullOrEmpty() &&
+            uri.scheme == "file"
+        ) {
+            fileName =
+                uri.lastPathSegment
         }
 
-        // ========================================================
-        // FALLBACK
-        // ========================================================
-
         if (fileName.isNullOrEmpty()) {
-
-            fileName = "Imported_PDF.pdf"
+            fileName =
+                "Imported_PDF.pdf"
         }
-
-        // ========================================================
-        // ENSURE .PDF EXTENSION
-        // ========================================================
 
         if (!fileName!!
                 .lowercase()
                 .endsWith(".pdf")
         ) {
-
             fileName =
                 "$fileName.pdf"
         }
