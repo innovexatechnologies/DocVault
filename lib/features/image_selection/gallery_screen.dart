@@ -7,8 +7,16 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/image_selection_provider.dart';
 
+import '../../models/conversion_type.dart';
+import '../pdf_generation/review_screen.dart';
+
 class GalleryScreen extends StatefulWidget {
-  const GalleryScreen({super.key});
+  final ConversionType conversionType;
+
+  const GalleryScreen({
+    super.key,
+    this.conversionType = ConversionType.pdf,
+  });
 
   @override
   State<GalleryScreen> createState() => _GalleryScreenState();
@@ -19,6 +27,14 @@ class _GalleryScreenState extends State<GalleryScreen> {
 
   bool _isLoading = false;
   String? _errorMessage;
+
+  ConversionType get _effectiveType {
+    final routeArgs = ModalRoute.of(context)?.settings.arguments;
+    if (routeArgs is ConversionType) {
+      return routeArgs;
+    }
+    return widget.conversionType;
+  }
 
   // ==========================================================
   // PICK IMAGES
@@ -50,7 +66,11 @@ class _GalleryScreenState extends State<GalleryScreen> {
       );
 
       // Go to review screen
-      Navigator.of(context).pushReplacementNamed('/review');
+      Navigator.of(context).pushReplacement(
+        MaterialPageRoute(
+          builder: (_) => ReviewScreen(conversionType: _effectiveType),
+        ),
+      );
     } catch (e) {
       if (!mounted) return;
 

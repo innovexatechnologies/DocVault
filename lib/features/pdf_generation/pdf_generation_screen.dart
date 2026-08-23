@@ -1,41 +1,45 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import '../../core/constants/app_constants.dart';
-import '../../core/services/pdf_generation_service.dart';
+import '../../core/services/document_generation_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/image_selection_provider.dart';
+import '../../models/conversion_type.dart';
 import '../../models/pdf_result.dart';
+import '../pdf_result/result_screen.dart';
 
 class PdfGenerationScreen extends StatefulWidget {
-  const PdfGenerationScreen({super.key});
+  final ConversionType conversionType;
+
+  const PdfGenerationScreen({
+    super.key,
+    this.conversionType = ConversionType.pdf,
+  });
 
   @override
   State<PdfGenerationScreen> createState() => _PdfGenerationScreenState();
 }
 
 class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
-  late Future<PdfResult> _pdfGenerationFuture;
-  final _pdfService = PdfGenerationService();
+  late Future<DocumentResult> _generationFuture;
+  final _documentService = DocumentGenerationService();
 
   @override
   void initState() {
     super.initState();
-    _generatePdf();
+    _generateDocument();
   }
 
-  void _generatePdf() {
-    final imagePaths = context
-        .read<ImageSelectionProvider>()
-        .getImageFilePaths();
+  void _generateDocument() {
+    final imagePaths = context.read<ImageSelectionProvider>().getImageFilePaths();
 
-    _pdfGenerationFuture = _pdfService
-        .generatePdfFromImages(imagePaths)
-        .then((result) {
-          return result;
-        })
+    _generationFuture = _documentService
+        .generateDocument(
+          imagePaths: imagePaths,
+          conversionType: widget.conversionType,
+        )
         .catchError((error) {
-          debugPrint('PDF generation error: $error');
+          debugPrint('Document generation error: $error');
           throw error;
         });
   }
@@ -44,12 +48,12 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
   Widget build(BuildContext context) {
     final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
     final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
-
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    final itemUnit = widget.conversionType == ConversionType.ppt ? 'slide(s)' : 'image(s)';
 
-    return FutureBuilder<PdfResult>(
-      future: _pdfGenerationFuture,
+    return FutureBuilder<DocumentResult>(
+      future: _generationFuture,
       builder: (context, snapshot) {
         final isError = snapshot.hasError;
 
@@ -78,231 +82,224 @@ class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
                 if (snapshot.connectionState == ConnectionState.waiting) {
                   return Center(
                     child: SingleChildScrollView(
-                  padding: EdgeInsets.all(responsivePadding),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      SizedBox(
-                        width: ResponsiveHelper.isTablet(context)
-                            ? 100.0
-                            : 80.0,
-                        height: ResponsiveHelper.isTablet(context)
-                            ? 100.0
-                            : 80.0,
-                        child: const CircularProgressIndicator(
-                          color: AppTheme.primaryColor,
-                          strokeWidth: 4,
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding),
-                      Text(
-                        'Generating PDF...',
-                        style: TextStyle(
-                          fontSize: ResponsiveHelper.getResponsiveFontSize(
-                            context,
-                            mobileSize: 17,
-                            tabletSize: 19,
-                            desktopSize: 21,
+                      padding: EdgeInsets.all(responsivePadding),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          SizedBox(
+                            width: ResponsiveHelper.isTablet(context) ? 100.0 : 80.0,
+                            height: ResponsiveHelper.isTablet(context) ? 100.0 : 80.0,
+                            child: CircularProgressIndicator(
+                              color: widget.conversionType.badgeColor,
+                              strokeWidth: 4,
+                            ),
                           ),
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 0.33),
-                      Text(
-                        '${context.watch<ImageSelectionProvider>().imageCount} image(s)',
-                        style: TextStyle(
-                          fontSize: ResponsiveHelper.getResponsiveFontSize(
-                            context,
-                            mobileSize: 13,
-                            tabletSize: 14,
-                            desktopSize: 15,
-                          ),
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-              );
-            }
-
-            if (snapshot.hasError) {
-              return Center(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(responsivePadding),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(
-                        Icons.error_outline,
-                        size: ResponsiveHelper.isTablet(context) ? 70.0 : 60.0,
-                        color: AppTheme.errorColor,
-                      ),
-                      SizedBox(height: responsivePadding),
-                      Text(
-                        AppConstants.pdfGenerationFailed,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: ResponsiveHelper.getResponsiveFontSize(
-                            context,
-                            mobileSize: 15,
-                            tabletSize: 16,
-                            desktopSize: 17,
-                          ),
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 0.33),
-                      Text(
-                        snapshot.error.toString(),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: ResponsiveHelper.getResponsiveFontSize(
-                            context,
-                            mobileSize: 11,
-                            tabletSize: 12,
-                            desktopSize: 13,
-                          ),
-                          color: colorScheme.onSurface.withValues(alpha: 0.6),
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 1.33),
-                      SizedBox(
-                        height: buttonHeight,
-                        width: double.infinity,
-                        child: ElevatedButton(
-                          onPressed: _generatePdf,
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                          ),
-                          child: Text(
-                            'Retry',
+                          SizedBox(height: responsivePadding),
+                          Text(
+                            'Generating ${widget.conversionType.label}...',
                             style: TextStyle(
                               fontSize: ResponsiveHelper.getResponsiveFontSize(
                                 context,
-                                mobileSize: 14,
-                                tabletSize: 16,
-                                desktopSize: 18,
+                                mobileSize: 17,
+                                tabletSize: 19,
+                                desktopSize: 21,
                               ),
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurface,
                             ),
                           ),
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 0.5),
-                      SizedBox(
-                        height: buttonHeight,
-                        width: double.infinity,
-                        child: OutlinedButton(
-                          onPressed: () {
-                            Navigator.of(context).pop();
-                          },
-                          child: Text(
-                            'Back to Review',
+                          SizedBox(height: responsivePadding * 0.33),
+                          Text(
+                            '${context.watch<ImageSelectionProvider>().imageCount} $itemUnit',
                             style: TextStyle(
                               fontSize: ResponsiveHelper.getResponsiveFontSize(
                                 context,
-                                mobileSize: 14,
-                                tabletSize: 16,
-                                desktopSize: 18,
+                                mobileSize: 13,
+                                tabletSize: 14,
+                                desktopSize: 15,
                               ),
+                              color: colorScheme.onSurface.withValues(alpha: 0.6),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }
+                    ),
+                  );
+                }
 
-            if (snapshot.hasData) {
-              final pdfResult = snapshot.data!;
-              return Center(
-                child: SingleChildScrollView(
-                  padding: EdgeInsets.all(responsivePadding),
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Container(
-                        width: ResponsiveHelper.isTablet(context)
-                            ? 120.0
-                            : 100.0,
-                        height: ResponsiveHelper.isTablet(context)
-                            ? 120.0
-                            : 100.0,
-                        decoration: BoxDecoration(
-                          color: AppTheme.successColor.withValues(alpha: 0.1),
-                          borderRadius: BorderRadius.circular(20),
-                        ),
-                        child: Center(
-                          child: Icon(
-                            Icons.check_circle_outline,
-                            size: ResponsiveHelper.isTablet(context)
-                                ? 70.0
-                                : 60.0,
-                            color: AppTheme.successColor,
+                if (snapshot.hasError) {
+                  return Center(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(responsivePadding),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.error_outline,
+                            size: ResponsiveHelper.isTablet(context) ? 70.0 : 60.0,
+                            color: AppTheme.errorColor,
                           ),
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding),
-                      Text(
-                        AppConstants.pdfGeneratedSuccessfully,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          fontSize: ResponsiveHelper.getResponsiveFontSize(
-                            context,
-                            mobileSize: 19,
-                            tabletSize: 22,
-                            desktopSize: 24,
-                          ),
-                          fontWeight: FontWeight.bold,
-                          color: colorScheme.onSurface,
-                        ),
-                      ),
-                      SizedBox(height: responsivePadding * 1.33),
-                      SizedBox(
-                        width: double.infinity,
-                        height: buttonHeight,
-                        child: ElevatedButton.icon(
-                          onPressed: () {
-                            Navigator.of(context).pushReplacementNamed(
-                              '/result',
-                              arguments: pdfResult,
-                            );
-                          },
-                          icon: const Icon(Icons.arrow_forward),
-                          label: Text(
-                            'View Result',
+                          SizedBox(height: responsivePadding),
+                          Text(
+                            '${widget.conversionType.shortName} generation failed',
+                            textAlign: TextAlign.center,
                             style: TextStyle(
                               fontSize: ResponsiveHelper.getResponsiveFontSize(
                                 context,
-                                mobileSize: 14,
+                                mobileSize: 15,
                                 tabletSize: 16,
-                                desktopSize: 18,
+                                desktopSize: 17,
+                              ),
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          SizedBox(height: responsivePadding * 0.33),
+                          Text(
+                            snapshot.error.toString(),
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                context,
+                                mobileSize: 11,
+                                tabletSize: 12,
+                                desktopSize: 13,
+                              ),
+                              color: colorScheme.onSurface.withValues(alpha: 0.6),
+                            ),
+                          ),
+                          SizedBox(height: responsivePadding * 1.33),
+                          SizedBox(
+                            height: buttonHeight,
+                            width: double.infinity,
+                            child: ElevatedButton(
+                              onPressed: _generateDocument,
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: widget.conversionType.badgeColor,
+                                foregroundColor: Colors.white,
+                              ),
+                              child: Text(
+                                'Retry',
+                                style: TextStyle(
+                                  fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                    context,
+                                    mobileSize: 14,
+                                    tabletSize: 16,
+                                    desktopSize: 18,
+                                  ),
+                                ),
                               ),
                             ),
                           ),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: AppTheme.primaryColor,
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(12),
+                          SizedBox(height: responsivePadding * 0.5),
+                          SizedBox(
+                            height: buttonHeight,
+                            width: double.infinity,
+                            child: OutlinedButton(
+                              onPressed: () {
+                                Navigator.of(context).pop();
+                              },
+                              child: Text(
+                                'Back to Review',
+                                style: TextStyle(
+                                  fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                    context,
+                                    mobileSize: 14,
+                                    tabletSize: 16,
+                                    desktopSize: 18,
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
-                        ),
+                        ],
                       ),
-                    ],
-                  ),
-                ),
-              );
-            }
+                    ),
+                  );
+                }
 
-            return const SizedBox();
-          },
-        ),
-      ),
+                if (snapshot.hasData) {
+                  final result = snapshot.data!;
+                  return Center(
+                    child: SingleChildScrollView(
+                      padding: EdgeInsets.all(responsivePadding),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Container(
+                            width: ResponsiveHelper.isTablet(context) ? 120.0 : 100.0,
+                            height: ResponsiveHelper.isTablet(context) ? 120.0 : 100.0,
+                            decoration: BoxDecoration(
+                              color: AppTheme.successColor.withValues(alpha: 0.1),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.check_circle_outline,
+                                size: ResponsiveHelper.isTablet(context) ? 70.0 : 60.0,
+                                color: AppTheme.successColor,
+                              ),
+                            ),
+                          ),
+                          SizedBox(height: responsivePadding),
+                          Text(
+                            '${widget.conversionType.shortName} Created Successfully!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                context,
+                                mobileSize: 19,
+                                tabletSize: 22,
+                                desktopSize: 24,
+                              ),
+                              fontWeight: FontWeight.bold,
+                              color: colorScheme.onSurface,
+                            ),
+                          ),
+                          SizedBox(height: responsivePadding * 1.33),
+                          SizedBox(
+                            width: double.infinity,
+                            height: buttonHeight,
+                            child: ElevatedButton.icon(
+                              onPressed: () {
+                                Navigator.of(context).pushReplacement(
+                                  MaterialPageRoute(
+                                    builder: (_) => ResultScreen(pdfResult: result),
+                                  ),
+                                );
+                              },
+                              icon: const Icon(Icons.arrow_forward),
+                              label: Text(
+                                'View Result',
+                                style: TextStyle(
+                                  fontSize: ResponsiveHelper.getResponsiveFontSize(
+                                    context,
+                                    mobileSize: 14,
+                                    tabletSize: 16,
+                                    desktopSize: 18,
+                                  ),
+                                ),
+                              ),
+                              style: ElevatedButton.styleFrom(
+                                backgroundColor: widget.conversionType.badgeColor,
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(12),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }
+
+                return const SizedBox();
+              },
+            ),
+          ),
+        );
+      },
     );
-  },
-);
   }
 }

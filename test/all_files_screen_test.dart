@@ -131,7 +131,7 @@ void main() {
     await tester.tap(selectIcon);
     await tester.pumpAndSettle();
 
-    expect(find.text('0 selected'), findsOneWidget);
+    expect(find.text('Select items'), findsOneWidget);
     expect(find.text('Select All'), findsOneWidget);
   });
 
@@ -170,7 +170,8 @@ void main() {
     await tester.pumpAndSettle();
 
     // Verify bottom sheet action items render
-    expect(find.text('Open'), findsOneWidget);
+    expect(find.text('Open PDF'), findsOneWidget);
+    expect(find.text('Edit PDF'), findsOneWidget);
     expect(find.text('Share'), findsOneWidget);
     expect(find.text('Rename'), findsOneWidget);
     expect(find.text('Save to Device'), findsOneWidget);

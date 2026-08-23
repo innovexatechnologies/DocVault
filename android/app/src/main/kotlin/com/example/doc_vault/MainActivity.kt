@@ -20,6 +20,8 @@ class MainActivity : FlutterActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Save incoming PDF when DocVault is launched
+        // from another application.
         pendingPdfUri = getPdfUri(intent)
     }
 
@@ -58,6 +60,8 @@ class MainActivity : FlutterActivity() {
                             )
                         )
 
+                        // Prevent processing the same
+                        // launch intent again.
                         pendingPdfUri = null
 
                     } else {
@@ -67,7 +71,7 @@ class MainActivity : FlutterActivity() {
                 }
 
                 // ====================================================
-                // READ EXTERNAL PDF
+                // READ PDF
                 // ====================================================
 
                 "readPdf" -> {
@@ -109,6 +113,17 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
 
+                        if (bytes.isEmpty()) {
+
+                            result.error(
+                                "EMPTY_PDF",
+                                "The PDF file is empty.",
+                                null
+                            )
+
+                            return@setMethodCallHandler
+                        }
+
                         result.success(
                             mapOf(
                                 "bytes" to bytes,
@@ -127,6 +142,10 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
+                // ====================================================
+                // UNKNOWN METHOD
+                // ====================================================
+
                 else -> {
                     result.notImplemented()
                 }
@@ -143,6 +162,7 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onNewIntent(intent)
 
+        // Store latest Android intent.
         setIntent(intent)
 
         val uri =
@@ -211,10 +231,12 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ): Boolean {
 
+        // First check MIME type.
         val mimeType =
             intent.type
 
-        if (mimeType.equals(
+        if (
+            mimeType.equals(
                 "application/pdf",
                 ignoreCase = true
             )
@@ -222,6 +244,8 @@ class MainActivity : FlutterActivity() {
             return true
         }
 
+        // Fallback for file managers
+        // that don't provide MIME type.
         val uriString =
             uri.toString().lowercase()
 
@@ -238,6 +262,10 @@ class MainActivity : FlutterActivity() {
     ): String {
 
         var fileName: String? = null
+
+        // ========================================================
+        // CONTENT URI
+        // ========================================================
 
         if (uri.scheme == "content") {
 
@@ -262,6 +290,7 @@ class MainActivity : FlutterActivity() {
                             )
 
                         if (index >= 0) {
+
                             fileName =
                                 it.getString(index)
                         }
@@ -269,26 +298,43 @@ class MainActivity : FlutterActivity() {
                 }
 
             } catch (_: Exception) {
-                // Fallback below.
+                // Use fallback below.
             }
         }
 
-        if (fileName.isNullOrEmpty() &&
+        // ========================================================
+        // FILE URI
+        // ========================================================
+
+        if (
+            fileName.isNullOrEmpty() &&
             uri.scheme == "file"
         ) {
+
             fileName =
                 uri.lastPathSegment
         }
 
+        // ========================================================
+        // FALLBACK
+        // ========================================================
+
         if (fileName.isNullOrEmpty()) {
+
             fileName =
                 "Imported_PDF.pdf"
         }
 
-        if (!fileName!!
+        // ========================================================
+        // ENSURE PDF EXTENSION
+        // ========================================================
+
+        if (
+            !fileName!!
                 .lowercase()
                 .endsWith(".pdf")
         ) {
+
             fileName =
                 "$fileName.pdf"
         }

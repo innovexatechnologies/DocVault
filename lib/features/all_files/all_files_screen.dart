@@ -5,6 +5,7 @@ import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/file_utils.dart';
 import '../../core/utils/responsive_helper.dart';
+import '../../models/conversion_type.dart';
 import '../../models/pdf_document.dart';
 import '../pdf_generation/review_screen.dart';
 import '../pdf_result/pdf_viewer_screen.dart';
@@ -59,7 +60,7 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Renamed to "$newName.pdf"'),
+                content: Text('Renamed to $newName'),
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -76,9 +77,10 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     showDialog(
       context: context,
       builder: (_) => DeleteConfirmationDialog(
-        title: 'Delete PDF?',
+        title: 'Delete "${doc.fileName}"?',
         message:
-            'Are you sure you want to delete "${doc.fileName}"? This action cannot be undone.',
+            'Are you sure you want to permanently delete this document? This action cannot be undone.',
+        confirmLabel: 'Delete',
         onConfirm: () async {
           final success =
               await context.read<PdfManagerProvider>().deletePdf(doc.id);
@@ -98,11 +100,11 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     );
   }
 
-  void _showBulkDeleteDialog(int count) {
+  void _showDeleteSelectedDialog(int count) {
     showDialog(
       context: context,
       builder: (_) => DeleteConfirmationDialog(
-        title: 'Delete $count PDFs?',
+        title: 'Delete $count files?',
         message:
             'Are you sure you want to delete $count selected documents? This action cannot be undone.',
         confirmLabel: 'Delete All ($count)',
@@ -112,7 +114,7 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
           if (mounted) {
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(
-                content: Text('Deleted $deletedCount PDF(s)'),
+                content: Text('Deleted $deletedCount document(s)'),
                 behavior: SnackBarBehavior.floating,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10),
@@ -204,16 +206,14 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
   }
 
   void _showSortBottomSheet() {
-    final provider = context.read<PdfManagerProvider>();
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      useSafeArea: true,
       backgroundColor: Colors.transparent,
       builder: (_) => SortOptionsBottomSheet(
-        currentOption: provider.sortOption,
+        currentOption: context.read<PdfManagerProvider>().sortOption,
         onSelect: (option) {
-          provider.setSortOption(option);
+          context.read<PdfManagerProvider>().setSortOption(option);
         },
       ),
     );
@@ -235,7 +235,7 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
                   CircularProgressIndicator(color: AppTheme.primaryColor),
                   SizedBox(height: 16),
                   Text(
-                    'Loading PDF for editing...',
+                    'Loading document for editing...',
                     style: TextStyle(fontWeight: FontWeight.w600),
                   ),
                 ],
@@ -247,17 +247,20 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     );
 
     try {
-      final imagePaths = await FileUtils.extractPdfPagesToImages(doc.filePath);
+      final imagePaths = await FileUtils.extractPagesFromDocument(doc.filePath);
       if (!mounted) return;
       Navigator.of(context).pop(); // Close loading dialog
 
       final imageSelectionProvider = context.read<ImageSelectionProvider>();
       imageSelectionProvider.clearAllImages();
-      imageSelectionProvider.addImages(imagePaths, 'existing_pdf', markUnsaved: false);
+      imageSelectionProvider.addImages(imagePaths, 'existing_doc', markUnsaved: false);
 
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (_) => ReviewScreen(existingDocument: doc),
+          builder: (_) => ReviewScreen(
+            existingDocument: doc,
+            conversionType: doc.documentType,
+          ),
         ),
       );
 
@@ -269,7 +272,7 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
         Navigator.of(context).pop(); // Close loading dialog if still open
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('Failed to load PDF for editing: $e'),
+            content: Text('Failed to load document for editing: $e'),
             backgroundColor: AppTheme.errorColor,
           ),
         );
@@ -328,210 +331,309 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
             appBar: isSelection
                 ? _buildSelectionAppBar(context, provider, colorScheme, isDark)
                 : _buildNormalAppBar(context, provider, colorScheme, isDark),
-          body: Column(
-            children: [
-              // Expandable Search Bar
-              if (_isSearchVisible && !isSelection)
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: padding,
-                    vertical: 8,
-                  ),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                    border: Border(
-                      bottom: BorderSide(
-                        color: isDark
-                            ? AppTheme.dividerDark
-                            : AppTheme.dividerColor,
-                      ),
+            body: Column(
+              children: [
+                // Expandable Search Bar
+                if (_isSearchVisible && !isSelection)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: padding,
+                      vertical: 8,
                     ),
-                  ),
-                  child: TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    style: TextStyle(
-                      fontSize: 14,
-                      color: colorScheme.onSurface,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Search PDFs by name...',
-                      prefixIcon: const Icon(
-                        Icons.search_rounded,
-                        color: AppTheme.primaryColor,
-                        size: 20,
-                      ),
-                      suffixIcon: _searchController.text.isNotEmpty
-                          ? IconButton(
-                              icon: const Icon(Icons.clear_rounded, size: 18),
-                              onPressed: () {
-                                _searchController.clear();
-                                provider.clearSearch();
-                              },
-                            )
-                          : null,
-                      filled: true,
-                      fillColor: isDark ? AppTheme.bgDark : AppTheme.bgLight,
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                    ),
-                    onChanged: (value) {
-                      provider.setSearchQuery(value);
-                    },
-                  ),
-                ),
-
-              // Filter/Sort active summary bar
-              if (hasAny && !isSelection)
-                Container(
-                  padding: EdgeInsets.symmetric(
-                    horizontal: padding,
-                    vertical: 8,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        '${docs.length} ${docs.length == 1 ? 'document' : 'documents'}'
-                        '${provider.searchQuery.isNotEmpty ? ' found' : ''}',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurface.withValues(alpha: 0.55),
+                    decoration: BoxDecoration(
+                      color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                      border: Border(
+                        bottom: BorderSide(
+                          color: isDark
+                              ? AppTheme.dividerDark
+                              : AppTheme.dividerColor,
                         ),
                       ),
-                      InkWell(
-                        onTap: _showSortBottomSheet,
-                        borderRadius: BorderRadius.circular(8),
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 3,
-                          ),
-                          child: Row(
-                            children: [
-                              Icon(
-                                Icons.sort_rounded,
-                                size: 15,
-                                color: AppTheme.primaryColor,
-                              ),
-                              const SizedBox(width: 4),
-                              Text(
-                                provider.sortOption.label,
-                                style: const TextStyle(
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                  color: AppTheme.primaryColor,
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
+                    ),
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: colorScheme.onSurface,
                       ),
-                    ],
-                  ),
-                ),
-
-              // Main List View
-              Expanded(
-                child: provider.isLoading
-                    ? const Center(
-                        child: CircularProgressIndicator(
+                      decoration: InputDecoration(
+                        hintText: 'Search documents by name...',
+                        prefixIcon: const Icon(
+                          Icons.search_rounded,
                           color: AppTheme.primaryColor,
+                          size: 20,
                         ),
-                      )
-                    : provider.errorMessage != null
-                        ? Center(
-                            child: Padding(
-                              padding: const EdgeInsets.all(24),
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const Icon(
-                                    Icons.error_outline_rounded,
-                                    size: 48,
-                                    color: AppTheme.errorColor,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    provider.errorMessage!,
-                                    textAlign: TextAlign.center,
-                                    style: TextStyle(
-                                      color: colorScheme.onSurface,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 16),
-                                  ElevatedButton(
-                                    onPressed: () => provider.loadDocuments(),
-                                    child: const Text('Retry'),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          )
-                        : docs.isEmpty
-                            ? AllFilesEmptyState(
-                                isSearch: provider.searchQuery.isNotEmpty,
-                                onCreatePdf: widget.onNavigateToHome,
-                                onClearSearch: () {
+                        suffixIcon: _searchController.text.isNotEmpty
+                            ? IconButton(
+                                icon: const Icon(Icons.clear_rounded, size: 18),
+                                onPressed: () {
                                   _searchController.clear();
                                   provider.clearSearch();
                                 },
                               )
-                            : RefreshIndicator(
-                                color: AppTheme.primaryColor,
-                                onRefresh: () => provider.loadDocuments(),
-                                child: ListView.builder(
-                                  padding: EdgeInsets.symmetric(
-                                    horizontal: padding,
-                                    vertical: 8,
-                                  ),
-                                  itemCount: docs.length,
-                                  itemBuilder: (context, index) {
-                                    final doc = docs[index];
-                                    final isSelected =
-                                        provider.selectedIds.contains(doc.id);
+                            : null,
+                        filled: true,
+                        fillColor: isDark ? AppTheme.bgDark : AppTheme.bgLight,
+                        contentPadding: const EdgeInsets.symmetric(
+                          horizontal: 16,
+                          vertical: 10,
+                        ),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                      ),
+                      onChanged: (value) {
+                        provider.setSearchQuery(value);
+                      },
+                    ),
+                  ),
 
-                                    return PdfFileCard(
-                                      document: doc,
-                                      isSelected: isSelected,
-                                      isSelectionMode: isSelection,
-                                      onTap: () {
-                                        if (isSelection) {
-                                          provider.toggleSelect(doc.id);
-                                        } else {
-                                          _openPdfViewer(doc);
-                                        }
-                                      },
-                                      onLongPress: () {
-                                        if (!isSelection) {
-                                          provider.toggleSelect(doc.id);
-                                        }
-                                      },
-                                      onMoreOptions: () =>
-                                          _showActionsBottomSheet(doc),
-                                    );
-                                  },
+                // Format Filter Chips: [ All ] [ PDF ] [ DOCS ] [ PPT ]
+                if (hasAny && !isSelection)
+                  _buildFormatFilterChips(context, provider, colorScheme, isDark),
+
+                // Filter/Sort active summary bar
+                if (hasAny && !isSelection)
+                  Container(
+                    padding: EdgeInsets.symmetric(
+                      horizontal: padding,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          '${docs.length} ${docs.length == 1 ? 'document' : 'documents'}'
+                          '${provider.searchQuery.isNotEmpty ? ' found' : ''}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface.withValues(alpha: 0.55),
+                          ),
+                        ),
+                        InkWell(
+                          onTap: _showSortBottomSheet,
+                          borderRadius: BorderRadius.circular(8),
+                          child: Padding(
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 6,
+                              vertical: 3,
+                            ),
+                            child: Row(
+                              children: [
+                                const Icon(
+                                  Icons.sort_rounded,
+                                  size: 15,
+                                  color: AppTheme.primaryColor,
+                                ),
+                                const SizedBox(width: 4),
+                                Text(
+                                  provider.sortOption.label,
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w600,
+                                    color: AppTheme.primaryColor,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+
+                // Main List View
+                Expanded(
+                  child: provider.isLoading
+                      ? const Center(
+                          child: CircularProgressIndicator(
+                            color: AppTheme.primaryColor,
+                          ),
+                        )
+                      : provider.errorMessage != null
+                          ? Center(
+                              child: Padding(
+                                padding: const EdgeInsets.all(24),
+                                child: Column(
+                                  mainAxisAlignment: MainAxisAlignment.center,
+                                  children: [
+                                    const Icon(
+                                      Icons.error_outline_rounded,
+                                      size: 48,
+                                      color: AppTheme.errorColor,
+                                    ),
+                                    const SizedBox(height: 16),
+                                    Text(
+                                      provider.errorMessage!,
+                                      textAlign: TextAlign.center,
+                                      style: TextStyle(
+                                        color: colorScheme.onSurface,
+                                        fontSize: 14,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 16),
+                                    ElevatedButton(
+                                      onPressed: () => provider.loadDocuments(),
+                                      child: const Text('Retry'),
+                                    ),
+                                  ],
                                 ),
                               ),
-              ),
+                            )
+                          : !hasAny
+                              ? AllFilesEmptyState(
+                                  isSearch: false,
+                                  onCreatePdf: () {
+                                    if (widget.onNavigateToHome != null) {
+                                      widget.onNavigateToHome!();
+                                    } else {
+                                      Navigator.of(context).pushNamedAndRemoveUntil(
+                                        '/home',
+                                        (route) => false,
+                                      );
+                                    }
+                                  },
+                                )
+                              : docs.isEmpty
+                                  ? AllFilesEmptyState(
+                                      isSearch: true,
+                                      onClearSearch: () {
+                                        provider.clearSearch();
+                                        provider.setTypeFilter(null);
+                                      },
+                                    )
+                                  : RefreshIndicator(
+                                      color: AppTheme.primaryColor,
+                                      onRefresh: () => provider.loadDocuments(),
+                                      child: ListView.builder(
+                                        padding: EdgeInsets.only(
+                                          left: padding,
+                                          right: padding,
+                                          top: 6,
+                                          bottom: 90,
+                                        ),
+                                        itemCount: docs.length,
+                                        itemBuilder: (context, index) {
+                                          final doc = docs[index];
+                                          final isSelected = provider.selectedIds.contains(doc.id);
 
-              // Multi-select Bottom Action Bar
-              if (isSelection)
-                _buildSelectionBottomBar(context, provider, colorScheme, isDark),
-            ],
+                                          return PdfFileCard(
+                                            document: doc,
+                                            isSelected: isSelected,
+                                            isSelectionMode: isSelection,
+                                            onTap: () {
+                                              if (isSelection) {
+                                                provider.toggleSelect(doc.id);
+                                              } else {
+                                                _openPdfViewer(doc);
+                                              }
+                                            },
+                                            onLongPress: () {
+                                              if (!isSelection) {
+                                                provider.toggleSelectionMode(true);
+                                                provider.toggleSelect(doc.id);
+                                              }
+                                            },
+                                            onMoreOptions: () {
+                                              _showActionsBottomSheet(doc);
+                                            },
+                                          );
+                                        },
+                                      ),
+                                    ),
+                ),
+              ],
+            ),
+            bottomNavigationBar: isSelection
+                ? _buildSelectionBottomBar(context, provider, colorScheme, isDark)
+                : null,
           ),
-        ),
-      );
-    },
-  );
-}
+        );
+      },
+    );
+  }
+
+  Widget _buildFormatFilterChips(
+    BuildContext context,
+    PdfManagerProvider provider,
+    ColorScheme colorScheme,
+    bool isDark,
+  ) {
+    final filters = [
+      (null, 'All', provider.rawDocuments.length),
+      (ConversionType.pdf, 'PDF', provider.pdfCount),
+      (ConversionType.docs, 'DOCS', provider.docsCount),
+      (ConversionType.ppt, 'PPT', provider.pptCount),
+    ];
+
+    return Container(
+      height: 42,
+      margin: const EdgeInsets.only(top: 6, bottom: 2),
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        itemCount: filters.length,
+        separatorBuilder: (context, index) => const SizedBox(width: 8),
+        itemBuilder: (context, index) {
+          final filter = filters[index];
+          final type = filter.$1;
+          final label = filter.$2;
+          final count = filter.$3;
+          final isSelected = provider.typeFilter == type;
+
+          final activeColor = type?.badgeColor ?? AppTheme.primaryColor;
+
+          return FilterChip(
+            selected: isSelected,
+            showCheckmark: false,
+            labelPadding: const EdgeInsets.symmetric(horizontal: 4),
+            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            label: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                if (type != null) ...[
+                  Icon(
+                    type.icon,
+                    size: 14,
+                    color: isSelected
+                        ? Colors.white
+                        : (isDark ? Colors.white70 : Colors.black87),
+                  ),
+                  const SizedBox(width: 5),
+                ],
+                Text(
+                  '$label ($count)',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: isSelected ? FontWeight.w700 : FontWeight.w600,
+                    color: isSelected
+                        ? Colors.white
+                        : colorScheme.onSurface.withValues(alpha: 0.8),
+                  ),
+                ),
+              ],
+            ),
+            selectedColor: activeColor,
+            backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(12),
+              side: BorderSide(
+                color: isSelected
+                    ? activeColor
+                    : (isDark ? AppTheme.dividerDark : AppTheme.dividerColor),
+              ),
+            ),
+            onSelected: (_) {
+              provider.setTypeFilter(type);
+            },
+          );
+        },
+      ),
+    );
+  }
 
   PreferredSizeWidget _buildNormalAppBar(
     BuildContext context,
@@ -539,48 +641,20 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     ColorScheme colorScheme,
     bool isDark,
   ) {
-    final canPop = Navigator.canPop(context);
-
     return AppBar(
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
       foregroundColor: colorScheme.onSurface,
       elevation: 0,
-      leading: canPop
-          ? IconButton(
-              icon: const Icon(Icons.arrow_back_rounded),
-              onPressed: () => Navigator.of(context).maybePop(),
-              tooltip: 'Back',
-            )
-          : null,
-      title: Row(
-        children: [
-          Container(
-            padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(
-                alpha: isDark ? 0.20 : 0.12,
-              ),
-              borderRadius: BorderRadius.circular(8),
-            ),
-            child: const Icon(
-              Icons.folder_rounded,
-              color: AppTheme.primaryColor,
-              size: 20,
-            ),
-          ),
-          const SizedBox(width: 10),
-          const Text(
-            'All Files',
-            style: TextStyle(
-              fontWeight: FontWeight.w800,
-              letterSpacing: -0.3,
-            ),
-          ),
-        ],
+      title: const Text(
+        'All Files',
+        style: TextStyle(fontWeight: FontWeight.w800, letterSpacing: -0.5),
       ),
       actions: [
-        // Search Button
         IconButton(
+          icon: Icon(
+            _isSearchVisible ? Icons.search_off_rounded : Icons.search_rounded,
+          ),
+          tooltip: _isSearchVisible ? 'Close Search' : 'Search documents',
           onPressed: () {
             setState(() {
               _isSearchVisible = !_isSearchVisible;
@@ -590,30 +664,19 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
               }
             });
           },
-          icon: Icon(
-            _isSearchVisible
-                ? Icons.search_off_rounded
-                : Icons.search_rounded,
-            color: _isSearchVisible
-                ? AppTheme.primaryColor
-                : colorScheme.onSurface,
-          ),
-          tooltip: 'Search PDFs',
         ),
-
-        // Sort Button
         IconButton(
-          onPressed: _showSortBottomSheet,
           icon: const Icon(Icons.sort_rounded),
-          tooltip: 'Sort order',
+          tooltip: 'Sort Options',
+          onPressed: _showSortBottomSheet,
         ),
-
-        // Multi-select toggle button
         if (provider.hasDocuments)
           IconButton(
-            onPressed: () => provider.toggleSelectionMode(true),
             icon: const Icon(Icons.checklist_rounded),
-            tooltip: 'Select items',
+            tooltip: 'Select Multiple',
+            onPressed: () {
+              provider.toggleSelectionMode(true);
+            },
           ),
       ],
     );
@@ -625,29 +688,29 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     ColorScheme colorScheme,
     bool isDark,
   ) {
-    final allSelected =
-        provider.selectedCount == provider.documents.length &&
-            provider.documents.isNotEmpty;
+    final count = provider.selectedCount;
+    final allSelected = count == provider.documents.length && count > 0;
 
     return AppBar(
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
       foregroundColor: colorScheme.onSurface,
-      elevation: 1,
+      elevation: 0,
       leading: IconButton(
         icon: const Icon(Icons.close_rounded),
-        onPressed: () => provider.clearSelection(),
-        tooltip: 'Cancel selection',
+        tooltip: 'Cancel Selection',
+        onPressed: () {
+          provider.clearSelection();
+        },
       ),
       title: Text(
-        '${provider.selectedCount} selected',
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 17,
-        ),
+        count == 0 ? 'Select items' : '$count selected',
+        style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 16),
       ),
       actions: [
         TextButton(
-          onPressed: () => provider.selectAll(),
+          onPressed: () {
+            provider.selectAll();
+          },
           child: Text(
             allSelected ? 'Deselect All' : 'Select All',
             style: const TextStyle(
@@ -669,50 +732,44 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     final count = provider.selectedCount;
     final hasSelection = count > 0;
 
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-      decoration: BoxDecoration(
-        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-        border: Border(
-          top: BorderSide(
-            color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+    return SafeArea(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+        decoration: BoxDecoration(
+          color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+          border: Border(
+            top: BorderSide(
+              color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+            ),
           ),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withValues(alpha: isDark ? 0.3 : 0.08),
+              blurRadius: 10,
+              offset: const Offset(0, -3),
+            ),
+          ],
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withValues(alpha: isDark ? 0.30 : 0.06),
-            blurRadius: 12,
-            offset: const Offset(0, -3),
-          ),
-        ],
-      ),
-      child: SafeArea(
         child: Row(
-          mainAxisAlignment: MainAxisAlignment.spaceAround,
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
-            // Share
-            _buildBottomActionItem(
+            _buildSelectionActionButton(
               icon: Icons.share_outlined,
-              label: 'Share',
-              enabled: hasSelection,
-              onTap: () => provider.shareSelected(),
+              label: 'Share ($count)',
+              color: hasSelection ? AppTheme.primaryColor : Colors.grey,
+              onTap: hasSelection ? () => provider.shareSelected() : null,
             ),
-
-            // Export to Device
-            _buildBottomActionItem(
+            _buildSelectionActionButton(
               icon: Icons.download_rounded,
-              label: 'Save to Device',
-              enabled: hasSelection,
-              onTap: _handleExportSelected,
+              label: 'Export ($count)',
+              color: hasSelection ? AppTheme.primaryColor : Colors.grey,
+              onTap: hasSelection ? () => _handleExportSelected() : null,
             ),
-
-            // Delete
-            _buildBottomActionItem(
+            _buildSelectionActionButton(
               icon: Icons.delete_outline_rounded,
-              label: 'Delete',
-              isDestructive: true,
-              enabled: hasSelection,
-              onTap: () => _showBulkDeleteDialog(count),
+              label: 'Delete ($count)',
+              color: hasSelection ? AppTheme.errorColor : Colors.grey,
+              onTap: hasSelection ? () => _showDeleteSelectedDialog(count) : null,
             ),
           ],
         ),
@@ -720,22 +777,17 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
     );
   }
 
-  Widget _buildBottomActionItem({
+  Widget _buildSelectionActionButton({
     required IconData icon,
     required String label,
-    required bool enabled,
-    bool isDestructive = false,
-    required VoidCallback onTap,
+    required Color color,
+    required VoidCallback? onTap,
   }) {
-    final color = isDestructive
-        ? AppTheme.errorColor
-        : (enabled ? AppTheme.primaryColor : Colors.grey);
-
     return InkWell(
-      onTap: enabled ? onTap : null,
+      onTap: onTap,
       borderRadius: BorderRadius.circular(12),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
