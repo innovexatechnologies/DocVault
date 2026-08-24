@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:convert';
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
@@ -58,6 +59,90 @@ class FileUtils {
       case ConversionType.ppt:
         return await _extractPptxImages(filePath);
     }
+  }
+
+  /// Extracts readable text pages/slides from an Office Open XML document.
+  /// This keeps text-only DOCX/PPTX files previewable without an external app.
+  static Future<List<String>> extractTextPagesFromDocument(String filePath) async {
+    final file = File(filePath);
+    if (!await file.exists()) {
+      throw Exception('Office document does not exist: $filePath');
+    }
+
+    final archive = ZipDecoder().decodeBytes(await file.readAsBytes());
+    final type = ConversionType.fromFileName(filePath);
+
+    if (type == ConversionType.docs) {
+      final document = archive.findFile('word/document.xml');
+      if (document == null) {
+        throw Exception('Word document content was not found.');
+      }
+
+      final text = _extractXmlText(
+        utf8.decode(document.content as List<int>),
+        paragraphTag: 'w:p',
+        textTag: 'w:t',
+      );
+      if (text.trim().isEmpty) {
+        throw Exception('No readable text found in this Word document.');
+      }
+      return [text];
+    }
+
+    final slideFiles = archive
+        .where((entry) =>
+            entry.isFile && RegExp(r'^ppt/slides/slide\d+\.xml$').hasMatch(entry.name))
+        .toList()
+      ..sort((a, b) => _extractNumberFromMediaName(a.name)
+          .compareTo(_extractNumberFromMediaName(b.name)));
+
+    final slides = <String>[];
+    for (final slide in slideFiles) {
+      final text = _extractXmlText(
+        utf8.decode(slide.content as List<int>),
+        textTag: 'a:t',
+      );
+      slides.add(text.trim());
+    }
+
+    if (slides.isEmpty || slides.every((slide) => slide.isEmpty)) {
+      throw Exception('No readable text found in this presentation.');
+    }
+    return slides;
+  }
+
+  static String _extractXmlText(
+    String xml, {
+    String? paragraphTag,
+    required String textTag,
+  }) {
+    final paragraphs = paragraphTag == null
+        ? [xml]
+        : RegExp('<$paragraphTag\\b[^>]*>([\\s\\S]*?)</$paragraphTag>')
+            .allMatches(xml)
+            .map((match) => match.group(1) ?? '')
+            .toList();
+    final lines = <String>[];
+
+    for (final paragraph in paragraphs) {
+      final text = RegExp('<$textTag\\b[^>]*>([\\s\\S]*?)</$textTag>')
+          .allMatches(paragraph)
+          .map((match) => _decodeXmlEntities(match.group(1) ?? ''))
+          .join();
+      if (text.trim().isNotEmpty) {
+        lines.add(text.trim());
+      }
+    }
+    return lines.join('\n\n');
+  }
+
+  static String _decodeXmlEntities(String text) {
+    return text
+        .replaceAll('&amp;', '&')
+        .replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>')
+        .replaceAll('&quot;', '"')
+        .replaceAll('&apos;', "'");
   }
 
   /// Extracts/rasterizes all pages of an existing PDF to temporary high-resolution images.

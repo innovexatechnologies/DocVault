@@ -34,6 +34,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final PageController _pageController = PageController();
 
   List<String> _extractedPagePaths = [];
+  List<String> _extractedTextPages = [];
   int _actualPageCount = 0;
   int _currentPage = 1;
   bool _isLoading = true;
@@ -82,10 +83,25 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         }
       } catch (e) {
         if (mounted) {
-          setState(() {
-            _errorMessage = 'Failed to preview ${_docType.shortName}: $e';
-            _isLoading = false;
-          });
+          try {
+            final textPages =
+                await FileUtils.extractTextPagesFromDocument(widget.filePath);
+            if (mounted) {
+              setState(() {
+                _extractedTextPages = textPages;
+                _actualPageCount = textPages.length;
+                _isLoading = false;
+              });
+            }
+          } catch (textError) {
+            if (mounted) {
+              setState(() {
+                _errorMessage =
+                    'Failed to preview ${_docType.shortName}: $textError';
+                _isLoading = false;
+              });
+            }
+          }
         }
       }
     }
@@ -473,6 +489,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
     }
 
+    if (_extractedTextPages.isNotEmpty) {
+      return _buildTextViewer(isDark);
+    }
+
     final isPpt = _docType == ConversionType.ppt;
     final aspectRatio = isPpt ? (16 / 9) : (1 / 1.414);
 
@@ -585,6 +605,51 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ),
           ),
       ],
+    );
+  }
+
+  Widget _buildTextViewer(bool isDark) {
+    final isPpt = _docType == ConversionType.ppt;
+    final aspectRatio = isPpt ? (16 / 9) : (1 / 1.414);
+
+    return PageView.builder(
+      controller: _pageController,
+      itemCount: _extractedTextPages.length,
+      onPageChanged: (idx) => setState(() => _currentPage = idx + 1),
+      itemBuilder: (context, index) {
+        return Center(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: AspectRatio(
+              aspectRatio: aspectRatio,
+              child: Container(
+                padding: const EdgeInsets.all(24),
+                decoration: BoxDecoration(
+                  color: Colors.white,
+                  borderRadius: BorderRadius.circular(isPpt ? 12 : 8),
+                  boxShadow: [
+                    BoxShadow(
+                      color: Colors.black.withValues(alpha: 0.15),
+                      blurRadius: 16,
+                      offset: const Offset(0, 4),
+                    ),
+                  ],
+                ),
+                child: SingleChildScrollView(
+                  child: Text(
+                    _extractedTextPages[index],
+                    style: TextStyle(
+                      color: isDark ? Colors.black87 : Colors.black87,
+                      fontSize: isPpt ? 20 : 16,
+                      height: 1.5,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        );
+      },
     );
   }
 }
