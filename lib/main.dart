@@ -80,25 +80,24 @@ class _MyAppState extends State<MyApp> {
     }
 
     try {
-      final result = await _channel.invokeMethod(
-        'getInitialPdf',
-      );
+      final result = await _channel.invokeMethod('getInitialDocument');
+      final documentData = result ?? await _channel.invokeMethod('getInitialPdf');
 
-      if (result == null) {
-        debugPrint('No external PDF found.');
+      if (documentData == null) {
+        debugPrint('No external document found.');
         return;
       }
 
-      final data = Map<Object?, Object?>.from(result);
+      final data = Map<Object?, Object?>.from(documentData);
 
       final uri = data['uri']?.toString();
 
       if (uri == null || uri.isEmpty) {
-        debugPrint('External PDF URI is empty.');
+        debugPrint('External document URI is empty.');
         return;
       }
 
-      debugPrint('Initial external PDF: $uri');
+      debugPrint('Initial external document: $uri');
 
       // ========================================================
       // IMPORTANT
@@ -120,7 +119,7 @@ class _MyAppState extends State<MyApp> {
       await _openIncomingPdf(uri);
     } catch (e) {
       debugPrint(
-        'Initial PDF error: $e',
+        'Initial document error: $e',
       );
     }
   }
@@ -136,7 +135,10 @@ class _MyAppState extends State<MyApp> {
       return;
     }
 
-    if (call.method != 'newPdf') {
+    final isSupportedDocumentIntent =
+        call.method == 'newDocument' || call.method == 'newPdf';
+
+    if (!isSupportedDocumentIntent) {
       return;
     }
 
@@ -152,19 +154,19 @@ class _MyAppState extends State<MyApp> {
       final uri = arguments['uri']?.toString();
 
       if (uri == null || uri.isEmpty) {
-        debugPrint('New PDF URI is empty.');
+        debugPrint('New document URI is empty.');
         return;
       }
 
       debugPrint(
-        'New external PDF received: $uri',
+        'New external document received: $uri',
       );
 
       // App is already running, so we don't need to wait for splash.
       await _openIncomingPdf(uri);
     } catch (e) {
       debugPrint(
-        'New PDF handling error: $e',
+        'New document handling error: $e',
       );
     }
   }
@@ -199,15 +201,15 @@ class _MyAppState extends State<MyApp> {
 
     try {
       debugPrint(
-        'Importing external PDF...',
+        'Importing external document...',
       );
 
       // ========================================================
-      // READ PDF FROM ANDROID CONTENT URI
+      // READ DOCUMENT FROM ANDROID CONTENT URI
       // ========================================================
 
       final result =
-          await ExternalPdfService.importPdfFromUri(uri);
+          await ExternalPdfService.importDocumentFromUri(uri);
 
       if (!mounted) {
         return;
@@ -221,22 +223,22 @@ class _MyAppState extends State<MyApp> {
 
       if (savedPath == null || savedPath.isEmpty) {
         throw Exception(
-          'PDF file path is empty.',
+          'Document file path is empty.',
         );
       }
 
       if (fileName == null || fileName.isEmpty) {
         throw Exception(
-          'PDF file name is empty.',
+          'Document file name is empty.',
         );
       }
 
       debugPrint(
-        'Imported PDF path: $savedPath',
+        'Imported document path: $savedPath',
       );
 
       debugPrint(
-        'Imported PDF name: $fileName',
+        'Imported document name: $fileName',
       );
 
       // Mark URI as processed.
@@ -266,11 +268,11 @@ class _MyAppState extends State<MyApp> {
       );
 
       debugPrint(
-        'External PDF viewer opened successfully.',
+        'External document viewer opened successfully.',
       );
     } catch (e) {
       debugPrint(
-        'External PDF import error: $e',
+        'External document import error: $e',
       );
 
       if (!mounted) {
@@ -283,7 +285,7 @@ class _MyAppState extends State<MyApp> {
       messenger?.showSnackBar(
         SnackBar(
           content: Text(
-            'Unable to open PDF: $e',
+            'Unable to open document: $e',
           ),
           behavior: SnackBarBehavior.floating,
         ),

@@ -218,8 +218,8 @@ class HomeScreen extends StatelessWidget {
                   buttonLabel: 'Create PPTX',
                   icon: Icons.slideshow_rounded,
                   gradientColors: [
-                    const Color(0xFFD84315),
-                    isDark ? const Color(0xFFE64A19) : const Color(0xFFF4511E),
+                    const Color.fromARGB(255, 99, 0, 0),
+                    isDark ? const Color.fromARGB(255, 99, 0, 0) : const Color.fromARGB(255, 99, 0, 0),
                   ],
                   onTap: () => _navigateToSourceSelection(
                     context,
