@@ -2,17 +2,19 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
+
 import '../../models/conversion_type.dart';
 import '../utils/file_utils.dart';
-import 'pdf_storage_service.dart';
 
 class ExternalPdfService {
-  static const MethodChannel _channel = MethodChannel('docvault/pdf_intent');
+  static const MethodChannel _channel =
+      MethodChannel('docvault/pdf_intent');
 
-  /// Processes an incoming external PDF, DOCX, or PPTX content/file URI.
-  /// Reads the bytes natively and writes them to a temporary cache location
-  /// so that the in-app viewer can read it without automatically adding it
-  /// to the persistent library (All Files).
+  /// Imports an external PDF/DOCX/PPTX from an Android content URI.
+  ///
+  /// The file is copied into the app's cache directory so it can be
+  /// opened by the PDF viewer without being permanently added to
+  /// the All Files library.
   static Future<Map<String, dynamic>> importPdfFromUri(
     String uri,
   ) async {
@@ -21,7 +23,7 @@ class ExternalPdfService {
     }
 
     // ============================================================
-    // READ PDF FROM ANDROID
+    // READ DOCUMENT FROM ANDROID
     // ============================================================
 
     final result = await _channel.invokeMethod(
@@ -32,10 +34,16 @@ class ExternalPdfService {
     );
 
     if (result == null) {
-      throw Exception('Failed to read external document.');
+      throw Exception(
+        'Failed to read external document.',
+      );
     }
 
     final data = Map<Object?, Object?>.from(result);
+
+    // ============================================================
+    // READ BYTES
+    // ============================================================
 
     final rawBytes = data['bytes'];
 
@@ -63,20 +71,58 @@ class ExternalPdfService {
         data['fileName']?.toString() ??
             'External_Document.pdf';
 
-    final type = ConversionType.fromFileName(originalFileName);
-    final fileName = FileUtils.normalizeFileName(originalFileName, type);
+    final type =
+        ConversionType.fromFileName(originalFileName);
 
-    // Save to Cache directory (temporary, not in permanent All Files catalog)
-    final cacheDir = await FileUtils.getCacheDirectory();
-    final tempFilePath = '${cacheDir.path}/$fileName';
+    final fileName =
+        FileUtils.normalizeFileName(
+      originalFileName,
+      type,
+    );
+
+    // ============================================================
+    // SAVE TO CACHE
+    // ============================================================
+
+    final cacheDir =
+        await FileUtils.getCacheDirectory();
+
+    final tempFilePath =
+        '${cacheDir.path}/$fileName';
+
     final file = File(tempFilePath);
 
-    await file.parent.create(recursive: true);
-    await file.writeAsBytes(bytes, flush: true);
+    await file.parent.create(
+      recursive: true,
+    );
+
+    await file.writeAsBytes(
+      bytes,
+      flush: true,
+    );
+
+    // ============================================================
+    // VERIFY FILE
+    // ============================================================
+
+    if (!await file.exists()) {
+      throw Exception(
+        'Failed to save external document.',
+      );
+    }
+
+    final fileSize =
+        await file.length();
+
+    if (fileSize == 0) {
+      throw Exception(
+        'Saved external document is empty.',
+      );
+    }
 
     return {
-      'filePath': permanentPath,
-      'fileName': finalFileName,
+      'filePath': tempFilePath,
+      'fileName': fileName,
     };
   }
 }
