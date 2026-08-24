@@ -28,69 +28,41 @@ class SourceSelectionScreen extends StatelessWidget {
       if (!context.mounted) return;
 
       if (status.isGranted) {
-        Navigator.of(context).pushNamed(
-          '/camera',
-          arguments: conversionType,
-        );
+        Navigator.of(context).pushNamed('/camera', arguments: conversionType);
       } else {
-        _showDeniedMessage(
-          context,
-          'Camera permission was denied.',
-        );
+        _showDeniedMessage(context, 'Camera permission was denied.');
       }
     } catch (e) {
       if (!context.mounted) return;
 
-      _showDeniedMessage(
-        context,
-        'Unable to access the camera.',
-      );
+      _showDeniedMessage(context, 'Unable to access the camera.');
     }
   }
 
   Future<void> _handleGallery(BuildContext context) async {
     try {
-      final status = await _permissionService.requestGalleryPermission();
+      // image_picker opens the native photo picker and handles its own access flow.
+      final galleryService = GalleryService();
+      final imagePaths = await galleryService.pickImages();
 
       if (!context.mounted) return;
 
-      if (status.isGranted) {
-        final galleryService = GalleryService();
-        final imagePaths = await galleryService.pickImages();
-
-        if (!context.mounted) return;
-
-        if (imagePaths.isNotEmpty) {
-          context.read<ImageSelectionProvider>().addImages(
-                imagePaths,
-                'gallery',
-              );
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (_) => ReviewScreen(conversionType: conversionType),
-            ),
-          );
-        }
-      } else {
-        _showDeniedMessage(
-          context,
-          'Gallery permission was denied.',
+      if (imagePaths.isNotEmpty) {
+        context.read<ImageSelectionProvider>().addImages(imagePaths, 'gallery');
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ReviewScreen(conversionType: conversionType),
+          ),
         );
       }
     } catch (e) {
       if (!context.mounted) return;
 
-      _showDeniedMessage(
-        context,
-        'Unable to access the gallery.',
-      );
+      _showDeniedMessage(context, 'Unable to access the gallery.');
     }
   }
 
-  void _showDeniedMessage(
-    BuildContext context,
-    String message,
-  ) {
+  void _showDeniedMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -117,9 +89,7 @@ class SourceSelectionScreen extends StatelessWidget {
     return Scaffold(
       backgroundColor: colorScheme.surface,
       appBar: AppBar(
-        title: Text(
-          'Images to ${conversionType.shortName}',
-        ),
+        title: Text('Images to ${conversionType.shortName}'),
         backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
         elevation: 0,
@@ -128,9 +98,7 @@ class SourceSelectionScreen extends StatelessWidget {
           onPressed: () {
             Navigator.of(context).maybePop();
           },
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-          ),
+          icon: const Icon(Icons.arrow_back_rounded),
           tooltip: 'Back',
         ),
       ),
@@ -142,9 +110,7 @@ class SourceSelectionScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  height: isMobile ? 20 : 40,
-                ),
+                SizedBox(height: isMobile ? 20 : 40),
                 Text(
                   'Choose Source',
                   textAlign: TextAlign.center,
@@ -171,14 +137,10 @@ class SourceSelectionScreen extends StatelessWidget {
                       tabletSize: 15,
                       desktopSize: 16,
                     ),
-                    color: colorScheme.onSurface.withValues(
-                      alpha: 0.58,
-                    ),
+                    color: colorScheme.onSurface.withValues(alpha: 0.58),
                   ),
                 ),
-                SizedBox(
-                  height: isMobile ? 32 : 50,
-                ),
+                SizedBox(height: isMobile ? 32 : 50),
                 if (isTablet)
                   Row(
                     children: [
@@ -235,10 +197,14 @@ class SourceSelectionScreen extends StatelessWidget {
                 Container(
                   padding: EdgeInsets.all(isMobile ? 16 : 20),
                   decoration: BoxDecoration(
-                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+                    color: isDark
+                        ? AppTheme.surfaceDark
+                        : AppTheme.surfaceLight,
                     borderRadius: BorderRadius.circular(18),
                     border: Border.all(
-                      color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                      color: isDark
+                          ? AppTheme.dividerDark
+                          : AppTheme.dividerColor,
                     ),
                   ),
                   child: Row(
@@ -327,9 +293,7 @@ class SourceSelectionScreen extends StatelessWidget {
             ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withValues(
-                  alpha: isDark ? 0.15 : 0.04,
-                ),
+                color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.04),
                 blurRadius: 18,
                 offset: const Offset(0, 8),
               ),
@@ -341,16 +305,10 @@ class SourceSelectionScreen extends StatelessWidget {
                 width: isMobile ? 68 : 80,
                 height: isMobile ? 68 : 80,
                 decoration: BoxDecoration(
-                  color: color.withValues(
-                    alpha: isDark ? 0.15 : 0.09,
-                  ),
+                  color: color.withValues(alpha: isDark ? 0.15 : 0.09),
                   borderRadius: BorderRadius.circular(20),
                 ),
-                child: Icon(
-                  icon,
-                  size: isMobile ? 34 : 40,
-                  color: color,
-                ),
+                child: Icon(icon, size: isMobile ? 34 : 40, color: color),
               ),
               SizedBox(height: isMobile ? 16 : 20),
               Text(
@@ -379,9 +337,7 @@ class SourceSelectionScreen extends StatelessWidget {
                     desktopSize: 14,
                   ),
                   height: 1.45,
-                  color: colorScheme.onSurface.withValues(
-                    alpha: 0.55,
-                  ),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55),
                 ),
               ),
               const SizedBox(height: 18),
