@@ -39,44 +39,74 @@ class SourceSelectionScreen extends StatelessWidget {
     }
   }
 
-  Future<void> _handleGallery(BuildContext context) async {
-    try {
-      // image_picker opens the native photo picker and handles its own access flow.
-      final galleryService = GalleryService();
-      final imagePaths = await galleryService.pickImages();
+ Future<void> _handleGallery(BuildContext context) async {
+  try {
+    final galleryService = GalleryService();
 
-      if (!context.mounted) return;
+    // Open the native gallery with multiple-image selection.
+    final List<String> imagePaths =
+        await galleryService.pickImages();
 
-      if (imagePaths.isNotEmpty) {
-        context.read<ImageSelectionProvider>().addImages(imagePaths, 'gallery');
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => ReviewScreen(conversionType: conversionType),
-          ),
-        );
-      }
-    } catch (e) {
-      if (!context.mounted) return;
+    if (!context.mounted) return;
 
-      _showDeniedMessage(context, 'Unable to access the gallery.');
+    // User cancelled the picker.
+    if (imagePaths.isEmpty) {
+      return;
     }
-  }
 
-  void _showDeniedMessage(BuildContext context, String message) {
-    ScaffoldMessenger.of(context)
-      ..hideCurrentSnackBar()
-      ..showSnackBar(
-        SnackBar(
-          content: Text(message),
-          behavior: SnackBarBehavior.floating,
-          backgroundColor: AppTheme.errorColor,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(12),
-          ),
+    // Add ALL selected images to the provider.
+    final imageProvider =
+        context.read<ImageSelectionProvider>();
+
+    imageProvider.addImages(
+      imagePaths,
+      'gallery',
+      markUnsaved: true,
+    );
+
+    if (!context.mounted) return;
+
+    // Open the review screen after all images are added.
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ReviewScreen(
+          conversionType: conversionType,
         ),
-      );
-  }
+      ),
+    );
+  } catch (e, stackTrace) {
+    debugPrint('Gallery selection error: $e');
+    debugPrintStack(stackTrace: stackTrace);
 
+    if (!context.mounted) return;
+
+    _showDeniedMessage(
+      context,
+      'Unable to select images from gallery.',
+    );
+  }
+}
+
+void _showDeniedMessage(
+  BuildContext context,
+  String message,
+) {
+  if (!context.mounted) return;
+
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: AppTheme.errorColor,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(12),
+        ),
+        duration: const Duration(seconds: 3),
+      ),
+    );
+}
   @override
   Widget build(BuildContext context) {
     final padding = ResponsiveHelper.getResponsivePadding(context);
