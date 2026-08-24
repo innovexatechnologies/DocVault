@@ -1,4 +1,5 @@
 import 'package:doc_vault/core/utils/file_utils.dart';
+import 'package:doc_vault/models/conversion_type.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
@@ -41,6 +42,38 @@ void main() {
       expect(
         FileUtils.normalizePdfFileName('Final Exam Notes - Math 101 (v2)'),
         'Final Exam Notes - Math 101 (v2).pdf',
+      );
+    });
+  });
+
+  group('FileUtils.normalizeFileName Multi-Format Tests', () {
+    test('normalizes DOCX filenames', () {
+      expect(
+        FileUtils.normalizeFileName('My Report', ConversionType.docs),
+        'My Report.docx',
+      );
+      expect(
+        FileUtils.normalizeFileName('My Report.docx.docx', ConversionType.docs),
+        'My Report.docx',
+      );
+      expect(
+        FileUtils.normalizeFileName('My Report.pdf', ConversionType.docs),
+        'My Report.docx',
+      );
+    });
+
+    test('normalizes PPTX filenames', () {
+      expect(
+        FileUtils.normalizeFileName('Presentation 2026', ConversionType.ppt),
+        'Presentation 2026.pptx',
+      );
+      expect(
+        FileUtils.normalizeFileName('Slides.pptx.pptx', ConversionType.ppt),
+        'Slides.pptx',
+      );
+      expect(
+        FileUtils.normalizeFileName('Slides.pdf', ConversionType.ppt),
+        'Slides.pptx',
       );
     });
   });

@@ -3,16 +3,20 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
+import '../../models/conversion_type.dart';
 import '../../models/pdf_document.dart';
 import '../image_editing/image_editor_screen.dart';
+import 'pdf_generation_screen.dart';
 
 class PreviewScreen extends StatefulWidget {
   final PdfDocument? existingDocument;
+  final ConversionType conversionType;
   final VoidCallback? onSave;
 
   const PreviewScreen({
     super.key,
     this.existingDocument,
+    this.conversionType = ConversionType.pdf,
     this.onSave,
   });
 
@@ -23,6 +27,9 @@ class PreviewScreen extends StatefulWidget {
 class _PreviewScreenState extends State<PreviewScreen> {
   late PageController _pageController;
   int _currentPageIndex = 0;
+
+  ConversionType get _effectiveType =>
+      widget.existingDocument?.documentType ?? widget.conversionType;
 
   bool get _isEditingExisting => widget.existingDocument != null;
 
@@ -54,12 +61,16 @@ class _PreviewScreenState extends State<PreviewScreen> {
     }
   }
 
-  void _generatePdf() {
+  void _generateDocument() {
     if (_isEditingExisting && widget.onSave != null) {
       Navigator.of(context).pop();
       widget.onSave!();
     } else {
-      Navigator.of(context).pushNamed('/pdf-generation');
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PdfGenerationScreen(conversionType: _effectiveType),
+        ),
+      );
     }
   }
 
@@ -76,15 +87,26 @@ class _PreviewScreenState extends State<PreviewScreen> {
     final imageProvider = context.watch<ImageSelectionProvider>();
     final images = imageProvider.selectedImages;
     final totalPages = images.length;
+    final itemUnit = _effectiveType == ConversionType.ppt ? 'Slide' : 'Page';
 
     if (images.isEmpty) {
       return Scaffold(
         appBar: AppBar(title: const Text('Preview')),
-        body: const Center(child: Text('No pages to preview')),
+        body: Center(
+          child: Text(
+            _effectiveType == ConversionType.ppt
+                ? 'No slides to preview'
+                : 'No pages to preview',
+          ),
+        ),
       );
     }
 
     final currentImage = images[_currentPageIndex.clamp(0, totalPages - 1)];
+
+    // Aspect ratio: A4 (1 / 1.414) for PDF/DOCS, 16:9 for PPT
+    final previewAspectRatio =
+        _effectiveType == ConversionType.ppt ? (16 / 9) : (1 / 1.414);
 
     return PopScope(
       canPop: true,
@@ -108,12 +130,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
               Text(
                 _isEditingExisting
                     ? 'Preview: ${widget.existingDocument!.title}'
-                    : 'Document Preview',
+                    : '${_effectiveType.shortName} Preview',
                 style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
                 overflow: TextOverflow.ellipsis,
               ),
               Text(
-                'Page ${_currentPageIndex + 1} of $totalPages',
+                '$itemUnit ${_currentPageIndex + 1} of $totalPages',
                 style: TextStyle(
                   fontSize: 12,
                   color: colorScheme.onSurface.withValues(alpha: 0.6),
@@ -124,7 +146,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
           actions: [
             IconButton(
               icon: const Icon(Icons.tune_rounded),
-              tooltip: 'Edit Page',
+              tooltip: 'Edit $itemUnit',
               onPressed: () => _openEditorForCurrentPage(
                 currentImage.id,
                 currentImage.filePath,
@@ -134,7 +156,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ),
         body: Column(
           children: [
-            // Page Preview Viewer
+            // Page / Slide Preview Viewer
             Expanded(
               child: PageView.builder(
                 controller: _pageController,
@@ -148,11 +170,16 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     child: Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                       child: AspectRatio(
-                        aspectRatio: 1 / 1.414, // A4 aspect ratio
+                        aspectRatio: previewAspectRatio,
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(
+                              _effectiveType == ConversionType.ppt ? 12 : 8,
+                            ),
+                            border: _effectiveType == ConversionType.docs
+                                ? Border.all(color: Colors.blueGrey.shade100, width: 1)
+                                : null,
                             boxShadow: [
                               BoxShadow(
                                 color: Colors.black.withValues(alpha: 0.15),
@@ -191,6 +218,19 @@ class _PreviewScreenState extends State<PreviewScreen> {
                                   ),
                                 ),
                               ),
+                              if (_effectiveType == ConversionType.docs)
+                                Positioned(
+                                  top: 8,
+                                  left: 12,
+                                  child: Text(
+                                    'DOCX Page ${index + 1}',
+                                    style: TextStyle(
+                                      fontSize: 10,
+                                      color: Colors.black38,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ),
                             ],
                           ),
                         ),
@@ -236,12 +276,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
                                 );
                               },
                               child: Container(
-                                width: 42,
+                                width: _effectiveType == ConversionType.ppt ? 64 : 42,
                                 decoration: BoxDecoration(
                                   borderRadius: BorderRadius.circular(6),
                                   border: Border.all(
                                     color: isSelected
-                                        ? AppTheme.primaryColor
+                                        ? _effectiveType.badgeColor
                                         : Colors.transparent,
                                     width: 2,
                                   ),
@@ -250,8 +290,8 @@ class _PreviewScreenState extends State<PreviewScreen> {
                                 child: Image.file(
                                   File(images[idx].filePath),
                                   fit: BoxFit.cover,
-                                  cacheWidth: 84,
-                                  cacheHeight: 108,
+                                  cacheWidth: 96,
+                                  cacheHeight: 96,
                                 ),
                               ),
                             );
@@ -269,7 +309,7 @@ class _PreviewScreenState extends State<PreviewScreen> {
                             currentImage.filePath,
                           ),
                           icon: const Icon(Icons.tune_rounded, size: 18),
-                          label: const Text('Edit Page'),
+                          label: Text('Edit $itemUnit'),
                           style: OutlinedButton.styleFrom(
                             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
                             shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
@@ -278,21 +318,23 @@ class _PreviewScreenState extends State<PreviewScreen> {
                         const SizedBox(width: 12),
                         Expanded(
                           child: ElevatedButton.icon(
-                            onPressed: _generatePdf,
+                            onPressed: _generateDocument,
                             icon: Icon(
                               _isEditingExisting
                                   ? Icons.save_rounded
-                                  : Icons.picture_as_pdf_rounded,
+                                  : _effectiveType.icon,
                               size: 18,
                             ),
                             label: Text(
-                              _isEditingExisting ? 'Save Changes' : 'Generate PDF',
+                              _isEditingExisting
+                                  ? 'Save Changes'
+                                  : 'Generate ${_effectiveType.shortName}',
                               style: const TextStyle(fontWeight: FontWeight.w700),
                             ),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: _isEditingExisting
                                   ? AppTheme.primaryColor
-                                  : AppTheme.successColor,
+                                  : _effectiveType.badgeColor,
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),

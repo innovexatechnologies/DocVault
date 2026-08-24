@@ -68,6 +68,7 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final docType = widget.document.documentType;
 
     return AlertDialog(
       backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
@@ -82,20 +83,20 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
           Container(
             padding: const EdgeInsets.all(8),
             decoration: BoxDecoration(
-              color: AppTheme.primaryColor.withValues(
+              color: docType.badgeColor.withValues(
                 alpha: isDark ? 0.18 : 0.12,
               ),
               borderRadius: BorderRadius.circular(10),
             ),
-            child: const Icon(
+            child: Icon(
               Icons.edit_rounded,
-              color: AppTheme.primaryColor,
+              color: docType.badgeColor,
               size: 20,
             ),
           ),
           const SizedBox(width: 12),
           Text(
-            'Rename PDF',
+            'Rename ${docType.shortName}',
             style: TextStyle(
               fontSize: 18,
               fontWeight: FontWeight.w700,
@@ -112,7 +113,7 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Text(
-                'Enter a new name for your document:',
+                'Enter a new name for your ${docType.shortName} document:',
                 style: TextStyle(
                   fontSize: 13,
                   color: colorScheme.onSurface.withValues(alpha: 0.7),
@@ -129,7 +130,7 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
                 ),
                 decoration: InputDecoration(
                   hintText: 'Document name',
-                  suffixText: '.pdf',
+                  suffixText: '.${docType.extension}',
                   suffixStyle: TextStyle(
                     fontWeight: FontWeight.bold,
                     color: colorScheme.onSurface.withValues(alpha: 0.5),
@@ -154,8 +155,8 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
-                    borderSide: const BorderSide(
-                      color: AppTheme.primaryColor,
+                    borderSide: BorderSide(
+                      color: docType.badgeColor,
                       width: 2,
                     ),
                   ),
@@ -208,7 +209,7 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
         ElevatedButton(
           onPressed: _isSubmitting ? null : _handleRename,
           style: ElevatedButton.styleFrom(
-            backgroundColor: AppTheme.primaryColor,
+            backgroundColor: docType.badgeColor,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
               borderRadius: BorderRadius.circular(10),

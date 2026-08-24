@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../../core/theme/app_theme.dart';
+import '../../../models/conversion_type.dart';
 import '../../../models/pdf_document.dart';
 
 class PdfFileCard extends StatelessWidget {
@@ -25,15 +26,17 @@ class PdfFileCard extends StatelessWidget {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
+    final docType = document.documentType;
 
-    final selectedBorderColor = AppTheme.primaryColor;
+    final selectedBorderColor = docType.badgeColor;
     final defaultBorderColor = isDark ? AppTheme.dividerDark : AppTheme.dividerColor;
+    final unitBadge = docType == ConversionType.ppt ? '${document.pageCount}s' : '${document.pageCount}p';
 
     return Container(
       margin: const EdgeInsets.only(bottom: 10),
       decoration: BoxDecoration(
         color: isSelected
-            ? AppTheme.primaryColor.withValues(alpha: isDark ? 0.15 : 0.08)
+            ? docType.badgeColor.withValues(alpha: isDark ? 0.15 : 0.08)
             : (isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight),
         borderRadius: BorderRadius.circular(16),
         border: Border.all(
@@ -70,11 +73,11 @@ class PdfFileCard extends StatelessWidget {
                       width: 24,
                       height: 24,
                       decoration: BoxDecoration(
-                        color: isSelected ? AppTheme.primaryColor : Colors.transparent,
+                        color: isSelected ? docType.badgeColor : Colors.transparent,
                         shape: BoxShape.circle,
                         border: Border.all(
                           color: isSelected
-                              ? AppTheme.primaryColor
+                              ? docType.badgeColor
                               : (isDark ? AppTheme.dividerDark : AppTheme.dividerColor),
                           width: 2,
                         ),
@@ -89,7 +92,7 @@ class PdfFileCard extends StatelessWidget {
                     ),
                   ),
 
-                // PDF Thumbnail Icon with Badge
+                // Format Thumbnail Icon with Badge
                 Stack(
                   clipBehavior: Clip.none,
                   children: [
@@ -99,21 +102,21 @@ class PdfFileCard extends StatelessWidget {
                       decoration: BoxDecoration(
                         gradient: LinearGradient(
                           colors: [
-                            AppTheme.primaryColor.withValues(alpha: isDark ? 0.25 : 0.15),
-                            AppTheme.accentColor.withValues(alpha: isDark ? 0.15 : 0.08),
+                            docType.gradientStart.withValues(alpha: isDark ? 0.25 : 0.15),
+                            docType.gradientEnd.withValues(alpha: isDark ? 0.15 : 0.08),
                           ],
                           begin: Alignment.topLeft,
                           end: Alignment.bottomRight,
                         ),
                         borderRadius: BorderRadius.circular(12),
                         border: Border.all(
-                          color: AppTheme.primaryColor.withValues(alpha: 0.2),
+                          color: docType.badgeColor.withValues(alpha: 0.2),
                         ),
                       ),
-                      child: const Center(
+                      child: Center(
                         child: Icon(
-                          Icons.picture_as_pdf_rounded,
-                          color: AppTheme.primaryColor,
+                          docType.icon,
+                          color: docType.badgeColor,
                           size: 26,
                         ),
                       ),
@@ -124,11 +127,11 @@ class PdfFileCard extends StatelessWidget {
                       child: Container(
                         padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
                         decoration: BoxDecoration(
-                          color: AppTheme.primaryColor,
+                          color: docType.badgeColor,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
-                          '${document.pageCount}p',
+                          unitBadge,
                           style: const TextStyle(
                             color: Colors.white,
                             fontSize: 9,
@@ -167,11 +170,26 @@ class PdfFileCard extends StatelessWidget {
                         runSpacing: 2,
                         children: [
                           Text(
-                            document.formattedFileSize,
-                            style: const TextStyle(
+                            docType.shortName,
+                            style: TextStyle(
+                              fontSize: 10,
+                              fontWeight: FontWeight.w800,
+                              color: docType.badgeColor,
+                            ),
+                          ),
+                          Text(
+                            '•',
+                            style: TextStyle(
+                              color: colorScheme.onSurface.withValues(alpha: 0.35),
                               fontSize: 11,
-                              fontWeight: FontWeight.w700,
-                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                          Text(
+                            document.formattedFileSize,
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurface.withValues(alpha: 0.70),
                             ),
                           ),
                           Text(

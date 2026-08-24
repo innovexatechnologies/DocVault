@@ -8,94 +8,61 @@ import '../../core/services/gallery_service.dart';
 import '../../core/services/permission_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
+import '../../models/conversion_type.dart';
+import '../pdf_generation/review_screen.dart';
 
 class SourceSelectionScreen extends StatelessWidget {
-  const SourceSelectionScreen({super.key});
+  final ConversionType conversionType;
 
-  // ==========================================================
-  // PERMISSION SERVICE
-  // ==========================================================
+  const SourceSelectionScreen({
+    super.key,
+    this.conversionType = ConversionType.pdf,
+  });
 
-  static final PermissionService _permissionService =
-      PermissionService();
-
-  // ==========================================================
-  // CAMERA
-  // ==========================================================
+  static final PermissionService _permissionService = PermissionService();
 
   Future<void> _handleCamera(BuildContext context) async {
     try {
-      final status =
-          await _permissionService.requestCameraPermission();
+      final status = await _permissionService.requestCameraPermission();
 
       if (!context.mounted) return;
 
       if (status.isGranted) {
-        Navigator.of(context).pushNamed('/camera');
+        Navigator.of(context).pushNamed('/camera', arguments: conversionType);
       } else {
-        _showDeniedMessage(
-          context,
-          'Camera permission was denied.',
-        );
+        _showDeniedMessage(context, 'Camera permission was denied.');
       }
     } catch (e) {
       if (!context.mounted) return;
 
-      _showDeniedMessage(
-        context,
-        'Unable to access the camera.',
-      );
+      _showDeniedMessage(context, 'Unable to access the camera.');
     }
   }
-
-  // ==========================================================
-  // GALLERY
-  // ==========================================================
 
   Future<void> _handleGallery(BuildContext context) async {
     try {
-      final status =
-          await _permissionService.requestGalleryPermission();
+      // image_picker opens the native photo picker and handles its own access flow.
+      final galleryService = GalleryService();
+      final imagePaths = await galleryService.pickImages();
 
       if (!context.mounted) return;
 
-      if (status.isGranted) {
-        final galleryService = GalleryService();
-        final imagePaths = await galleryService.pickImages();
-
-        if (!context.mounted) return;
-
-        if (imagePaths.isNotEmpty) {
-          context.read<ImageSelectionProvider>().addImages(
-                imagePaths,
-                'gallery',
-              );
-          Navigator.of(context).pushNamed('/review');
-        }
-      } else {
-        _showDeniedMessage(
-          context,
-          'Gallery permission was denied.',
+      if (imagePaths.isNotEmpty) {
+        context.read<ImageSelectionProvider>().addImages(imagePaths, 'gallery');
+        Navigator.of(context).push(
+          MaterialPageRoute(
+            builder: (_) => ReviewScreen(conversionType: conversionType),
+          ),
         );
       }
     } catch (e) {
       if (!context.mounted) return;
 
-      _showDeniedMessage(
-        context,
-        'Unable to access the gallery.',
-      );
+      _showDeniedMessage(context, 'Unable to access the gallery.');
     }
   }
 
-  // ==========================================================
-  // DENIED MESSAGE
-  // ==========================================================
-
-  void _showDeniedMessage(
-    BuildContext context,
-    String message,
-  ) {
+  void _showDeniedMessage(BuildContext context, String message) {
     ScaffoldMessenger.of(context)
       ..hideCurrentSnackBar()
       ..showSnackBar(
@@ -110,191 +77,94 @@ class SourceSelectionScreen extends StatelessWidget {
       );
   }
 
-  // ==========================================================
-  // BUILD
-  // ==========================================================
-
   @override
   Widget build(BuildContext context) {
-    final padding =
-        ResponsiveHelper.getResponsivePadding(context);
-
-    final isMobile =
-        ResponsiveHelper.isMobile(context);
-
-    final isTablet =
-        ResponsiveHelper.isTablet(context);
-
+    final padding = ResponsiveHelper.getResponsivePadding(context);
+    final isMobile = ResponsiveHelper.isMobile(context);
+    final isTablet = ResponsiveHelper.isTablet(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-
-    final isDark =
-        theme.brightness == Brightness.dark;
+    final isDark = theme.brightness == Brightness.dark;
 
     return Scaffold(
       backgroundColor: colorScheme.surface,
-
-      // ========================================================
-      // APP BAR
-      // ========================================================
-
       appBar: AppBar(
-        title: const Text(
-          AppConstants.createPdf,
-        ),
+        title: Text('Images to ${conversionType.shortName}'),
         backgroundColor: colorScheme.surface,
         foregroundColor: colorScheme.onSurface,
         elevation: 0,
         scrolledUnderElevation: 0,
-
         leading: IconButton(
           onPressed: () {
             Navigator.of(context).maybePop();
           },
-          icon: const Icon(
-            Icons.arrow_back_rounded,
-          ),
+          icon: const Icon(Icons.arrow_back_rounded),
           tooltip: 'Back',
         ),
       ),
-
-      // ========================================================
-      // BODY
-      // ========================================================
-
       body: SafeArea(
         child: SingleChildScrollView(
-          physics:
-              const BouncingScrollPhysics(),
-
+          physics: const BouncingScrollPhysics(),
           child: Padding(
             padding: EdgeInsets.all(padding),
-
             child: Column(
-              crossAxisAlignment:
-                  CrossAxisAlignment.stretch,
-
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                SizedBox(
-                  height:
-                      isMobile ? 20 : 40,
-                ),
-
-                // ==================================================
-                // HEADER
-                // ==================================================
-
+                SizedBox(height: isMobile ? 20 : 40),
                 Text(
                   'Choose Source',
                   textAlign: TextAlign.center,
-
                   style: TextStyle(
-                    fontSize:
-                        ResponsiveHelper
-                            .getResponsiveFontSize(
+                    fontSize: ResponsiveHelper.getResponsiveFontSize(
                       context,
                       mobileSize: 24,
                       tabletSize: 28,
                       desktopSize: 32,
                     ),
-                    fontWeight:
-                        FontWeight.w800,
+                    fontWeight: FontWeight.w800,
                     letterSpacing: -0.5,
-                    color:
-                        colorScheme.onSurface,
+                    color: colorScheme.onSurface,
                   ),
                 ),
-
-                const SizedBox(
-                  height: 8,
-                ),
-
+                const SizedBox(height: 8),
                 Text(
-                  'Select where to get your documents',
+                  'Select where to get your images for ${conversionType.label}',
                   textAlign: TextAlign.center,
-
                   style: TextStyle(
-                    fontSize:
-                        ResponsiveHelper
-                            .getResponsiveFontSize(
+                    fontSize: ResponsiveHelper.getResponsiveFontSize(
                       context,
                       mobileSize: 13,
                       tabletSize: 15,
                       desktopSize: 16,
                     ),
-                    color: colorScheme
-                        .onSurface
-                        .withValues(
-                      alpha: 0.58,
-                    ),
+                    color: colorScheme.onSurface.withValues(alpha: 0.58),
                   ),
                 ),
-
-                SizedBox(
-                  height:
-                      isMobile ? 32 : 50,
-                ),
-
-                // ==================================================
-                // SOURCE OPTIONS
-                // ==================================================
-
+                SizedBox(height: isMobile ? 32 : 50),
                 if (isTablet)
                   Row(
                     children: [
-                      // ==================================================
-                      // CAMERA
-                      // ==================================================
-
                       Expanded(
-                        child:
-                            _buildSourceOption(
+                        child: _buildSourceOption(
                           context,
-                          title:
-                              AppConstants.camera,
-                          subtitle:
-                              'Capture new documents with camera',
-                          icon: Icons
-                              .camera_alt_rounded,
-                          color:
-                              AppTheme.primaryColor,
+                          title: AppConstants.camera,
+                          subtitle: 'Capture new photos with camera',
+                          icon: Icons.camera_alt_rounded,
+                          color: AppTheme.primaryColor,
                           isDark: isDark,
-
-                          onTap: () {
-                            _handleCamera(
-                              context,
-                            );
-                          },
+                          onTap: () => _handleCamera(context),
                         ),
                       ),
-
-                      SizedBox(
-                        width: padding,
-                      ),
-
-                      // ==================================================
-                      // GALLERY
-                      // ==================================================
-
+                      SizedBox(width: padding),
                       Expanded(
-                        child:
-                            _buildSourceOption(
+                        child: _buildSourceOption(
                           context,
-                          title:
-                              AppConstants.gallery,
-                          subtitle:
-                              'Select existing images from gallery',
-                          icon: Icons
-                              .photo_library_rounded,
-                          color:
-                              AppTheme.primaryColor,
+                          title: AppConstants.gallery,
+                          subtitle: 'Select existing images from gallery',
+                          icon: Icons.photo_library_rounded,
+                          color: AppTheme.primaryColor,
                           isDark: isDark,
-
-                          onTap: () {
-                            _handleGallery(
-                              context,
-                            );
-                          },
+                          onTap: () => _handleGallery(context),
                         ),
                       ),
                     ],
@@ -302,165 +172,79 @@ class SourceSelectionScreen extends StatelessWidget {
                 else
                   Column(
                     children: [
-                      // ==================================================
-                      // CAMERA
-                      // ==================================================
-
                       _buildSourceOption(
                         context,
-                        title:
-                            AppConstants.camera,
-                        subtitle:
-                            'Capture new documents with camera',
-                        icon:
-                            Icons.camera_alt_rounded,
-                        color:
-                            AppTheme.primaryColor,
+                        title: AppConstants.camera,
+                        subtitle: 'Capture new photos with camera',
+                        icon: Icons.camera_alt_rounded,
+                        color: AppTheme.primaryColor,
                         isDark: isDark,
-
-                        onTap: () {
-                          _handleCamera(
-                            context,
-                          );
-                        },
+                        onTap: () => _handleCamera(context),
                       ),
-
-                      SizedBox(
-                        height:
-                            isMobile ? 16 : 24,
-                      ),
-
-                      // ==================================================
-                      // GALLERY
-                      // ==================================================
-
+                      SizedBox(height: isMobile ? 16 : 24),
                       _buildSourceOption(
                         context,
-                        title:
-                            AppConstants.gallery,
-                        subtitle:
-                            'Select existing images from gallery',
-                        icon:
-                            Icons.photo_library_rounded,
-                        color:
-                            AppTheme.primaryColor,
+                        title: AppConstants.gallery,
+                        subtitle: 'Select existing images from gallery',
+                        icon: Icons.photo_library_rounded,
+                        color: AppTheme.primaryColor,
                         isDark: isDark,
-
-                        onTap: () {
-                          _handleGallery(
-                            context,
-                          );
-                        },
+                        onTap: () => _handleGallery(context),
                       ),
                     ],
                   ),
-
-                SizedBox(
-                  height:
-                      isMobile ? 28 : 40,
-                ),
-
-                // ==================================================
-                // INFO CARD
-                // ==================================================
-
+                SizedBox(height: isMobile ? 28 : 40),
                 Container(
-                  padding: EdgeInsets.all(
-                    isMobile ? 16 : 20,
-                  ),
-
-                  decoration:
-                      BoxDecoration(
+                  padding: EdgeInsets.all(isMobile ? 16 : 20),
+                  decoration: BoxDecoration(
                     color: isDark
                         ? AppTheme.surfaceDark
                         : AppTheme.surfaceLight,
-
-                    borderRadius:
-                        BorderRadius.circular(
-                      18,
-                    ),
-
+                    borderRadius: BorderRadius.circular(18),
                     border: Border.all(
                       color: isDark
                           ? AppTheme.dividerDark
                           : AppTheme.dividerColor,
                     ),
                   ),
-
                   child: Row(
-                    crossAxisAlignment:
-                        CrossAxisAlignment.start,
-
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Container(
                         width: 42,
                         height: 42,
-
-                        decoration:
-                            BoxDecoration(
-                          color: AppTheme
-                              .primaryColor
-                              .withValues(
-                            alpha: isDark
-                                ? 0.14
-                                : 0.09,
+                        decoration: BoxDecoration(
+                          color: AppTheme.primaryColor.withValues(
+                            alpha: isDark ? 0.14 : 0.09,
                           ),
-
-                          borderRadius:
-                              BorderRadius
-                                  .circular(
-                            12,
-                          ),
+                          borderRadius: BorderRadius.circular(12),
                         ),
-
                         child: const Icon(
-                          Icons
-                              .info_outline_rounded,
-                          color: AppTheme
-                              .primaryColor,
+                          Icons.info_outline_rounded,
+                          color: AppTheme.primaryColor,
                           size: 22,
                         ),
                       ),
-
-                      const SizedBox(
-                        width: 14,
-                      ),
-
+                      const SizedBox(width: 14),
                       Expanded(
                         child: Column(
-                          crossAxisAlignment:
-                              CrossAxisAlignment
-                                  .start,
-
+                          crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(
-                              'Choose your source',
-                              style:
-                                  TextStyle(
+                              'Format: ${conversionType.label}',
+                              style: TextStyle(
                                 fontSize: 14,
-                                fontWeight:
-                                    FontWeight
-                                        .w700,
-                                color:
-                                    colorScheme
-                                        .onSurface,
+                                fontWeight: FontWeight.w700,
+                                color: colorScheme.onSurface,
                               ),
                             ),
-
-                            const SizedBox(
-                              height: 4,
-                            ),
-
+                            const SizedBox(height: 4),
                             Text(
-                              'Scan a new document using your camera or select existing images from your gallery.',
-                              style:
-                                  TextStyle(
+                              'Selected images will be processed and exported as a valid .${conversionType.extension} file.',
+                              style: TextStyle(
                                 fontSize: 12,
                                 height: 1.45,
-                                color:
-                                    colorScheme
-                                        .onSurface
-                                        .withValues(
+                                color: colorScheme.onSurface.withValues(
                                   alpha: 0.58,
                                 ),
                               ),
@@ -471,10 +255,7 @@ class SourceSelectionScreen extends StatelessWidget {
                     ],
                   ),
                 ),
-
-                const SizedBox(
-                  height: 20,
-                ),
+                const SizedBox(height: 20),
               ],
             ),
           ),
@@ -482,10 +263,6 @@ class SourceSelectionScreen extends StatelessWidget {
       ),
     );
   }
-
-  // ============================================================
-  // SOURCE OPTION CARD
-  // ============================================================
 
   Widget _buildSourceOption(
     BuildContext context, {
@@ -496,213 +273,94 @@ class SourceSelectionScreen extends StatelessWidget {
     required bool isDark,
     required VoidCallback onTap,
   }) {
-    final isMobile =
-        ResponsiveHelper.isMobile(context);
-
-    final theme =
-        Theme.of(context);
-
-    final colorScheme =
-        theme.colorScheme;
+    final isMobile = ResponsiveHelper.isMobile(context);
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
 
     return Material(
       color: Colors.transparent,
-
       child: InkWell(
         onTap: onTap,
-
-        borderRadius:
-            BorderRadius.circular(22),
-
+        borderRadius: BorderRadius.circular(22),
         child: Ink(
           width: double.infinity,
-
-          padding: EdgeInsets.all(
-            isMobile ? 20 : 28,
-          ),
-
-          decoration:
-              BoxDecoration(
-            color: isDark
-                ? AppTheme.surfaceDark
-                : AppTheme.surfaceLight,
-
-            borderRadius:
-                BorderRadius.circular(22),
-
+          padding: EdgeInsets.all(isMobile ? 20 : 28),
+          decoration: BoxDecoration(
+            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+            borderRadius: BorderRadius.circular(22),
             border: Border.all(
-              color: isDark
-                  ? AppTheme.dividerDark
-                  : AppTheme.dividerColor,
+              color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
             ),
-
             boxShadow: [
               BoxShadow(
-                color: Colors.black
-                    .withValues(
-                  alpha:
-                      isDark
-                          ? 0.15
-                          : 0.04,
-                ),
+                color: Colors.black.withValues(alpha: isDark ? 0.15 : 0.04),
                 blurRadius: 18,
-                offset:
-                    const Offset(0, 8),
+                offset: const Offset(0, 8),
               ),
             ],
           ),
-
           child: Column(
             children: [
-              // ==================================================
-              // ICON
-              // ==================================================
-
               Container(
-                width:
-                    isMobile ? 68 : 80,
-                height:
-                    isMobile ? 68 : 80,
-
-                decoration:
-                    BoxDecoration(
-                  color: color
-                      .withValues(
-                    alpha:
-                        isDark
-                            ? 0.15
-                            : 0.09,
-                  ),
-
-                  borderRadius:
-                      BorderRadius
-                          .circular(20),
+                width: isMobile ? 68 : 80,
+                height: isMobile ? 68 : 80,
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: isDark ? 0.15 : 0.09),
+                  borderRadius: BorderRadius.circular(20),
                 ),
-
-                child: Icon(
-                  icon,
-                  size:
-                      isMobile
-                          ? 34
-                          : 40,
-                  color: color,
-                ),
+                child: Icon(icon, size: isMobile ? 34 : 40, color: color),
               ),
-
-              SizedBox(
-                height:
-                    isMobile ? 16 : 20,
-              ),
-
-              // ==================================================
-              // TITLE
-              // ==================================================
-
+              SizedBox(height: isMobile ? 16 : 20),
               Text(
                 title,
-                textAlign:
-                    TextAlign.center,
-
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize:
-                      ResponsiveHelper
-                          .getResponsiveFontSize(
+                  fontSize: ResponsiveHelper.getResponsiveFontSize(
                     context,
                     mobileSize: 18,
                     tabletSize: 20,
                     desktopSize: 22,
                   ),
-                  fontWeight:
-                      FontWeight.w800,
-                  color:
-                      colorScheme
-                          .onSurface,
+                  fontWeight: FontWeight.w800,
+                  color: colorScheme.onSurface,
                 ),
               ),
-
-              const SizedBox(
-                height: 7,
-              ),
-
-              // ==================================================
-              // SUBTITLE
-              // ==================================================
-
+              const SizedBox(height: 7),
               Text(
                 subtitle,
-                textAlign:
-                    TextAlign.center,
-
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize:
-                      ResponsiveHelper
-                          .getResponsiveFontSize(
+                  fontSize: ResponsiveHelper.getResponsiveFontSize(
                     context,
                     mobileSize: 12,
                     tabletSize: 13,
                     desktopSize: 14,
                   ),
                   height: 1.45,
-                  color: colorScheme
-                      .onSurface
-                      .withValues(
-                    alpha: 0.55,
-                  ),
+                  color: colorScheme.onSurface.withValues(alpha: 0.55),
                 ),
               ),
-
-              const SizedBox(
-                height: 18,
-              ),
-
-              // ==================================================
-              // BUTTON
-              // ==================================================
-
+              const SizedBox(height: 18),
               SizedBox(
-                width:
-                    double.infinity,
-
-                height:
-                    isMobile
-                        ? 46
-                        : 50,
-
-                child:
-                    ElevatedButton(
+                width: double.infinity,
+                height: isMobile ? 46 : 50,
+                child: ElevatedButton(
                   onPressed: onTap,
-
-                  style:
-                      ElevatedButton
-                          .styleFrom(
-                    backgroundColor:
-                        color,
-                    foregroundColor:
-                        Colors.white,
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: color,
+                    foregroundColor: Colors.white,
                     elevation: 0,
-
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius
-                              .circular(
-                        14,
-                      ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(14),
                     ),
                   ),
-
                   child: FittedBox(
                     fit: BoxFit.scaleDown,
                     child: Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        Icon(
-                          icon,
-                          size: 19,
-                        ),
-                        const SizedBox(
-                          width: 8,
-                        ),
+                        Icon(icon, size: 19),
+                        const SizedBox(width: 8),
                         Text(
                           title == AppConstants.camera
                               ? 'Scan Document'

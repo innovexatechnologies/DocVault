@@ -2,15 +2,17 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
-
+import '../../models/conversion_type.dart';
 import '../utils/file_utils.dart';
 import 'pdf_storage_service.dart';
 
 class ExternalPdfService {
-  static const MethodChannel _channel =
-      MethodChannel('docvault/pdf_intent');
+  static const MethodChannel _channel = MethodChannel('docvault/pdf_intent');
 
-  /// Imports an external PDF into DocVault permanent storage.
+  /// Processes an incoming external PDF, DOCX, or PPTX content/file URI.
+  /// Reads the bytes natively and writes them to a temporary cache location
+  /// so that the in-app viewer can read it without automatically adding it
+  /// to the persistent library (All Files).
   static Future<Map<String, dynamic>> importPdfFromUri(
     String uri,
   ) async {
@@ -30,9 +32,7 @@ class ExternalPdfService {
     );
 
     if (result == null) {
-      throw Exception(
-        'Failed to read external PDF document.',
-      );
+      throw Exception('Failed to read external document.');
     }
 
     final data = Map<Object?, Object?>.from(result);
@@ -63,144 +63,20 @@ class ExternalPdfService {
         data['fileName']?.toString() ??
             'External_Document.pdf';
 
-    String fileName =
-        _sanitizeFileName(originalFileName);
+    final type = ConversionType.fromFileName(originalFileName);
+    final fileName = FileUtils.normalizeFileName(originalFileName, type);
 
-    if (!fileName
-        .toLowerCase()
-        .endsWith('.pdf')) {
-      fileName = '$fileName.pdf';
-    }
+    // Save to Cache directory (temporary, not in permanent All Files catalog)
+    final cacheDir = await FileUtils.getCacheDirectory();
+    final tempFilePath = '${cacheDir.path}/$fileName';
+    final file = File(tempFilePath);
 
-    // ============================================================
-    // PERMANENT DOCVAULT STORAGE
-    // ============================================================
-
-    final appDirectory =
-        await FileUtils.getAppDocumentsDirectory();
-
-    await appDirectory.create(
-      recursive: true,
-    );
-
-    // ============================================================
-    // UNIQUE FILE NAME
-    // ============================================================
-
-    final finalFileName =
-        await _getUniqueFileName(
-      appDirectory,
-      fileName,
-    );
-
-    final permanentPath =
-        '${appDirectory.path}/$finalFileName';
-
-    final file = File(permanentPath);
-
-    await file.writeAsBytes(
-      bytes,
-      flush: true,
-    );
-
-    // ============================================================
-    // VERIFY FILE
-    // ============================================================
-
-    if (!await file.exists()) {
-      throw Exception(
-        'Failed to save PDF inside DocVault.',
-      );
-    }
-
-    final fileSize = await file.length();
-
-    if (fileSize == 0) {
-      throw Exception(
-        'Saved PDF file is empty.',
-      );
-    }
-
-    // ============================================================
-    // REGISTER PDF IN DOCVAULT LIBRARY
-    // ============================================================
-
-    final storageService =
-        PdfStorageService();
-
-    await storageService.saveDocument(
-      filePath: permanentPath,
-      fileName: finalFileName,
-      pageCount: 1,
-    );
-
-    // ============================================================
-    // RETURN PERMANENT FILE PATH
-    // ============================================================
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
 
     return {
       'filePath': permanentPath,
       'fileName': finalFileName,
     };
-  }
-
-  // ==============================================================
-  // UNIQUE FILE NAME
-  // ==============================================================
-
-  static Future<String> _getUniqueFileName(
-    Directory directory,
-    String originalName,
-  ) async {
-    const extension = '.pdf';
-
-    String baseName = originalName;
-
-    if (baseName
-        .toLowerCase()
-        .endsWith(extension)) {
-      baseName = baseName.substring(
-        0,
-        baseName.length - extension.length,
-      );
-    }
-
-    String candidate =
-        '$baseName$extension';
-
-    int counter = 1;
-
-    while (
-        await File(
-          '${directory.path}/$candidate',
-        ).exists()) {
-      candidate =
-          '${baseName}_$counter$extension';
-
-      counter++;
-    }
-
-    return candidate;
-  }
-
-  // ==============================================================
-  // SANITIZE FILE NAME
-  // ==============================================================
-
-  static String _sanitizeFileName(
-    String fileName,
-  ) {
-    final cleaned = fileName
-        .replaceAll(
-          RegExp(r'[<>:"/\\|?*]'),
-          '_',
-        )
-        .trim();
-
-    if (cleaned.isEmpty) {
-      return 'External_Document.pdf';
-    }
-
-    return cleaned;
   }
 }

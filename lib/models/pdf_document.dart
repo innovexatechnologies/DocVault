@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'conversion_type.dart';
 
 class PdfDocument {
   final String id;
@@ -19,10 +20,16 @@ class PdfDocument {
     required this.modifiedAt,
   });
 
-  /// Base name without `.pdf` extension
+  /// The document format type (PDF, DOCS, PPT)
+  ConversionType get documentType => ConversionType.fromFileName(fileName);
+
+  /// Base name without extension (.pdf, .docx, .pptx)
   String get baseName {
-    if (fileName.toLowerCase().endsWith('.pdf')) {
+    final lower = fileName.toLowerCase();
+    if (lower.endsWith('.pdf')) {
       return fileName.substring(0, fileName.length - 4);
+    } else if (lower.endsWith('.docx') || lower.endsWith('.pptx')) {
+      return fileName.substring(0, fileName.length - 5);
     }
     return fileName;
   }

@@ -57,6 +57,7 @@ dependencies:
   
   # Image processing
   image: ^4.0.0
+  archive: ^4.0.2
   
   # File opening
   open_file: ^3.5.10
