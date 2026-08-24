@@ -19,7 +19,7 @@ class MainActivity : FlutterActivity() {
             CHANNEL
         ).setMethodCallHandler { call, result ->
             when (call.method) {
-                "getInitialPdf" -> {
+                "getInitialDocument", "getInitialPdf" -> {
                     val uri = getDocumentUri(intent)
                     if (uri != null) {
                         result.success(
@@ -33,7 +33,7 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                "readPdf" -> {
+                "readDocument", "readPdf" -> {
                     try {
                         val uriString = call.argument<String>("uri")
                         if (uriString.isNullOrEmpty()) {
@@ -98,7 +98,7 @@ class MainActivity : FlutterActivity() {
             engine.dartExecutor.binaryMessenger,
             CHANNEL
         ).invokeMethod(
-            "newPdf",
+            "newDocument",
             mapOf(
                 "uri" to uri.toString(),
                 "fileName" to getFileName(uri)
