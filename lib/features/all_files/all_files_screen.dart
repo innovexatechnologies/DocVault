@@ -1,3 +1,4 @@
+import 'package:doc_vault/features/home/source_selection_screen.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../core/providers/image_selection_provider.dart';
@@ -16,6 +17,7 @@ import 'widgets/pdf_details_dialog.dart';
 import 'widgets/pdf_file_card.dart';
 import 'widgets/rename_pdf_dialog.dart';
 import 'widgets/sort_options_bottom_sheet.dart';
+ 
 
 class AllFilesScreen extends StatefulWidget {
   final VoidCallback? onNavigateToHome;
@@ -484,19 +486,16 @@ class _AllFilesScreenState extends State<AllFilesScreen> {
                               ),
                             )
                           : !hasAny
-                              ? AllFilesEmptyState(
-                                  isSearch: false,
-                                  onCreatePdf: () {
-                                    if (widget.onNavigateToHome != null) {
-                                      widget.onNavigateToHome!();
-                                    } else {
-                                      Navigator.of(context).pushNamedAndRemoveUntil(
-                                        '/home',
-                                        (route) => false,
-                                      );
-                                    }
-                                  },
-                                )
+    ? AllFilesEmptyState(
+        isSearch: false,
+        onCreatePdf: () {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => const SourceSelectionScreen(),
+            ),
+          );
+        },
+      )
                               : docs.isEmpty
                                   ? AllFilesEmptyState(
                                       isSearch: true,

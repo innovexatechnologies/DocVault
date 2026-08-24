@@ -156,91 +156,100 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ),
         body: Column(
           children: [
-            // Page / Slide Preview Viewer
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                itemCount: totalPages,
-                onPageChanged: (idx) {
-                  setState(() => _currentPageIndex = idx);
-                },
-                itemBuilder: (context, index) {
-                  final imgItem = images[index];
-                  return Center(
-                    child: Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                      child: AspectRatio(
-                        aspectRatio: previewAspectRatio,
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            borderRadius: BorderRadius.circular(
-                              _effectiveType == ConversionType.ppt ? 12 : 8,
-                            ),
-                            border: _effectiveType == ConversionType.docs
-                                ? Border.all(color: Colors.blueGrey.shade100, width: 1)
-                                : null,
-                            boxShadow: [
-                              BoxShadow(
-                                color: Colors.black.withValues(alpha: 0.15),
-                                blurRadius: 16,
-                                offset: const Offset(0, 4),
-                              ),
-                            ],
-                          ),
-                          clipBehavior: Clip.antiAlias,
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              Image.file(
-                                File(imgItem.filePath),
-                                fit: BoxFit.contain,
-                              ),
-                              Positioned(
-                                bottom: 8,
-                                right: 8,
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                    horizontal: 8,
-                                    vertical: 4,
-                                  ),
-                                  decoration: BoxDecoration(
-                                    color: Colors.black54,
-                                    borderRadius: BorderRadius.circular(6),
-                                  ),
-                                  child: Text(
-                                    '${index + 1}',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (_effectiveType == ConversionType.docs)
-                                Positioned(
-                                  top: 8,
-                                  left: 12,
-                                  child: Text(
-                                    'DOCX Page ${index + 1}',
-                                    style: TextStyle(
-                                      fontSize: 10,
-                                      color: Colors.black38,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
+        // Page / Slide Preview Viewer
+Expanded(
+  child: PageView.builder(
+    controller: _pageController,
+    scrollDirection: Axis.vertical,
+    itemCount: totalPages,
+    onPageChanged: (idx) {
+      setState(() => _currentPageIndex = idx);
+    },
+    itemBuilder: (context, index) {
+      final imgItem = images[index];
+
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.symmetric(
+            horizontal: 16,
+            vertical: 12,
+          ),
+          child: AspectRatio(
+            aspectRatio: previewAspectRatio,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(
+                  _effectiveType == ConversionType.ppt ? 12 : 8,
+                ),
+                border: _effectiveType == ConversionType.docs
+                    ? Border.all(
+                        color: Colors.blueGrey.shade100,
+                        width: 1,
+                      )
+                    : null,
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withValues(alpha: 0.15),
+                    blurRadius: 16,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Image.file(
+                    File(imgItem.filePath),
+                    fit: BoxFit.contain,
+                  ),
+
+                  Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.black54,
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Text(
+                        '${index + 1}',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
                     ),
-                  );
-                },
+                  ),
+
+                  if (_effectiveType == ConversionType.docs)
+                    Positioned(
+                      top: 8,
+                      left: 12,
+                      child: Text(
+                        'DOCX Page ${index + 1}',
+                        style: const TextStyle(
+                          fontSize: 10,
+                          color: Colors.black38,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                ],
               ),
             ),
-
+          ),
+        ),
+      );
+    },
+  ),
+),
             // Bottom Navigation & Edit Actions Dock
             SafeArea(
               top: false,
