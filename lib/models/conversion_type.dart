@@ -32,9 +32,9 @@ enum ConversionType {
     mimeType:
         'application/vnd.openxmlformats-officedocument.presentationml.presentation',
     icon: Icons.slideshow_rounded,
-    badgeColor: Color(0xFFE65100),
-    gradientStart: Color(0xFFD84315),
-    gradientEnd: Color(0xFFFF7043),
+    badgeColor: Color(0xFF630000),
+    gradientStart: Color(0xFF630000),
+    gradientEnd: Color(0xFF630000),
   );
 
   final String id;
