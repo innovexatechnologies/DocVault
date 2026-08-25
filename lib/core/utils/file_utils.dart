@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'dart:convert';
+import 'dart:typed_data';
 import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';

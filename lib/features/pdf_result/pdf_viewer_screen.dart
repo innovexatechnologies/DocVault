@@ -67,57 +67,61 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // INITIALIZE VIEWER
   // ============================================================
 
-  Future<void> _initializeViewer() async {
-    if (_docType == ConversionType.pdf) {
-      try {
-        _pdfController = PdfControllerPinch(
-          document: PdfDocument.openFile(widget.filePath),
-        );
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Failed to load PDF: $e';
-            _isLoading = false;
-          });
-        }
-      }
-    } else {
-      // For DOCX and PPTX, extract page/slide images
-      try {
-        final pages = await FileUtils.extractPagesFromDocument(widget.filePath);
-        if (mounted) {
-          setState(() {
-            _extractedPagePaths = pages;
-            _actualPageCount = pages.length;
-            _isLoading = false;
-          });
-        }
-      } catch (e) {
-        if (mounted) {
-          try {
-            final textPages =
-                await FileUtils.extractTextPagesFromDocument(widget.filePath);
-            if (mounted) {
-              setState(() {
-                _extractedTextPages = textPages;
-                _actualPageCount = textPages.length;
-                _isLoading = false;
-              });
-            }
-          } catch (textError) {
-            if (mounted) {
-              setState(() {
-                _errorMessage =
-                    'Failed to preview ${_docType.shortName}: $textError';
-                _isLoading = false;
-              });
-            }
-          }
-        }
+ Future<void> _initializeViewer() async {
+  if (_docType == ConversionType.pdf) {
+    try {
+      _pdfController = PdfControllerPinch(
+        document: PdfDocument.openFile(widget.filePath),
+      );
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = 'Failed to load PDF: $e';
+          _isLoading = false;
+        });
       }
     }
+    return;
   }
 
+  // DOCX / PPTX
+  try {
+    final pages = await FileUtils.extractPagesFromDocument(
+      widget.filePath,
+    );
+
+    if (!mounted) return;
+
+    setState(() {
+      _extractedPagePaths = pages;
+      _actualPageCount = pages.length;
+      _isLoading = false;
+    });
+  } catch (e) {
+    try {
+      final textPages =
+          await FileUtils.extractTextPagesFromDocument(
+        widget.filePath,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _extractedTextPages = textPages;
+        _actualPageCount = textPages.length;
+        _isLoading = false;
+      });
+    } catch (textError) {
+      if (!mounted) return;
+
+      setState(() {
+        _errorMessage =
+            'Failed to preview ${_docType.shortName}: $textError';
+        _isLoading = false;
+      });
+    }
+  }
+}
   @override
   void dispose() {
     _pdfController?.dispose();
@@ -780,9 +784,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     vertical: 12,
                   ),
 
-                  child: AspectRatio(
-                    aspectRatio:
-                        pageAspectRatio,
+                 child: AspectRatio(
+  aspectRatio: aspectRatio,
 
                     child: Container(
                       width:
