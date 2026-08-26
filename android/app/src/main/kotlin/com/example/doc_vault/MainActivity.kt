@@ -1,26 +1,45 @@
+```kotlin
 package com.example.doc_vault
 
 import android.content.Intent
 import android.net.Uri
-import android.os.Bundle
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 class MainActivity : FlutterActivity() {
 
-    private val CHANNEL = "docvault/pdf_intent"
+    private val PDF_CHANNEL = "docvault/pdf_intent"
+    private val OFFICE_CHANNEL = "docvault/office_renderer"
 
-    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
+    override fun configureFlutterEngine(
+        flutterEngine: FlutterEngine
+    ) {
         super.configureFlutterEngine(flutterEngine)
 
+        setupPdfIntentChannel(flutterEngine)
+        setupOfficeRendererChannel(flutterEngine)
+    }
+
+    // ============================================================
+    // PDF / DOCUMENT INTENT CHANNEL
+    // ============================================================
+
+    private fun setupPdfIntentChannel(
+        flutterEngine: FlutterEngine
+    ) {
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            CHANNEL
+            PDF_CHANNEL
         ).setMethodCallHandler { call, result ->
+
             when (call.method) {
-                "getInitialDocument", "getInitialPdf" -> {
+
+                "getInitialDocument",
+                "getInitialPdf" -> {
+
                     val uri = getDocumentUri(intent)
+
                     if (uri != null) {
                         result.success(
                             mapOf(
@@ -33,9 +52,13 @@ class MainActivity : FlutterActivity() {
                     }
                 }
 
-                "readDocument", "readPdf" -> {
+                "readDocument",
+                "readPdf" -> {
+
                     try {
-                        val uriString = call.argument<String>("uri")
+                        val uriString =
+                            call.argument<String>("uri")
+
                         if (uriString.isNullOrEmpty()) {
                             result.error(
                                 "INVALID_URI",
@@ -46,9 +69,11 @@ class MainActivity : FlutterActivity() {
                         }
 
                         val uri = Uri.parse(uriString)
-                        val bytes = contentResolver.openInputStream(uri)?.use { inputStream ->
-                            inputStream.readBytes()
-                        }
+
+                        val bytes =
+                            contentResolver
+                                .openInputStream(uri)
+                                ?.use { it.readBytes() }
 
                         if (bytes == null) {
                             result.error(
@@ -65,10 +90,12 @@ class MainActivity : FlutterActivity() {
                                 "fileName" to getFileName(uri)
                             )
                         )
+
                     } catch (e: Exception) {
                         result.error(
                             "READ_ERROR",
-                            e.message ?: "Failed to read document.",
+                            e.message
+                                ?: "Failed to read document.",
                             null
                         )
                     }
@@ -81,22 +108,78 @@ class MainActivity : FlutterActivity() {
         }
     }
 
+    // ============================================================
+    // OFFICE RENDERER CHANNEL
+    // ============================================================
+
+    private fun setupOfficeRendererChannel(
+        flutterEngine: FlutterEngine
+    ) {
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            OFFICE_CHANNEL
+        ).setMethodCallHandler { call, result ->
+
+            when (call.method) {
+
+                "convertOfficeToPdf" -> {
+
+                    val inputPath =
+                        call.argument<String>("inputPath")
+
+                    val outputPath =
+                        call.argument<String>("outputPath")
+
+                    if (
+                        inputPath.isNullOrEmpty() ||
+                        outputPath.isNullOrEmpty()
+                    ) {
+                        result.error(
+                            "INVALID_ARGUMENT",
+                            "Input or output path is missing.",
+                            null
+                        )
+                        return@setMethodCallHandler
+                    }
+
+                    result.error(
+                        "OFFICE_ENGINE_NOT_INSTALLED",
+                        "Android Office rendering engine is not installed.",
+                        null
+                    )
+                }
+
+                else -> {
+                    result.notImplemented()
+                }
+            }
+        }
+    }
+
+    // ============================================================
+    // NEW EXTERNAL DOCUMENT
+    // ============================================================
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
+
         setIntent(intent)
 
         val uri = getDocumentUri(intent)
+
         if (uri != null) {
             sendDocumentToFlutter(uri)
         }
     }
 
-    private fun sendDocumentToFlutter(uri: Uri) {
+    private fun sendDocumentToFlutter(
+        uri: Uri
+    ) {
         val engine = flutterEngine ?: return
 
         MethodChannel(
             engine.dartExecutor.binaryMessenger,
-            CHANNEL
+            PDF_CHANNEL
         ).invokeMethod(
             "newDocument",
             mapOf(
@@ -106,21 +189,47 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    private fun getDocumentUri(intent: Intent?): Uri? {
+    // ============================================================
+    // DOCUMENT URI
+    // ============================================================
+
+    private fun getDocumentUri(
+        intent: Intent?
+    ): Uri? {
+
         if (intent == null) return null
-        if (intent.action != Intent.ACTION_VIEW) return null
+
+        if (intent.action != Intent.ACTION_VIEW) {
+            return null
+        }
 
         val uri = intent.data ?: return null
-        if (isSupportedDocument(intent, uri)) {
-            return uri
+
+        return if (
+            isSupportedDocument(intent, uri)
+        ) {
+            uri
+        } else {
+            null
         }
-        return null
     }
 
-    private fun isSupportedDocument(intent: Intent, uri: Uri): Boolean {
-        val mimeType = intent.type?.lowercase()
+    // ============================================================
+    // SUPPORTED DOCUMENT
+    // ============================================================
+
+    private fun isSupportedDocument(
+        intent: Intent,
+        uri: Uri
+    ): Boolean {
+
+        val mimeType =
+            intent.type?.lowercase()
+
         if (mimeType != null) {
-            if (mimeType.contains("pdf") ||
+
+            if (
+                mimeType.contains("pdf") ||
                 mimeType.contains("wordprocessingml") ||
                 mimeType.contains("msword") ||
                 mimeType.contains("presentationml") ||
@@ -130,7 +239,9 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        val uriString = uri.toString().lowercase()
+        val uriString =
+            uri.toString().lowercase()
+
         return uriString.endsWith(".pdf") ||
                 uriString.endsWith(".docx") ||
                 uriString.endsWith(".pptx") ||
@@ -141,44 +252,78 @@ class MainActivity : FlutterActivity() {
                 uriString.contains(".pptx?")
     }
 
-    private fun getFileName(uri: Uri): String {
+    // ============================================================
+    // FILE NAME
+    // ============================================================
+
+    private fun getFileName(
+        uri: Uri
+    ): String {
+
         var fileName: String? = null
 
         if (uri.scheme == "content") {
+
             try {
-                val cursor = contentResolver.query(
-                    uri,
-                    arrayOf("_display_name"),
-                    null,
-                    null,
-                    null
-                )
+                val cursor =
+                    contentResolver.query(
+                        uri,
+                        arrayOf("_display_name"),
+                        null,
+                        null,
+                        null
+                    )
+
                 cursor?.use {
+
                     if (it.moveToFirst()) {
-                        val index = it.getColumnIndex("_display_name")
+
+                        val index =
+                            it.getColumnIndex(
+                                "_display_name"
+                            )
+
                         if (index >= 0) {
-                            fileName = it.getString(index)
+                            fileName =
+                                it.getString(index)
                         }
                     }
                 }
-            } catch (e: Exception) {
-                // Fallback below
+
+            } catch (_: Exception) {
+                // Fallback below.
             }
         }
 
-        if (fileName.isNullOrEmpty() && uri.scheme == "file") {
+        if (
+            fileName.isNullOrEmpty() &&
+            uri.scheme == "file"
+        ) {
             fileName = uri.lastPathSegment
         }
 
         if (fileName.isNullOrEmpty()) {
-            val uriStr = uri.toString().lowercase()
+
+            val uriString =
+                uri.toString().lowercase()
+
             fileName = when {
-                uriStr.contains("docx") || uriStr.contains("word") -> "Imported_Document.docx"
-                uriStr.contains("pptx") || uriStr.contains("powerpoint") || uriStr.contains("presentation") -> "Imported_Presentation.pptx"
-                else -> "Imported_Document.pdf"
+
+                uriString.contains("docx") ||
+                        uriString.contains("word") ->
+                    "Imported_Document.docx"
+
+                uriString.contains("pptx") ||
+                        uriString.contains("powerpoint") ||
+                        uriString.contains("presentation") ->
+                    "Imported_Presentation.pptx"
+
+                else ->
+                    "Imported_Document.pdf"
             }
         }
 
         return fileName!!
     }
 }
+```

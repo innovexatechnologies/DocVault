@@ -1,10 +1,12 @@
-import 'dart:io';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
+
 import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
 import 'package:path_provider/path_provider.dart';
 import 'package:pdfx/pdfx.dart' as pdfx;
+
 import '../../models/conversion_type.dart';
 
 class FileUtils {
@@ -12,12 +14,15 @@ class FileUtils {
   static const String _tempDirName = 'DocVault/Temp';
   static const String _cacheDirName = 'DocVault/Cache';
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // FILE NAME UTILITIES
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static String normalizePdfFileName(String name) {
-    return normalizeFileName(name, ConversionType.pdf);
+    return normalizeFileName(
+      name,
+      ConversionType.pdf,
+    );
   }
 
   static String normalizeFileName(
@@ -26,49 +31,54 @@ class FileUtils {
   ) {
     var clean = name.trim();
 
-    final ext = type.extension;
-    final defaultName = 'DocVault_Document.$ext';
+    final extension = type.extension;
+    final defaultName = 'DocVault_Document.$extension';
 
     if (clean.isEmpty) {
       return defaultName;
     }
 
-    // Remove invalid Windows/Android filesystem characters.
+    // Remove invalid filesystem characters.
     clean = clean.replaceAll(
       RegExp(r'[\\/:*?"<>|]'),
       '_',
     );
 
-    // Remove duplicate / existing supported extensions.
-    final extRegex = RegExp(
-      r'(\.(pdf|docx|pptx|doc|ppt))+$',
-      caseSensitive: false,
-    );
-
-    clean = clean.replaceAll(extRegex, '').trim();
+    // Remove existing supported extensions.
+    clean = clean.replaceAll(
+      RegExp(
+        r'(\.(pdf|docx|pptx|doc|ppt))+$',
+        caseSensitive: false,
+      ),
+      '',
+    ).trim();
 
     if (clean.isEmpty) {
       clean = 'DocVault_Document';
     }
 
-    return '$clean.$ext';
+    return '$clean.$extension';
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // DOCUMENT PAGE EXTRACTION
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  /// Returns preview image paths for:
+  /// Extracts preview pages from PDF, DOCX or PPTX.
   ///
-  /// PDF  -> real PDF page rendering
-  /// DOCX -> document media rendered as page-like images
-  /// PPTX -> slide media using the actual presentation aspect ratio
+  /// PDF:
+  ///   Renders every real PDF page.
   ///
-  /// NOTE:
-  /// DOCX/PPTX are Office ZIP/XML formats. Dart itself does not contain
-  /// Microsoft's Word/PowerPoint rendering engine. For completely identical
-  /// Word/PowerPoint rendering, a native Office rendering engine or a
-  /// DOCX/PPTX -> PDF converter is required.
+  /// DOCX:
+  ///   Creates page-like previews from embedded images.
+  ///
+  /// PPTX:
+  ///   Creates slide-like previews from embedded images.
+  ///
+  /// IMPORTANT:
+  /// Dart does not contain Microsoft's Word/PowerPoint rendering engine.
+  /// Therefore DOCX/PPTX cannot be rendered 100% identically to Microsoft
+  /// Office using ZIP/XML parsing alone.
   static Future<List<String>> extractPagesFromDocument(
     String filePath,
   ) async {
@@ -80,67 +90,144 @@ class FileUtils {
       );
     }
 
-    final type = ConversionType.fromFileName(filePath);
+    final type = ConversionType.fromFileName(
+      filePath,
+    );
 
     switch (type) {
       case ConversionType.pdf:
-        return extractPdfPagesToImages(filePath);
+        return extractPdfPagesToImages(
+          filePath,
+        );
 
       case ConversionType.docs:
-        return _extractDocxPreviewPages(filePath);
+        return _extractDocxPreviewPages(
+          filePath,
+        );
 
       case ConversionType.ppt:
-        return _extractPptxPreviewSlides(filePath);
+        return _extractPptxPreviewSlides(
+          filePath,
+        );
     }
   }
 
-  /// Extracts readable text pages/slides from an Office Open XML document.
-  /// This keeps text-only DOCX/PPTX files previewable without an external app.
-  static Future<List<String>> extractTextPagesFromDocument(String filePath) async {
+  // ===========================================================================
+  // TEXT EXTRACTION
+  // ===========================================================================
+
+  /// Extracts readable text from DOCX/PPTX.
+  ///
+  /// DOCX:
+  ///   Returns one text page containing document paragraphs.
+  ///
+  /// PPTX:
+  ///   Returns one text page per slide.
+  static Future<List<String>>
+      extractTextPagesFromDocument(
+    String filePath,
+  ) async {
     final file = File(filePath);
+
     if (!await file.exists()) {
-      throw Exception('Office document does not exist: $filePath');
+      throw Exception(
+        'Office document does not exist:\n$filePath',
+      );
     }
 
-    final archive = ZipDecoder().decodeBytes(await file.readAsBytes());
-    final type = ConversionType.fromFileName(filePath);
+    final archive = ZipDecoder().decodeBytes(
+      await file.readAsBytes(),
+    );
+
+    final type = ConversionType.fromFileName(
+      filePath,
+    );
+
+    // -------------------------------------------------------------------------
+    // DOCX
+    // -------------------------------------------------------------------------
 
     if (type == ConversionType.docs) {
-      final document = archive.findFile('word/document.xml');
-      if (document == null) {
-        throw Exception('Word document content was not found.');
+      final documentFile = archive.findFile(
+        'word/document.xml',
+      );
+
+      if (documentFile == null) {
+        throw Exception(
+          'Word document content was not found.',
+        );
       }
 
+      final xml = utf8.decode(
+        documentFile.content,
+      );
+
       final text = _extractXmlText(
-        utf8.decode(document.content as List<int>),
+        xml,
         paragraphTag: 'w:p',
         textTag: 'w:t',
       );
+
       if (text.trim().isEmpty) {
-        throw Exception('No readable text found in this Word document.');
+        throw Exception(
+          'No readable text found in this Word document.',
+        );
       }
+
       return [text];
     }
 
+    // -------------------------------------------------------------------------
+    // PPTX
+    // -------------------------------------------------------------------------
+
     final slideFiles = archive
-        .where((entry) =>
-            entry.isFile && RegExp(r'^ppt/slides/slide\d+\.xml$').hasMatch(entry.name))
-        .toList()
-      ..sort((a, b) => _extractNumberFromMediaName(a.name)
-          .compareTo(_extractNumberFromMediaName(b.name)));
+        .where(
+          (entry) =>
+              entry.isFile &&
+              RegExp(
+                r'^ppt/slides/slide\d+\.xml$',
+                caseSensitive: false,
+              ).hasMatch(entry.name),
+        )
+        .toList();
+
+    slideFiles.sort(
+      (a, b) => _extractNumberFromMediaName(
+        a.name,
+      ).compareTo(
+        _extractNumberFromMediaName(
+          b.name,
+        ),
+      ),
+    );
 
     final slides = <String>[];
+
     for (final slide in slideFiles) {
+      final xml = utf8.decode(
+        slide.content,
+      );
+
       final text = _extractXmlText(
-        utf8.decode(slide.content as List<int>),
+        xml,
         textTag: 'a:t',
       );
-      slides.add(text.trim());
+
+      slides.add(
+        text.trim(),
+      );
     }
 
-    if (slides.isEmpty || slides.every((slide) => slide.isEmpty)) {
-      throw Exception('No readable text found in this presentation.');
+    if (slides.isEmpty ||
+        slides.every(
+          (slide) => slide.isEmpty,
+        )) {
+      throw Exception(
+        'No readable text found in this presentation.',
+      );
     }
+
     return slides;
   }
 
@@ -149,27 +236,50 @@ class FileUtils {
     String? paragraphTag,
     required String textTag,
   }) {
-    final paragraphs = paragraphTag == null
-        ? [xml]
-        : RegExp('<$paragraphTag\\b[^>]*>([\\s\\S]*?)</$paragraphTag>')
-            .allMatches(xml)
-            .map((match) => match.group(1) ?? '')
-            .toList();
+    final List<String> paragraphs;
+
+    if (paragraphTag == null) {
+      paragraphs = [xml];
+    } else {
+      paragraphs = RegExp(
+        '<$paragraphTag\\b[^>]*>([\\s\\S]*?)'
+        '</$paragraphTag>',
+      )
+          .allMatches(xml)
+          .map(
+            (match) => match.group(1) ?? '',
+          )
+          .toList();
+    }
+
     final lines = <String>[];
 
     for (final paragraph in paragraphs) {
-      final text = RegExp('<$textTag\\b[^>]*>([\\s\\S]*?)</$textTag>')
+      final text = RegExp(
+        '<$textTag\\b[^>]*>([\\s\\S]*?)'
+        '</$textTag>',
+      )
           .allMatches(paragraph)
-          .map((match) => _decodeXmlEntities(match.group(1) ?? ''))
+          .map(
+            (match) => _decodeXmlEntities(
+              match.group(1) ?? '',
+            ),
+          )
           .join();
+
       if (text.trim().isNotEmpty) {
-        lines.add(text.trim());
+        lines.add(
+          text.trim(),
+        );
       }
     }
+
     return lines.join('\n\n');
   }
 
-  static String _decodeXmlEntities(String text) {
+  static String _decodeXmlEntities(
+    String text,
+  ) {
     return text
         .replaceAll('&amp;', '&')
         .replaceAll('&lt;', '<')
@@ -178,9 +288,15 @@ class FileUtils {
         .replaceAll('&apos;', "'");
   }
 
-  /// Extracts/rasterizes all pages of an existing PDF to temporary high-resolution images.
-  /// Returns the ordered list of extracted JPEG file paths.
-  static Future<List<String>> extractPdfPagesToImages(String pdfPath) async {
+  // ===========================================================================
+  // PDF → IMAGES
+  // ===========================================================================
+
+  /// Renders every PDF page into a high-resolution JPEG image.
+  static Future<List<String>>
+      extractPdfPagesToImages(
+    String pdfPath,
+  ) async {
     final file = File(pdfPath);
 
     if (!await file.exists()) {
@@ -189,49 +305,63 @@ class FileUtils {
       );
     }
 
-    final document = await pdfx.PdfDocument.openFile(pdfPath);
+    final document = await pdfx.PdfDocument.openFile(
+      pdfPath,
+    );
 
     final tempDir = await getTempDirectory();
 
     final sessionDir = Directory(
-      '${tempDir.path}/preview_pdf_${DateTime.now().millisecondsSinceEpoch}',
+      '${tempDir.path}/preview_pdf_'
+      '${DateTime.now().millisecondsSinceEpoch}',
     );
 
-    await sessionDir.create(recursive: true);
+    await sessionDir.create(
+      recursive: true,
+    );
 
-    final List<String> extractedPaths = [];
+    final extractedPaths = <String>[];
 
     try {
-      for (int pageNumber = 1;
-          pageNumber <= document.pagesCount;
-          pageNumber++) {
-        final page = await document.getPage(pageNumber);
+      for (
+        int pageNumber = 1;
+        pageNumber <= document.pagesCount;
+        pageNumber++
+      ) {
+        final page = await document.getPage(
+          pageNumber,
+        );
 
         try {
-          // Render at 2x for a sharper preview.
           final width = page.width * 2;
           final height = page.height * 2;
 
           final pageImage = await page.render(
             width: width,
             height: height,
-            format: pdfx.PdfPageImageFormat.jpeg,
+            format:
+                pdfx.PdfPageImageFormat.jpeg,
             backgroundColor: '#FFFFFF',
           );
 
           if (pageImage != null &&
               pageImage.bytes.isNotEmpty) {
             final outputPath =
-                '${sessionDir.path}/page_$pageNumber.jpg';
+                '${sessionDir.path}/page_'
+                '$pageNumber.jpg';
 
-            final outputFile = File(outputPath);
+            final outputFile = File(
+              outputPath,
+            );
 
             await outputFile.writeAsBytes(
               pageImage.bytes,
               flush: true,
             );
 
-            extractedPaths.add(outputPath);
+            extractedPaths.add(
+              outputPath,
+            );
           }
         } finally {
           await page.close();
@@ -243,27 +373,20 @@ class FileUtils {
 
     if (extractedPaths.isEmpty) {
       throw Exception(
-        'Failed to render PDF: no readable pages found.',
+        'Failed to render PDF: '
+        'no readable pages found.',
       );
     }
 
     return extractedPaths;
   }
 
-  // ---------------------------------------------------------------------------
-  // DOCX
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // DOCX PREVIEW
+  // ===========================================================================
 
-  /// Creates preview images from the images actually stored inside the DOCX.
-  ///
-  /// This is much safer than treating every media file as a page without
-  /// understanding the document structure.
-  ///
-  /// IMPORTANT:
-  /// DOCX may contain text, tables, shapes, headers, footers, etc.
-  /// Those elements are not images and cannot be rendered correctly by simply
-  /// extracting word/media.
-  static Future<List<String>> _extractDocxPreviewPages(
+  static Future<List<String>>
+      _extractDocxPreviewPages(
     String docxPath,
   ) async {
     final file = File(docxPath);
@@ -276,23 +399,31 @@ class FileUtils {
 
     final bytes = await file.readAsBytes();
 
-    final archive = ZipDecoder().decodeBytes(bytes);
+    final archive = ZipDecoder().decodeBytes(
+      bytes,
+    );
 
     final tempDir = await getTempDirectory();
 
     final sessionDir = Directory(
-      '${tempDir.path}/preview_docx_${DateTime.now().millisecondsSinceEpoch}',
+      '${tempDir.path}/preview_docx_'
+      '${DateTime.now().millisecondsSinceEpoch}',
     );
 
-    await sessionDir.create(recursive: true);
+    await sessionDir.create(
+      recursive: true,
+    );
 
-    // Read actual Word page size.
-    final pageSize = _readDocxPageSize(archive);
+    final pageSize = _readDocxPageSize(
+      archive,
+    );
 
-    final pageWidthPx = pageSize.widthPx;
-    final pageHeightPx = pageSize.heightPx;
+    final pageWidthPx =
+        pageSize.widthPx;
 
-    // Find images used by the generated DOCX.
+    final pageHeightPx =
+        pageSize.heightPx;
+
     final mediaFiles = <ArchiveFile>[];
 
     for (final archiveFile in archive) {
@@ -300,32 +431,55 @@ class FileUtils {
         continue;
       }
 
-      final lowerName = archiveFile.name.toLowerCase();
+      final lowerName =
+          archiveFile.name.toLowerCase();
 
-      if (!lowerName.startsWith('word/media/')) {
+      if (!lowerName.startsWith(
+        'word/media/',
+      )) {
         continue;
       }
 
-      if (_isSupportedImage(lowerName)) {
-        mediaFiles.add(archiveFile);
+      if (_isSupportedImage(
+        lowerName,
+      )) {
+        mediaFiles.add(
+          archiveFile,
+        );
       }
     }
 
-    mediaFiles.sort((a, b) {
-      final aNumber = _extractNumberFromMediaName(a.name);
-      final bNumber = _extractNumberFromMediaName(b.name);
+    mediaFiles.sort(
+      (a, b) {
+        final aNumber =
+            _extractNumberFromMediaName(
+          a.name,
+        );
 
-      if (aNumber != bNumber) {
-        return aNumber.compareTo(bNumber);
-      }
+        final bNumber =
+            _extractNumberFromMediaName(
+          b.name,
+        );
 
-      return a.name.compareTo(b.name);
-    });
+        if (aNumber != bNumber) {
+          return aNumber.compareTo(
+            bNumber,
+          );
+        }
+
+        return a.name.compareTo(
+          b.name,
+        );
+      },
+    );
+
+    // -------------------------------------------------------------------------
+    // No embedded images
+    // -------------------------------------------------------------------------
 
     if (mediaFiles.isEmpty) {
-      // If the DOCX has no media, create a simple blank page preview
-      // instead of returning an incorrect "no editable pages" error.
-      final blankPath = await _createBlankPreviewPage(
+      final blankPath =
+          await _createBlankPreviewPage(
         sessionDir: sessionDir,
         width: pageWidthPx,
         height: pageHeightPx,
@@ -334,22 +488,29 @@ class FileUtils {
       return [blankPath];
     }
 
-    final List<String> outputPaths = [];
+    final outputPaths = <String>[];
 
-    for (int i = 0; i < mediaFiles.length; i++) {
+    for (
+      int i = 0;
+      i < mediaFiles.length;
+      i++
+    ) {
       final media = mediaFiles[i];
 
-      final Uint8List mediaBytes = Uint8List.fromList(
+      final mediaBytes =
+          Uint8List.fromList(
         media.content,
       );
 
-      final decoded = img.decodeImage(mediaBytes);
+      final decoded =
+          img.decodeImage(
+        mediaBytes,
+      );
 
       if (decoded == null) {
         continue;
       }
 
-      // Create a real Word page canvas using the actual page ratio.
       final pageCanvas = img.Image(
         width: pageWidthPx,
         height: pageHeightPx,
@@ -365,14 +526,16 @@ class FileUtils {
         ),
       );
 
-      // Approximate Word 1-inch margins.
+      // Approximate Word margins.
       const int margin = 96;
 
       final availableWidth =
-          pageWidthPx - (margin * 2);
+          pageWidthPx -
+          (margin * 2);
 
       final availableHeight =
-          pageHeightPx - (margin * 2);
+          pageHeightPx -
+          (margin * 2);
 
       final fitted = _fitImage(
         source: decoded,
@@ -381,10 +544,16 @@ class FileUtils {
       );
 
       final x =
-          ((pageWidthPx - fitted.width) / 2).round();
+          ((pageWidthPx -
+                      fitted.width) /
+                  2)
+              .round();
 
       final y =
-          ((pageHeightPx - fitted.height) / 2).round();
+          ((pageHeightPx -
+                      fitted.height) /
+                  2)
+              .round();
 
       img.compositeImage(
         pageCanvas,
@@ -394,11 +563,15 @@ class FileUtils {
       );
 
       final outputPath =
-          '${sessionDir.path}/page_${i + 1}.jpg';
+          '${sessionDir.path}/page_'
+          '${i + 1}.jpg';
 
-      final outputFile = File(outputPath);
+      final outputFile = File(
+        outputPath,
+      );
 
-      final jpgBytes = img.encodeJpg(
+      final jpgBytes =
+          img.encodeJpg(
         pageCanvas,
         quality: 92,
       );
@@ -408,7 +581,9 @@ class FileUtils {
         flush: true,
       );
 
-      outputPaths.add(outputPath);
+      outputPaths.add(
+        outputPath,
+      );
     }
 
     if (outputPaths.isEmpty) {
@@ -420,46 +595,55 @@ class FileUtils {
     return outputPaths;
   }
 
-  // ---------------------------------------------------------------------------
-  // PPTX
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
+  // PPTX PREVIEW
+  // ===========================================================================
 
-  /// Creates slide preview images using the actual PPTX presentation size.
-  ///
-  /// PPTX stores its slide dimensions in:
-  /// ppt/presentation.xml
-  ///
-  /// Therefore we don't force 16:9 anymore.
-  static Future<List<String>> _extractPptxPreviewSlides(
+  static Future<List<String>>
+      _extractPptxPreviewSlides(
     String pptxPath,
   ) async {
     final file = File(pptxPath);
 
     if (!await file.exists()) {
       throw Exception(
-        'PowerPoint presentation does not exist:\n$pptxPath',
+        'PowerPoint presentation does not exist:\n'
+        '$pptxPath',
       );
     }
 
     final bytes = await file.readAsBytes();
 
-    final archive = ZipDecoder().decodeBytes(bytes);
+    final archive = ZipDecoder().decodeBytes(
+      bytes,
+    );
 
     final tempDir = await getTempDirectory();
 
     final sessionDir = Directory(
-      '${tempDir.path}/preview_pptx_${DateTime.now().millisecondsSinceEpoch}',
+      '${tempDir.path}/preview_pptx_'
+      '${DateTime.now().millisecondsSinceEpoch}',
     );
 
-    await sessionDir.create(recursive: true);
+    await sessionDir.create(
+      recursive: true,
+    );
 
-    // Read actual presentation dimensions.
-    final slideSize = _readPptxSlideSize(archive);
+    final slideSize =
+        _readPptxSlideSize(
+      archive,
+    );
 
-    final slideWidthPx = slideSize.widthPx;
-    final slideHeightPx = slideSize.heightPx;
+    final slideWidthPx =
+        slideSize.widthPx;
 
-    // Find slide XML files.
+    final slideHeightPx =
+        slideSize.heightPx;
+
+    // -------------------------------------------------------------------------
+    // Find slides
+    // -------------------------------------------------------------------------
+
     final slideFiles = <ArchiveFile>[];
 
     for (final archiveFile in archive) {
@@ -467,52 +651,35 @@ class FileUtils {
         continue;
       }
 
-      final name = archiveFile.name;
-
       if (RegExp(
         r'^ppt/slides/slide\d+\.xml$',
         caseSensitive: false,
-      ).hasMatch(name)) {
-        slideFiles.add(archiveFile);
+      ).hasMatch(
+        archiveFile.name,
+      )) {
+        slideFiles.add(
+          archiveFile,
+        );
       }
     }
 
-    slideFiles.sort((a, b) {
-      final aNumber = _extractNumberFromMediaName(a.name);
-      final bNumber = _extractNumberFromMediaName(b.name);
+    slideFiles.sort(
+      (a, b) {
+        final aNumber =
+            _extractNumberFromMediaName(
+          a.name,
+        );
 
-      return aNumber.compareTo(bNumber);
-    });
+        final bNumber =
+            _extractNumberFromMediaName(
+          b.name,
+        );
 
-    // Extract PPT media.
-    final mediaFiles = <ArchiveFile>[];
-
-    for (final archiveFile in archive) {
-      if (!archiveFile.isFile) {
-        continue;
-      }
-
-      final lowerName = archiveFile.name.toLowerCase();
-
-      if (!lowerName.startsWith('ppt/media/')) {
-        continue;
-      }
-
-      if (_isSupportedImage(lowerName)) {
-        mediaFiles.add(archiveFile);
-      }
-    }
-
-    mediaFiles.sort((a, b) {
-      final aNumber = _extractNumberFromMediaName(a.name);
-      final bNumber = _extractNumberFromMediaName(b.name);
-
-      if (aNumber != bNumber) {
-        return aNumber.compareTo(bNumber);
-      }
-
-      return a.name.compareTo(b.name);
-    });
+        return aNumber.compareTo(
+          bNumber,
+        );
+      },
+    );
 
     if (slideFiles.isEmpty) {
       throw Exception(
@@ -520,15 +687,72 @@ class FileUtils {
       );
     }
 
-    final List<String> outputPaths = [];
+    // -------------------------------------------------------------------------
+    // Find slide media
+    // -------------------------------------------------------------------------
 
-    for (int i = 0; i < slideFiles.length; i++) {
+    final mediaFiles = <ArchiveFile>[];
+
+    for (final archiveFile in archive) {
+      if (!archiveFile.isFile) {
+        continue;
+      }
+
+      final lowerName =
+          archiveFile.name.toLowerCase();
+
+      if (!lowerName.startsWith(
+        'ppt/media/',
+      )) {
+        continue;
+      }
+
+      if (_isSupportedImage(
+        lowerName,
+      )) {
+        mediaFiles.add(
+          archiveFile,
+        );
+      }
+    }
+
+    mediaFiles.sort(
+      (a, b) {
+        final aNumber =
+            _extractNumberFromMediaName(
+          a.name,
+        );
+
+        final bNumber =
+            _extractNumberFromMediaName(
+          b.name,
+        );
+
+        if (aNumber != bNumber) {
+          return aNumber.compareTo(
+            bNumber,
+          );
+        }
+
+        return a.name.compareTo(
+          b.name,
+        );
+      },
+    );
+
+    final outputPaths = <String>[];
+
+    for (
+      int i = 0;
+      i < slideFiles.length;
+      i++
+    ) {
       final slideCanvas = img.Image(
         width: slideWidthPx,
         height: slideHeightPx,
       );
 
-      // White PowerPoint slide background.
+      // White PowerPoint background.
       img.fill(
         slideCanvas,
         color: img.ColorRgb8(
@@ -538,28 +762,43 @@ class FileUtils {
         ),
       );
 
-      // Try to match slide number with image number.
-      if (i < mediaFiles.length) {
-        final media = mediaFiles[i];
+      // -----------------------------------------------------------------------
+      // Add available slide image
+      // -----------------------------------------------------------------------
 
-        final mediaBytes = Uint8List.fromList(
+      if (i < mediaFiles.length) {
+        final media =
+            mediaFiles[i];
+
+        final mediaBytes =
+            Uint8List.fromList(
           media.content,
         );
 
-        final decoded = img.decodeImage(mediaBytes);
+        final decoded =
+            img.decodeImage(
+          mediaBytes,
+        );
 
         if (decoded != null) {
-          final fitted = _fitImage(
+          final fitted =
+              _fitImage(
             source: decoded,
             maxWidth: slideWidthPx,
             maxHeight: slideHeightPx,
           );
 
           final x =
-              ((slideWidthPx - fitted.width) / 2).round();
+              ((slideWidthPx -
+                          fitted.width) /
+                      2)
+                  .round();
 
           final y =
-              ((slideHeightPx - fitted.height) / 2).round();
+              ((slideHeightPx -
+                          fitted.height) /
+                      2)
+                  .round();
 
           img.compositeImage(
             slideCanvas,
@@ -571,11 +810,15 @@ class FileUtils {
       }
 
       final outputPath =
-          '${sessionDir.path}/slide_${i + 1}.jpg';
+          '${sessionDir.path}/slide_'
+          '${i + 1}.jpg';
 
-      final outputFile = File(outputPath);
+      final outputFile = File(
+        outputPath,
+      );
 
-      final jpgBytes = img.encodeJpg(
+      final jpgBytes =
+          img.encodeJpg(
         slideCanvas,
         quality: 92,
       );
@@ -585,24 +828,31 @@ class FileUtils {
         flush: true,
       );
 
-      outputPaths.add(outputPath);
+      outputPaths.add(
+        outputPath,
+      );
     }
 
     return outputPaths;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // DOCX PAGE SIZE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  static _DocumentPageSize _readDocxPageSize(
+  static _DocumentPageSize
+      _readDocxPageSize(
     Archive archive,
   ) {
-    const defaultWidthTwips = 12240;
-    const defaultHeightTwips = 15840;
+    const defaultWidthTwips =
+        12240;
+
+    const defaultHeightTwips =
+        15840;
 
     try {
-      final documentFile = archive.findFile(
+      final documentFile =
+          archive.findFile(
         'word/document.xml',
       );
 
@@ -613,12 +863,15 @@ class FileUtils {
         );
       }
 
-      final xml = String.fromCharCodes(
+      final xml =
+          String.fromCharCodes(
         documentFile.content,
       );
 
       final match = RegExp(
-        r'<w:pgSz\b[^>]*w:w="(\d+)"[^>]*w:h="(\d+)"',
+        r'<w:pgSz\b[^>]*'
+        r'w:w="(\d+)"[^>]*'
+        r'w:h="(\d+)"',
       ).firstMatch(xml);
 
       if (match == null) {
@@ -629,11 +882,15 @@ class FileUtils {
       }
 
       final widthTwips =
-          int.tryParse(match.group(1)!) ??
+          int.tryParse(
+                match.group(1)!,
+              ) ??
               defaultWidthTwips;
 
       final heightTwips =
-          int.tryParse(match.group(2)!) ??
+          int.tryParse(
+                match.group(2)!,
+              ) ??
               defaultHeightTwips;
 
       return _DocumentPageSize.fromTwips(
@@ -648,19 +905,24 @@ class FileUtils {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // PPTX SLIDE SIZE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  static _DocumentPageSize _readPptxSlideSize(
+  static _DocumentPageSize
+      _readPptxSlideSize(
     Archive archive,
   ) {
-    // Default PowerPoint 16:9 dimensions.
-    const defaultWidthEmu = 12192000;
-    const defaultHeightEmu = 6858000;
+    // Default 16:9 PowerPoint.
+    const defaultWidthEmu =
+        12192000;
+
+    const defaultHeightEmu =
+        6858000;
 
     try {
-      final presentationFile = archive.findFile(
+      final presentationFile =
+          archive.findFile(
         'ppt/presentation.xml',
       );
 
@@ -671,12 +933,15 @@ class FileUtils {
         );
       }
 
-      final xml = String.fromCharCodes(
+      final xml =
+          String.fromCharCodes(
         presentationFile.content,
       );
 
       final match = RegExp(
-        r'<p:sldSz\b[^>]*cx="(\d+)"[^>]*cy="(\d+)"',
+        r'<p:sldSz\b[^>]*'
+        r'cx="(\d+)"[^>]*'
+        r'cy="(\d+)"',
       ).firstMatch(xml);
 
       if (match == null) {
@@ -687,11 +952,15 @@ class FileUtils {
       }
 
       final widthEmu =
-          int.tryParse(match.group(1)!) ??
+          int.tryParse(
+                match.group(1)!,
+              ) ??
               defaultWidthEmu;
 
       final heightEmu =
-          int.tryParse(match.group(2)!) ??
+          int.tryParse(
+                match.group(2)!,
+              ) ??
               defaultHeightEmu;
 
       return _DocumentPageSize.fromEmu(
@@ -706,28 +975,36 @@ class FileUtils {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // IMAGE HELPERS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static bool _isSupportedImage(
     String path,
   ) {
-    return path.endsWith('.jpg') ||
-        path.endsWith('.jpeg') ||
-        path.endsWith('.png');
+    final lower =
+        path.toLowerCase();
+
+    return lower.endsWith('.jpg') ||
+        lower.endsWith('.jpeg') ||
+        lower.endsWith('.png');
   }
 
-  static int _extractNumberFromMediaName(
+  static int
+      _extractNumberFromMediaName(
     String name,
   ) {
-    final matches = RegExp(r'(\d+)').allMatches(name);
+    final matches =
+        RegExp(r'(\d+)').allMatches(
+      name,
+    );
 
     if (matches.isEmpty) {
       return 0;
     }
 
-    final lastMatch = matches.last;
+    final lastMatch =
+        matches.last;
 
     return int.tryParse(
           lastMatch.group(1)!,
@@ -751,25 +1028,30 @@ class FileUtils {
     final heightRatio =
         maxHeight / source.height;
 
-    final scale = widthRatio < heightRatio
-        ? widthRatio
-        : heightRatio;
+    final scale =
+        widthRatio < heightRatio
+            ? widthRatio
+            : heightRatio;
 
     final targetWidth =
-        (source.width * scale).round();
+        (source.width * scale)
+            .round();
 
     final targetHeight =
-        (source.height * scale).round();
+        (source.height * scale)
+            .round();
 
     return img.copyResize(
       source,
       width: targetWidth,
       height: targetHeight,
-      interpolation: img.Interpolation.cubic,
+      interpolation:
+          img.Interpolation.cubic,
     );
   }
 
-  static Future<String> _createBlankPreviewPage({
+  static Future<String>
+      _createBlankPreviewPage({
     required Directory sessionDir,
     required int width,
     required int height,
@@ -791,7 +1073,8 @@ class FileUtils {
     final outputPath =
         '${sessionDir.path}/page_1.jpg';
 
-    final outputFile = File(outputPath);
+    final outputFile =
+        File(outputPath);
 
     await outputFile.writeAsBytes(
       img.encodeJpg(
@@ -804,9 +1087,9 @@ class FileUtils {
     return outputPath;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // STORAGE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static Future<Directory>
       getAppDocumentsDirectory() async {
@@ -862,27 +1145,34 @@ class FileUtils {
     return cacheDir;
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // FILE NAME / PATH
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
-  static Future<String> generatePdfFileName([
-    ConversionType type = ConversionType.pdf,
+  static Future<String>
+      generatePdfFileName([
+    ConversionType type =
+        ConversionType.pdf,
   ]) async {
     final timestamp =
-        DateTime.now().millisecondsSinceEpoch;
+        DateTime.now()
+            .millisecondsSinceEpoch;
 
-    return 'DocVault_$timestamp.${type.extension}';
+    return 'DocVault_$timestamp.'
+        '${type.extension}';
   }
 
-  static Future<String> getFullPdfPath(
+  static Future<String>
+      getFullPdfPath(
     String fileName,
   ) async {
     final directory =
         await getAppDocumentsDirectory();
 
     final type =
-        ConversionType.fromFileName(fileName);
+        ConversionType.fromFileName(
+      fileName,
+    );
 
     final normalized =
         normalizeFileName(
@@ -905,9 +1195,9 @@ class FileUtils {
     return File(filePath);
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // SAVED DOCUMENTS
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static Future<List<File>>
       getAllSavedPdfs() async {
@@ -915,7 +1205,7 @@ class FileUtils {
       final directory =
           await getAppDocumentsDirectory();
 
-      final List<File> files = [];
+      final files = <File>[];
 
       if (await directory.exists()) {
         final entities =
@@ -929,9 +1219,15 @@ class FileUtils {
           final pathLower =
               entity.path.toLowerCase();
 
-          if (pathLower.endsWith('.pdf') ||
-              pathLower.endsWith('.docx') ||
-              pathLower.endsWith('.pptx')) {
+          if (pathLower.endsWith(
+                '.pdf',
+              ) ||
+              pathLower.endsWith(
+                '.docx',
+              ) ||
+              pathLower.endsWith(
+                '.pptx',
+              )) {
             files.add(entity);
           }
         }
@@ -943,15 +1239,16 @@ class FileUtils {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // DELETE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static Future<bool> deletePdfFile(
     String filePath,
   ) async {
     try {
-      final file = File(filePath);
+      final file =
+          File(filePath);
 
       if (await file.exists()) {
         await file.delete();
@@ -964,19 +1261,21 @@ class FileUtils {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // FILE SIZE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static Future<double>
       getPdfFileSizeInMB(
     String filePath,
   ) async {
     try {
-      final file = File(filePath);
+      final file =
+          File(filePath);
 
       if (await file.exists()) {
-        final size = await file.length();
+        final size =
+            await file.length();
 
         return size /
             (1024 * 1024);
@@ -988,9 +1287,9 @@ class FileUtils {
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // TEMP / CACHE CLEANUP
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static Future<void>
       clearTempDirectory() async {
@@ -1008,7 +1307,7 @@ class FileUtils {
         );
       }
     } catch (_) {
-      // Intentionally ignored.
+      // Ignore cleanup errors.
     }
   }
 
@@ -1028,13 +1327,13 @@ class FileUtils {
         );
       }
     } catch (_) {
-      // Intentionally ignored.
+      // Ignore cleanup errors.
     }
   }
 
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
   // TOTAL STORAGE
-  // ---------------------------------------------------------------------------
+  // ===========================================================================
 
   static Future<double>
       getTotalStorageUsedInMB() async {
@@ -1070,12 +1369,17 @@ class _DocumentPageSize {
     required this.heightPx,
   });
 
+  // ===========================================================================
+  // TWIPS → PIXELS
+  // ===========================================================================
+
   factory _DocumentPageSize.fromTwips(
     int widthTwips,
     int heightTwips,
   ) {
     // 1440 twips = 1 inch.
     // 96 pixels = 1 inch.
+
     final widthPx =
         (widthTwips / 1440 * 96)
             .round();
@@ -1085,10 +1389,22 @@ class _DocumentPageSize {
             .round();
 
     return _DocumentPageSize(
-      widthPx: widthPx.clamp(1, 5000),
-      heightPx: heightPx.clamp(1, 5000),
+      widthPx:
+          widthPx.clamp(
+        1,
+        5000,
+      ),
+      heightPx:
+          heightPx.clamp(
+        1,
+        5000,
+      ),
     );
   }
+
+  // ===========================================================================
+  // EMU → PIXELS
+  // ===========================================================================
 
   factory _DocumentPageSize.fromEmu(
     int widthEmu,
@@ -1096,6 +1412,7 @@ class _DocumentPageSize {
   ) {
     // 914400 EMU = 1 inch.
     // 96 pixels = 1 inch.
+
     final widthPx =
         (widthEmu / 914400 * 96)
             .round();
@@ -1105,8 +1422,16 @@ class _DocumentPageSize {
             .round();
 
     return _DocumentPageSize(
-      widthPx: widthPx.clamp(1, 5000),
-      heightPx: heightPx.clamp(1, 5000),
+      widthPx:
+          widthPx.clamp(
+        1,
+        5000,
+      ),
+      heightPx:
+          heightPx.clamp(
+        1,
+        5000,
+      ),
     );
   }
 }
