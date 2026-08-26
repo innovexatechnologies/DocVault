@@ -10,6 +10,7 @@ class GalleryService {
       final List<XFile> images = await _imagePicker.pickMultiImage(
         imageQuality: 90,
       );
+      debugPrint('MULTIPLE PICKER RETURNED: ${images.length} images');
 
       if (images.isEmpty) {
         return [];

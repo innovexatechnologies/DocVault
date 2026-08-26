@@ -1,4 +1,3 @@
-```kotlin
 package com.example.doc_vault
 
 import android.content.Intent
@@ -12,22 +11,13 @@ class MainActivity : FlutterActivity() {
     private val PDF_CHANNEL = "docvault/pdf_intent"
     private val OFFICE_CHANNEL = "docvault/office_renderer"
 
-    override fun configureFlutterEngine(
-        flutterEngine: FlutterEngine
-    ) {
+    override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
-
         setupPdfIntentChannel(flutterEngine)
         setupOfficeRendererChannel(flutterEngine)
     }
 
-    // ============================================================
-    // PDF / DOCUMENT INTENT CHANNEL
-    // ============================================================
-
-    private fun setupPdfIntentChannel(
-        flutterEngine: FlutterEngine
-    ) {
+    private fun setupPdfIntentChannel(flutterEngine: FlutterEngine) {
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             PDF_CHANNEL
@@ -37,7 +27,6 @@ class MainActivity : FlutterActivity() {
 
                 "getInitialDocument",
                 "getInitialPdf" -> {
-
                     val uri = getDocumentUri(intent)
 
                     if (uri != null) {
@@ -54,10 +43,8 @@ class MainActivity : FlutterActivity() {
 
                 "readDocument",
                 "readPdf" -> {
-
                     try {
-                        val uriString =
-                            call.argument<String>("uri")
+                        val uriString = call.argument<String>("uri")
 
                         if (uriString.isNullOrEmpty()) {
                             result.error(
@@ -70,10 +57,9 @@ class MainActivity : FlutterActivity() {
 
                         val uri = Uri.parse(uriString)
 
-                        val bytes =
-                            contentResolver
-                                .openInputStream(uri)
-                                ?.use { it.readBytes() }
+                        val bytes = contentResolver
+                            .openInputStream(uri)
+                            ?.use { it.readBytes() }
 
                         if (bytes == null) {
                             result.error(
@@ -90,31 +76,21 @@ class MainActivity : FlutterActivity() {
                                 "fileName" to getFileName(uri)
                             )
                         )
-
                     } catch (e: Exception) {
                         result.error(
                             "READ_ERROR",
-                            e.message
-                                ?: "Failed to read document.",
+                            e.message ?: "Failed to read document.",
                             null
                         )
                     }
                 }
 
-                else -> {
-                    result.notImplemented()
-                }
+                else -> result.notImplemented()
             }
         }
     }
 
-    // ============================================================
-    // OFFICE RENDERER CHANNEL
-    // ============================================================
-
-    private fun setupOfficeRendererChannel(
-        flutterEngine: FlutterEngine
-    ) {
+    private fun setupOfficeRendererChannel(flutterEngine: FlutterEngine) {
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
             OFFICE_CHANNEL
@@ -123,17 +99,10 @@ class MainActivity : FlutterActivity() {
             when (call.method) {
 
                 "convertOfficeToPdf" -> {
+                    val inputPath = call.argument<String>("inputPath")
+                    val outputPath = call.argument<String>("outputPath")
 
-                    val inputPath =
-                        call.argument<String>("inputPath")
-
-                    val outputPath =
-                        call.argument<String>("outputPath")
-
-                    if (
-                        inputPath.isNullOrEmpty() ||
-                        outputPath.isNullOrEmpty()
-                    ) {
+                    if (inputPath.isNullOrEmpty() || outputPath.isNullOrEmpty()) {
                         result.error(
                             "INVALID_ARGUMENT",
                             "Input or output path is missing.",
@@ -149,20 +118,13 @@ class MainActivity : FlutterActivity() {
                     )
                 }
 
-                else -> {
-                    result.notImplemented()
-                }
+                else -> result.notImplemented()
             }
         }
     }
 
-    // ============================================================
-    // NEW EXTERNAL DOCUMENT
-    // ============================================================
-
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
-
         setIntent(intent)
 
         val uri = getDocumentUri(intent)
@@ -172,9 +134,7 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-    private fun sendDocumentToFlutter(
-        uri: Uri
-    ) {
+    private fun sendDocumentToFlutter(uri: Uri) {
         val engine = flutterEngine ?: return
 
         MethodChannel(
@@ -189,45 +149,23 @@ class MainActivity : FlutterActivity() {
         )
     }
 
-    // ============================================================
-    // DOCUMENT URI
-    // ============================================================
-
-    private fun getDocumentUri(
-        intent: Intent?
-    ): Uri? {
-
+    private fun getDocumentUri(intent: Intent?): Uri? {
         if (intent == null) return null
-
-        if (intent.action != Intent.ACTION_VIEW) {
-            return null
-        }
+        if (intent.action != Intent.ACTION_VIEW) return null
 
         val uri = intent.data ?: return null
 
-        return if (
-            isSupportedDocument(intent, uri)
-        ) {
-            uri
-        } else {
-            null
-        }
+        return if (isSupportedDocument(intent, uri)) uri else null
     }
-
-    // ============================================================
-    // SUPPORTED DOCUMENT
-    // ============================================================
 
     private fun isSupportedDocument(
         intent: Intent,
         uri: Uri
     ): Boolean {
 
-        val mimeType =
-            intent.type?.lowercase()
+        val mimeType = intent.type?.lowercase()
 
         if (mimeType != null) {
-
             if (
                 mimeType.contains("pdf") ||
                 mimeType.contains("wordprocessingml") ||
@@ -239,8 +177,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        val uriString =
-            uri.toString().lowercase()
+        val uriString = uri.toString().lowercase()
 
         return uriString.endsWith(".pdf") ||
                 uriString.endsWith(".docx") ||
@@ -252,63 +189,41 @@ class MainActivity : FlutterActivity() {
                 uriString.contains(".pptx?")
     }
 
-    // ============================================================
-    // FILE NAME
-    // ============================================================
-
-    private fun getFileName(
-        uri: Uri
-    ): String {
+    private fun getFileName(uri: Uri): String {
 
         var fileName: String? = null
 
         if (uri.scheme == "content") {
-
             try {
-                val cursor =
-                    contentResolver.query(
-                        uri,
-                        arrayOf("_display_name"),
-                        null,
-                        null,
-                        null
-                    )
+                val cursor = contentResolver.query(
+                    uri,
+                    arrayOf("_display_name"),
+                    null,
+                    null,
+                    null
+                )
 
                 cursor?.use {
-
                     if (it.moveToFirst()) {
-
-                        val index =
-                            it.getColumnIndex(
-                                "_display_name"
-                            )
+                        val index = it.getColumnIndex("_display_name")
 
                         if (index >= 0) {
-                            fileName =
-                                it.getString(index)
+                            fileName = it.getString(index)
                         }
                     }
                 }
-
             } catch (_: Exception) {
-                // Fallback below.
             }
         }
 
-        if (
-            fileName.isNullOrEmpty() &&
-            uri.scheme == "file"
-        ) {
+        if (fileName.isNullOrEmpty() && uri.scheme == "file") {
             fileName = uri.lastPathSegment
         }
 
         if (fileName.isNullOrEmpty()) {
-
-            val uriString =
-                uri.toString().lowercase()
+            val uriString = uri.toString().lowercase()
 
             fileName = when {
-
                 uriString.contains("docx") ||
                         uriString.contains("word") ->
                     "Imported_Document.docx"
@@ -326,4 +241,3 @@ class MainActivity : FlutterActivity() {
         return fileName!!
     }
 }
-```
