@@ -22,7 +22,7 @@ android {
     defaultConfig {
         applicationId = "com.example.doc_vault"
 
-        minSdk = 21
+        minSdk = flutter.minSdkVersion
 
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
