@@ -11,15 +11,16 @@ import '../utils/file_utils.dart';
 class DocxGenerationService {
   DocxGenerationService();
 
-  /// Generates a Microsoft Word (.docx) document
-  /// containing one image per page.
+  /// Generates a valid Microsoft Word (.docx) document.
   ///
-  /// The generated DOCX uses:
-  /// - Letter page size: 8.5 x 11 inches
-  /// - 1-inch margins
-  /// - One image per page
-  /// - JPEG images inside word/media/
-  /// - Correct DOCX relationships
+  /// Each selected image becomes one Word page.
+  ///
+  /// Page:
+  /// - Letter size: 8.5 x 11 inches
+  /// - 1 inch margins
+  /// - Image centered on page
+  /// - Image aspect ratio preserved
+  /// - Images stored as JPEG
   Future<DocumentResult> generateDocxFromImages(
     List<String> imagePaths,
   ) async {
@@ -48,16 +49,10 @@ class DocxGenerationService {
 
       final contentTypesXml = _buildContentTypesXml();
 
-      final contentTypesBytes = utf8.encode(
+      _addTextFile(
+        archive,
+        '[Content_Types].xml',
         contentTypesXml,
-      );
-
-      archive.addFile(
-        ArchiveFile(
-          '[Content_Types].xml',
-          contentTypesBytes.length,
-          contentTypesBytes,
-        ),
       );
 
       // ============================================================
@@ -66,24 +61,55 @@ class DocxGenerationService {
 
       final rootRelsXml = _buildRootRelsXml();
 
-      final rootRelsBytes = utf8.encode(
+      _addTextFile(
+        archive,
+        '_rels/.rels',
         rootRelsXml,
       );
 
-      archive.addFile(
-        ArchiveFile(
-          '_rels/.rels',
-          rootRelsBytes.length,
-          rootRelsBytes,
-        ),
+      // ============================================================
+      // 3. word/document.xml.rels
+      // ============================================================
+
+      final documentRelsXml = _buildDocumentRelsXml(
+        imagePaths.length,
+      );
+
+      _addTextFile(
+        archive,
+        'word/_rels/document.xml.rels',
+        documentRelsXml,
       );
 
       // ============================================================
-      // 3. Process images
+      // 4. word/styles.xml
       // ============================================================
 
-      final imageDimensions =
-          <(int widthEmu, int heightEmu)>[];
+      final stylesXml = _buildStylesXml();
+
+      _addTextFile(
+        archive,
+        'word/styles.xml',
+        stylesXml,
+      );
+
+      // ============================================================
+      // 5. word/settings.xml
+      // ============================================================
+
+      final settingsXml = _buildSettingsXml();
+
+      _addTextFile(
+        archive,
+        'word/settings.xml',
+        settingsXml,
+      );
+
+      // ============================================================
+      // 6. Process images
+      // ============================================================
+
+      final imageDimensions = <({int widthEmu, int heightEmu})>[];
 
       for (int i = 0; i < imagePaths.length; i++) {
         final imagePath = imagePaths[i];
@@ -96,12 +122,7 @@ class DocxGenerationService {
           );
         }
 
-        // ----------------------------------------------------------
-        // Read original image
-        // ----------------------------------------------------------
-
-        final originalBytes =
-            await imageFile.readAsBytes();
+        final originalBytes = await imageFile.readAsBytes();
 
         if (originalBytes.isEmpty) {
           throw Exception(
@@ -109,12 +130,9 @@ class DocxGenerationService {
           );
         }
 
-        // ----------------------------------------------------------
-        // Decode image
-        // ----------------------------------------------------------
-
-        final decodedImage =
-            img.decodeImage(originalBytes);
+        final decodedImage = img.decodeImage(
+          originalBytes,
+        );
 
         if (decodedImage == null) {
           throw Exception(
@@ -123,15 +141,7 @@ class DocxGenerationService {
         }
 
         // ----------------------------------------------------------
-        // Convert every image to JPEG
-        //
-        // This guarantees that:
-        //
-        // word/media/image1.jpeg
-        // word/media/image2.jpeg
-        // ...
-        //
-        // always contain actual JPEG data.
+        // Convert every image to JPEG.
         // ----------------------------------------------------------
 
         final jpegBytes = img.encodeJpg(
@@ -145,54 +155,39 @@ class DocxGenerationService {
           );
         }
 
-        final widthPx = decodedImage.width;
-        final heightPx = decodedImage.height;
-
         // ----------------------------------------------------------
-        // Calculate Word image dimensions
+        // Image dimensions
         //
-        // Word uses EMU:
-        //
-        // 1 inch = 914400 EMU
-        //
-        // At 96 DPI:
-        //
-        // 1 pixel ≈ 9525 EMU
+        // 1 pixel ≈ 9525 EMU at 96 DPI
         // ----------------------------------------------------------
 
-        int widthEmu = widthPx * 9525;
-        int heightEmu = heightPx * 9525;
+        int widthEmu = decodedImage.width * 9525;
+        int heightEmu = decodedImage.height * 9525;
 
         // ----------------------------------------------------------
-        // Letter page:
+        // Letter page
         //
-        // Width  = 8.5 inches
-        // Height = 11 inches
+        // Page width  = 8.5 inches
+        // Page height = 11 inches
         //
-        // 1-inch margins:
+        // Margins = 1 inch
         //
-        // Usable width:
-        // 8.5 - 2 = 6.5 inches
-        //
-        // Usable height:
-        // 11 - 2 = 9 inches
+        // Usable width  = 6.5 inches
+        // Usable height = 9 inches
         // ----------------------------------------------------------
 
-        const int maxUsableWidthEmu = 5791200;
-        const int maxUsableHeightEmu = 8229600;
+        const maxUsableWidthEmu = 5943600;
+        const maxUsableHeightEmu = 8229600;
 
         // ----------------------------------------------------------
         // Fit width
         // ----------------------------------------------------------
 
         if (widthEmu > maxUsableWidthEmu) {
-          final scale =
-              maxUsableWidthEmu / widthEmu;
+          final scale = maxUsableWidthEmu / widthEmu;
 
           widthEmu = maxUsableWidthEmu;
-
-          heightEmu =
-              (heightEmu * scale).round();
+          heightEmu = (heightEmu * scale).round();
         }
 
         // ----------------------------------------------------------
@@ -200,24 +195,21 @@ class DocxGenerationService {
         // ----------------------------------------------------------
 
         if (heightEmu > maxUsableHeightEmu) {
-          final scale =
-              maxUsableHeightEmu / heightEmu;
+          final scale = maxUsableHeightEmu / heightEmu;
 
           heightEmu = maxUsableHeightEmu;
-
-          widthEmu =
-              (widthEmu * scale).round();
+          widthEmu = (widthEmu * scale).round();
         }
 
         imageDimensions.add(
           (
-            widthEmu,
-            heightEmu,
+            widthEmu: widthEmu,
+            heightEmu: heightEmu,
           ),
         );
 
         // ----------------------------------------------------------
-        // Add JPEG to DOCX archive
+        // Store image inside word/media/
         // ----------------------------------------------------------
 
         final imageFileName =
@@ -233,53 +225,28 @@ class DocxGenerationService {
       }
 
       // ============================================================
-      // 4. word/_rels/document.xml.rels
+      // 7. word/document.xml
       // ============================================================
 
-      final documentRelsXml =
-          _buildDocumentRelsXml(
-        imagePaths.length,
-      );
-
-      final documentRelsBytes =
-          utf8.encode(documentRelsXml);
-
-      archive.addFile(
-        ArchiveFile(
-          'word/_rels/document.xml.rels',
-          documentRelsBytes.length,
-          documentRelsBytes,
-        ),
-      );
-
-      // ============================================================
-      // 5. word/document.xml
-      // ============================================================
-
-      final documentXml =
-          _buildDocumentXml(
+      final documentXml = _buildDocumentXml(
         imageDimensions,
       );
 
-      final documentBytes =
-          utf8.encode(documentXml);
-
-      archive.addFile(
-        ArchiveFile(
-          'word/document.xml',
-          documentBytes.length,
-          documentBytes,
-        ),
+      _addTextFile(
+        archive,
+        'word/document.xml',
+        documentXml,
       );
 
       // ============================================================
-      // 6. Encode ZIP archive
+      // 8. Encode DOCX
       // ============================================================
 
       final zipEncoder = ZipEncoder();
 
-      final docxBytes =
-          zipEncoder.encode(archive);
+      final docxBytes = zipEncoder.encode(
+        archive,
+      );
 
       if (docxBytes.isEmpty) {
         throw Exception(
@@ -288,7 +255,7 @@ class DocxGenerationService {
       }
 
       // ============================================================
-      // 7. Generate output filename
+      // 9. Save file
       // ============================================================
 
       final fileName =
@@ -311,7 +278,7 @@ class DocxGenerationService {
       );
 
       // ============================================================
-      // 8. Verify generated file
+      // 10. Verify
       // ============================================================
 
       if (!await targetFile.exists()) {
@@ -320,17 +287,16 @@ class DocxGenerationService {
         );
       }
 
-      final generatedSize =
-          await targetFile.length();
+      final fileSize = await targetFile.length();
 
-      if (generatedSize == 0) {
+      if (fileSize <= 0) {
         throw Exception(
           'Generated Word document is empty.',
         );
       }
 
       // ============================================================
-      // 9. Return result
+      // 11. Return result
       // ============================================================
 
       return DocumentResult(
@@ -341,10 +307,6 @@ class DocxGenerationService {
         conversionType: ConversionType.docs,
       );
     } finally {
-      // ============================================================
-      // Cleanup temporary session directory
-      // ============================================================
-
       try {
         if (await sessionDir.exists()) {
           await sessionDir.delete(
@@ -358,53 +320,58 @@ class DocxGenerationService {
   }
 
   // ==============================================================
+  // ADD TEXT FILE
+  // ==============================================================
+
+  void _addTextFile(
+    Archive archive,
+    String path,
+    String content,
+  ) {
+    final bytes = utf8.encode(content);
+
+    archive.addFile(
+      ArchiveFile(
+        path,
+        bytes.length,
+        bytes,
+      ),
+    );
+  }
+
+  // ==============================================================
   // [Content_Types].xml
   // ==============================================================
 
   String _buildContentTypesXml() {
-    final sb = StringBuffer();
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
 
-    sb.writeln(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-    );
+  <Default
+    Extension="rels"
+    ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
 
-    sb.writeln(
-      '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
-    );
+  <Default
+    Extension="xml"
+    ContentType="application/xml"/>
 
-    // Relationships files.
-    sb.writeln(
-      '  <Default '
-      'Extension="rels" '
-      'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
-    );
+  <Default
+    Extension="jpeg"
+    ContentType="image/jpeg"/>
 
-    // XML files.
-    sb.writeln(
-      '  <Default '
-      'Extension="xml" '
-      'ContentType="application/xml"/>',
-    );
+  <Override
+    PartName="/word/document.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>
 
-    // JPEG images.
-    sb.writeln(
-      '  <Default '
-      'Extension="jpeg" '
-      'ContentType="image/jpeg"/>',
-    );
+  <Override
+    PartName="/word/styles.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.styles+xml"/>
 
-    // Main Word document.
-    sb.writeln(
-      '  <Override '
-      'PartName="/word/document.xml" '
-      'ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.document.main+xml"/>',
-    );
+  <Override
+    PartName="/word/settings.xml"
+    ContentType="application/vnd.openxmlformats-officedocument.wordprocessingml.settings+xml"/>
 
-    sb.writeln(
-      '</Types>',
-    );
-
-    return sb.toString();
+</Types>''';
   }
 
   // ==============================================================
@@ -412,29 +379,16 @@ class DocxGenerationService {
   // ==============================================================
 
   String _buildRootRelsXml() {
-    final sb = StringBuffer();
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<Relationships
+  xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
-    sb.writeln(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-    );
+  <Relationship
+    Id="rId1"
+    Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument"
+    Target="word/document.xml"/>
 
-    sb.writeln(
-      '<Relationships '
-      'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
-    );
-
-    sb.writeln(
-      '  <Relationship '
-      'Id="rId1" '
-      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" '
-      'Target="word/document.xml"/>',
-    );
-
-    sb.writeln(
-      '</Relationships>',
-    );
-
-    return sb.toString();
+</Relationships>''';
   }
 
   // ==============================================================
@@ -442,7 +396,7 @@ class DocxGenerationService {
   // ==============================================================
 
   String _buildDocumentRelsXml(
-    int count,
+    int imageCount,
   ) {
     final sb = StringBuffer();
 
@@ -455,20 +409,93 @@ class DocxGenerationService {
       'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
     );
 
-    for (int i = 1; i <= count; i++) {
+    sb.writeln(
+      '<Relationship '
+      'Id="rIdStyles" '
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" '
+      'Target="styles.xml"/>',
+    );
+
+    sb.writeln(
+      '<Relationship '
+      'Id="rIdSettings" '
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/settings" '
+      'Target="settings.xml"/>',
+    );
+
+    for (int i = 1; i <= imageCount; i++) {
       sb.writeln(
-        '  <Relationship '
+        '<Relationship '
         'Id="rId$i" '
         'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/image" '
         'Target="media/image$i.jpeg"/>',
       );
     }
 
-    sb.writeln(
-      '</Relationships>',
-    );
+    sb.writeln('</Relationships>');
 
     return sb.toString();
+  }
+
+  // ==============================================================
+  // word/styles.xml
+  // ==============================================================
+
+  String _buildStylesXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:styles
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+
+  <w:docDefaults>
+
+    <w:rPrDefault>
+      <w:rPr>
+        <w:rFonts
+          w:ascii="Calibri"
+          w:hAnsi="Calibri"
+          w:eastAsia="Calibri"
+          w:cs="Calibri"/>
+      </w:rPr>
+    </w:rPrDefault>
+
+    <w:pPrDefault>
+      <w:pPr/>
+    </w:pPrDefault>
+
+  </w:docDefaults>
+
+  <w:style
+    w:type="paragraph"
+    w:default="1"
+    w:styleId="Normal">
+
+    <w:name w:val="Normal"/>
+
+    <w:qFormat/>
+
+  </w:style>
+
+</w:styles>''';
+  }
+
+  // ==============================================================
+  // word/settings.xml
+  // ==============================================================
+
+  String _buildSettingsXml() {
+    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:settings
+  xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+
+  <w:zoom w:percent="100"/>
+
+  <w:compat/>
+
+  <w:doNotTrackMoves/>
+
+  <w:doNotTrackFormatting/>
+
+</w:settings>''';
   }
 
   // ==============================================================
@@ -476,17 +503,13 @@ class DocxGenerationService {
   // ==============================================================
 
   String _buildDocumentXml(
-    List<(int widthEmu, int heightEmu)> dimensions,
+    List<({int widthEmu, int heightEmu})> dimensions,
   ) {
     final sb = StringBuffer();
 
     sb.writeln(
       '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
     );
-
-    // --------------------------------------------------------------
-    // Document root + namespaces
-    // --------------------------------------------------------------
 
     sb.writeln(
       '<w:document '
@@ -497,312 +520,258 @@ class DocxGenerationService {
       'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">',
     );
 
-    sb.writeln(
-      '  <w:body>',
-    );
-
-    // ============================================================
-    // Add each image as one page
-    // ============================================================
+    sb.writeln('<w:body>');
 
     for (int i = 0; i < dimensions.length; i++) {
       final relId = 'rId${i + 1}';
 
-      final (
-        widthEmu,
-        heightEmu,
-      ) = dimensions[i];
+      final widthEmu = dimensions[i].widthEmu;
+      final heightEmu = dimensions[i].heightEmu;
 
       final docPrId = i + 1;
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // Paragraph
-      // ----------------------------------------------------------
+      // ==========================================================
 
+      sb.writeln('<w:p>');
+
+      sb.writeln('<w:pPr>');
+
+      // Center image.
       sb.writeln(
-        '    <w:p>',
+        '<w:jc w:val="center"/>',
       );
 
-      // Center image horizontally.
+      // Keep image paragraph together.
       sb.writeln(
-        '      <w:pPr>',
+        '<w:keepNext w:val="0"/>',
       );
 
-      sb.writeln(
-        '        <w:jc w:val="center"/>',
-      );
+      sb.writeln('</w:pPr>');
 
-      sb.writeln(
-        '      </w:pPr>',
-      );
-
-      // ----------------------------------------------------------
+      // ==========================================================
       // Run
-      // ----------------------------------------------------------
+      // ==========================================================
+
+      sb.writeln('<w:r>');
+
+      sb.writeln('<w:drawing>');
+
+      // ==========================================================
+      // Inline picture
+      // ==========================================================
 
       sb.writeln(
-        '      <w:r>',
-      );
-
-      sb.writeln(
-        '        <w:drawing>',
-      );
-
-      // ----------------------------------------------------------
-      // Inline drawing
-      // ----------------------------------------------------------
-
-      sb.writeln(
-        '          <wp:inline '
+        '<wp:inline '
         'distT="0" '
         'distB="0" '
         'distL="0" '
         'distR="0">',
       );
 
-      // ----------------------------------------------------------
-      // Image size
-      // ----------------------------------------------------------
-
+      // Image size.
       sb.writeln(
-        '            <wp:extent '
+        '<wp:extent '
         'cx="$widthEmu" '
         'cy="$heightEmu"/>',
       );
 
-      // ----------------------------------------------------------
-      // Document properties
-      // ----------------------------------------------------------
-
+      // Effect extent.
       sb.writeln(
-        '            <wp:docPr '
+        '<wp:effectExtent '
+        'l="0" '
+        't="0" '
+        'r="0" '
+        'b="0"/>',
+      );
+
+      // Document properties.
+      sb.writeln(
+        '<wp:docPr '
         'id="$docPrId" '
         'name="Picture $docPrId"/>',
       );
 
-      // ----------------------------------------------------------
-      // Graphic
-      // ----------------------------------------------------------
-
       sb.writeln(
-        '            <a:graphic>',
+        '<wp:cNvGraphicFramePr>',
       );
 
       sb.writeln(
-        '              <a:graphicData '
+        '<a:graphicFrameLocks '
+        'noChangeAspect="1"/>',
+      );
+
+      sb.writeln(
+        '</wp:cNvGraphicFramePr>',
+      );
+
+      // ==========================================================
+      // Graphic
+      // ==========================================================
+
+      sb.writeln('<a:graphic>');
+
+      sb.writeln(
+        '<a:graphicData '
         'uri="http://schemas.openxmlformats.org/drawingml/2006/picture">',
       );
 
-      // ----------------------------------------------------------
+      // ==========================================================
       // Picture
-      // ----------------------------------------------------------
-
-      sb.writeln(
-        '                <pic:pic>',
-      );
-
-      // ==========================================================
-      // Non-visual picture properties
       // ==========================================================
 
-      sb.writeln(
-        '                  <pic:nvPicPr>',
-      );
+      sb.writeln('<pic:pic>');
+
+      // Non-visual properties.
+      sb.writeln('<pic:nvPicPr>');
 
       sb.writeln(
-        '                    <pic:cNvPr '
+        '<pic:cNvPr '
         'id="$docPrId" '
-        'name="Image $docPrId"/>',
+        'name="Image $docPrId.jpeg"/>',
       );
 
       sb.writeln(
-        '                    <pic:cNvPicPr/>',
+        '<pic:cNvPicPr>',
       );
 
       sb.writeln(
-        '                  </pic:nvPicPr>',
+        '<a:picLocks '
+        'noChangeAspect="1" '
+        'noChangeArrowheads="1"/>',
       );
+
+      sb.writeln(
+        '</pic:cNvPicPr>',
+      );
+
+      sb.writeln('</pic:nvPicPr>');
 
       // ==========================================================
       // Image fill
       // ==========================================================
 
-      sb.writeln(
-        '                  <pic:blipFill>',
-      );
+      sb.writeln('<pic:blipFill>');
 
       sb.writeln(
-        '                    <a:blip '
-        'r:embed="$relId"/>',
+        '<a:blip '
+        'r:embed="$relId">',
       );
 
-      sb.writeln(
-        '                    <a:stretch>',
-      );
+      sb.writeln('</a:blip>');
 
-      sb.writeln(
-        '                      <a:fillRect/>',
-      );
+      sb.writeln('<a:stretch>');
 
-      sb.writeln(
-        '                    </a:stretch>',
-      );
+      sb.writeln('<a:fillRect/>');
 
-      sb.writeln(
-        '                  </pic:blipFill>',
-      );
+      sb.writeln('</a:stretch>');
+
+      sb.writeln('</pic:blipFill>');
 
       // ==========================================================
-      // Shape properties
+      // Shape
       // ==========================================================
 
-      sb.writeln(
-        '                  <pic:spPr>',
-      );
+      sb.writeln('<pic:spPr>');
+
+      sb.writeln('<a:xfrm>');
 
       sb.writeln(
-        '                    <a:xfrm>',
-      );
-
-      sb.writeln(
-        '                      <a:off '
+        '<a:off '
         'x="0" '
         'y="0"/>',
       );
 
       sb.writeln(
-        '                      <a:ext '
+        '<a:ext '
         'cx="$widthEmu" '
         'cy="$heightEmu"/>',
       );
 
-      sb.writeln(
-        '                    </a:xfrm>',
-      );
+      sb.writeln('</a:xfrm>');
 
       sb.writeln(
-        '                    <a:prstGeom '
-        'prst="rect">',
+        '<a:prstGeom prst="rect">',
       );
 
-      sb.writeln(
-        '                      <a:avLst/>',
-      );
+      sb.writeln('<a:avLst/>');
 
-      sb.writeln(
-        '                    </a:prstGeom>',
-      );
+      sb.writeln('</a:prstGeom>');
 
-      sb.writeln(
-        '                  </pic:spPr>',
-      );
+      sb.writeln('</pic:spPr>');
 
-      // ----------------------------------------------------------
-      // Close picture
-      // ----------------------------------------------------------
+      // Close picture.
+      sb.writeln('</pic:pic>');
 
-      sb.writeln(
-        '                </pic:pic>',
-      );
+      sb.writeln('</a:graphicData>');
 
-      sb.writeln(
-        '              </a:graphicData>',
-      );
+      sb.writeln('</a:graphic>');
 
-      sb.writeln(
-        '            </a:graphic>',
-      );
+      sb.writeln('</wp:inline>');
 
-      sb.writeln(
-        '          </wp:inline>',
-      );
+      sb.writeln('</w:drawing>');
 
-      sb.writeln(
-        '        </w:drawing>',
-      );
+      sb.writeln('</w:r>');
 
-      sb.writeln(
-        '      </w:r>',
-      );
-
-      sb.writeln(
-        '    </w:p>',
-      );
+      sb.writeln('</w:p>');
 
       // ==========================================================
       // Page break
       // ==========================================================
 
       if (i < dimensions.length - 1) {
-        sb.writeln(
-          '    <w:p>',
-        );
+        sb.writeln('<w:p>');
+
+        sb.writeln('<w:r>');
 
         sb.writeln(
-          '      <w:r>',
+          '<w:br w:type="page"/>',
         );
 
-        sb.writeln(
-          '        <w:br w:type="page"/>',
-        );
+        sb.writeln('</w:r>');
 
-        sb.writeln(
-          '      </w:r>',
-        );
-
-        sb.writeln(
-          '    </w:p>',
-        );
+        sb.writeln('</w:p>');
       }
     }
 
     // ============================================================
-    // Section properties
+    // Section
     //
     // Letter:
     // 8.5 x 11 inches
     //
     // Twips:
-    // Width  = 12240
-    // Height = 15840
+    // 12240 x 15840
     //
-    // Margins:
-    // 1 inch = 1440 twips
+    // 1 inch margin:
+    // 1440 twips
     // ============================================================
 
-    sb.writeln(
-      '    <w:sectPr>',
-    );
+    sb.writeln('<w:sectPr>');
 
     sb.writeln(
-      '      <w:pgSz '
+      '<w:pgSz '
       'w:w="12240" '
       'w:h="15840"/>',
     );
 
     sb.writeln(
-      '      <w:pgMar '
+      '<w:pgMar '
       'w:top="1440" '
       'w:right="1440" '
       'w:bottom="1440" '
-      'w:left="1440"/>',
+      'w:left="1440" '
+      'w:header="720" '
+      'w:footer="720" '
+      'w:gutter="0"/>',
     );
 
-    sb.writeln(
-      '    </w:sectPr>',
-    );
+    sb.writeln('</w:sectPr>');
 
-    // ============================================================
-    // Close document
-    // ============================================================
+    sb.writeln('</w:body>');
 
-    sb.writeln(
-      '  </w:body>',
-    );
-
-    sb.writeln(
-      '</w:document>',
-    );
+    sb.writeln('</w:document>');
 
     return sb.toString();
   }
