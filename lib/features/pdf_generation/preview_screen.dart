@@ -156,15 +156,29 @@ class _PreviewScreenState extends State<PreviewScreen> {
         ),
         body: Column(
           children: [
-        // Page / Slide Preview Viewer
-Expanded(
+       Expanded(
   child: PageView.builder(
     controller: _pageController,
-    scrollDirection: Axis.vertical,
+
+    // ============================================================
+    // MOVEMENT DIRECTION
+    // PDF / DOCX  → TOP TO BOTTOM
+    // PPTX        → LEFT TO RIGHT
+    // ============================================================
+    scrollDirection: _effectiveType == ConversionType.ppt
+        ? Axis.horizontal
+        : Axis.vertical,
+
     itemCount: totalPages,
+
     onPageChanged: (idx) {
-      setState(() => _currentPageIndex = idx);
+      if (!mounted) return;
+
+      setState(() {
+        _currentPageIndex = idx;
+      });
     },
+
     itemBuilder: (context, index) {
       final imgItem = images[index];
 
@@ -180,7 +194,9 @@ Expanded(
               decoration: BoxDecoration(
                 color: Colors.white,
                 borderRadius: BorderRadius.circular(
-                  _effectiveType == ConversionType.ppt ? 12 : 8,
+                  _effectiveType == ConversionType.ppt
+                      ? 12
+                      : 8,
                 ),
                 border: _effectiveType == ConversionType.docs
                     ? Border.all(
@@ -190,7 +206,9 @@ Expanded(
                     : null,
                 boxShadow: [
                   BoxShadow(
-                    color: Colors.black.withValues(alpha: 0.15),
+                    color: Colors.black.withValues(
+                      alpha: 0.15,
+                    ),
                     blurRadius: 16,
                     offset: const Offset(0, 4),
                   ),
@@ -200,10 +218,31 @@ Expanded(
               child: Stack(
                 fit: StackFit.expand,
                 children: [
+                  // ========================================================
+                  // PAGE / SLIDE IMAGE
+                  // ========================================================
+
                   Image.file(
                     File(imgItem.filePath),
                     fit: BoxFit.contain,
+                    errorBuilder: (
+                      context,
+                      error,
+                      stackTrace,
+                    ) {
+                      return const Center(
+                        child: Icon(
+                          Icons.broken_image_outlined,
+                          size: 50,
+                          color: Colors.grey,
+                        ),
+                      );
+                    },
                   ),
+
+                  // ========================================================
+                  // PAGE / SLIDE NUMBER
+                  // ========================================================
 
                   Positioned(
                     bottom: 8,
@@ -228,16 +267,30 @@ Expanded(
                     ),
                   ),
 
+                  // ========================================================
+                  // DOCX LABEL
+                  // ========================================================
+
                   if (_effectiveType == ConversionType.docs)
                     Positioned(
                       top: 8,
                       left: 12,
-                      child: Text(
-                        'DOCX Page ${index + 1}',
-                        style: const TextStyle(
-                          fontSize: 10,
-                          color: Colors.black38,
-                          fontWeight: FontWeight.w600,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 6,
+                          vertical: 3,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white70,
+                          borderRadius: BorderRadius.circular(4),
+                        ),
+                        child: Text(
+                          'DOCX Page ${index + 1}',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: Colors.black38,
+                            fontWeight: FontWeight.w600,
+                          ),
                         ),
                       ),
                     ),

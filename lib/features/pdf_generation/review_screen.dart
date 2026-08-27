@@ -1,10 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
-import '../../core/providers/pdf_manager_provider.dart';
-import '../../core/theme/app_theme.dart';
+
 import '../../core/providers/image_selection_provider.dart';
+import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/services/gallery_service.dart';
+import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/widgets/unsaved_changes_dialog.dart';
 import '../../models/conversion_type.dart';
@@ -34,141 +36,287 @@ class _ReviewScreenState extends State<ReviewScreen> {
   ConversionType get _effectiveType =>
       widget.existingDocument?.documentType ?? widget.conversionType;
 
-  bool get _isEditingExisting => widget.existingDocument != null;
+  bool get _isEditingExisting =>
+      widget.existingDocument != null;
+
+  bool get _isPpt =>
+      _effectiveType == ConversionType.ppt;
+
+  String get _itemLabel =>
+      _isPpt ? 'Slides' : 'Pages';
+
+  String get _itemLabelSingular =>
+      _isPpt ? 'Slide' : 'Page';
+
+  // ============================================================
+  // REORDER MODE
+  // ============================================================
 
   void _toggleReorderMode() {
+    if (!mounted) return;
+
     setState(() {
       _isReordering = !_isReordering;
     });
   }
 
+  // ============================================================
+  // REMOVE IMAGE / SLIDE
+  // ============================================================
+
   void _removeImage(String imageId) {
-    context.read<ImageSelectionProvider>().removeImage(imageId);
+    context
+        .read<ImageSelectionProvider>()
+        .removeImage(imageId);
+
+    if (!mounted) return;
+
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          _effectiveType == ConversionType.ppt ? 'Slide removed' : 'Page removed',
+          _isPpt
+              ? 'Slide removed'
+              : 'Page removed',
         ),
-        duration: const Duration(seconds: 1),
+        duration:
+            const Duration(seconds: 1),
       ),
     );
   }
 
-  void _reorderImages(int oldIndex, int newIndex) {
-    context.read<ImageSelectionProvider>().reorderImages(oldIndex, newIndex);
+  // ============================================================
+  // REORDER
+  // ============================================================
+
+  void _reorderImages(
+    int oldIndex,
+    int newIndex,
+  ) {
+    context
+        .read<ImageSelectionProvider>()
+        .reorderImages(
+          oldIndex,
+          newIndex,
+        );
   }
 
-  Future<void> _addMoreImages(String source) async {
+  // ============================================================
+  // ADD MORE IMAGES
+  // ============================================================
+
+  Future<void> _addMoreImages(
+    String source,
+  ) async {
     if (source == 'camera') {
-      if (mounted) {
-        Navigator.of(context).pushNamed(
-          '/camera',
-          arguments: _effectiveType,
-        );
+      if (!mounted) return;
+
+      await Navigator.of(context).pushNamed(
+        '/camera',
+        arguments: _effectiveType,
+      );
+
+      return;
+    }
+
+    final galleryService =
+        GalleryService();
+
+    try {
+      final imagePaths =
+          await galleryService.pickImages();
+
+      if (!mounted) return;
+
+      if (imagePaths.isEmpty) {
+        return;
       }
-    } else {
-      final galleryService = GalleryService();
-      try {
-        final imagePaths = await galleryService.pickImages();
-        if (imagePaths.isNotEmpty && mounted) {
-          context.read<ImageSelectionProvider>().addImages(
-                imagePaths,
-                'gallery',
-                markUnsaved: true,
-              );
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text(
-                'Added ${imagePaths.length} ${_effectiveType == ConversionType.ppt ? 'slide(s)' : 'page(s)'}',
-              ),
-              duration: const Duration(seconds: 1),
-            ),
+
+      context
+          .read<ImageSelectionProvider>()
+          .addImages(
+            imagePaths,
+            'gallery',
+            markUnsaved: true,
           );
-        }
-      } catch (e) {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(
-              content: Text('Failed to pick images'),
-              backgroundColor: AppTheme.errorColor,
-            ),
-          );
-        }
-      }
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text(
+            'Added ${imagePaths.length} '
+            '${imagePaths.length == 1 ? _itemLabelSingular.toLowerCase() : _itemLabel.toLowerCase()}',
+          ),
+          duration:
+              const Duration(seconds: 1),
+        ),
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content:
+              Text('Failed to pick images'),
+          backgroundColor:
+              AppTheme.errorColor,
+        ),
+      );
     }
   }
 
-  void _showAddImagesBottomSheet() {
-    final itemLabel = _effectiveType == ConversionType.ppt ? 'Slides' : 'Pages';
+  // ============================================================
+  // ADD IMAGES BOTTOM SHEET
+  // ============================================================
 
+  void _showAddImagesBottomSheet() {
     showModalBottomSheet(
       context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      shape:
+          const RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.vertical(
+          top: Radius.circular(20),
+        ),
       ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            padding:
+                const EdgeInsets.symmetric(
+              horizontal: 20,
+              vertical: 16,
+            ),
             child: Column(
-              mainAxisSize: MainAxisSize.min,
+              mainAxisSize:
+                  MainAxisSize.min,
               children: [
                 Container(
                   width: 36,
                   height: 4,
-                  decoration: BoxDecoration(
-                    color: Colors.grey.shade300,
-                    borderRadius: BorderRadius.circular(2),
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        Colors.grey.shade300,
+                    borderRadius:
+                        BorderRadius.circular(
+                      2,
+                    ),
                   ),
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(
+                  height: 16,
+                ),
+
                 Text(
                   _isEditingExisting
-                      ? 'Add $itemLabel to Document'
-                      : 'Add More $itemLabel',
-                  style: const TextStyle(fontSize: 17, fontWeight: FontWeight.bold),
+                      ? 'Add $_itemLabel to Document'
+                      : 'Add More $_itemLabel',
+                  style:
+                      const TextStyle(
+                    fontSize: 17,
+                    fontWeight:
+                        FontWeight.bold,
+                  ),
                 ),
-                const SizedBox(height: 16),
+
+                const SizedBox(
+                  height: 16,
+                ),
+
                 Row(
                   children: [
+                    // CAMERA
                     Expanded(
-                      child: OutlinedButton.icon(
+                      child:
+                          OutlinedButton.icon(
                         onPressed: () {
-                          Navigator.of(ctx).pop();
-                          _addMoreImages('camera');
+                          Navigator.of(
+                            ctx,
+                          ).pop();
+
+                          _addMoreImages(
+                            'camera',
+                          );
                         },
-                        icon: const Icon(Icons.camera_alt_rounded),
-                        label: const Text('Camera'),
-                        style: OutlinedButton.styleFrom(
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        icon:
+                            const Icon(
+                          Icons
+                              .camera_alt_rounded,
+                        ),
+                        label:
+                            const Text(
+                          'Camera',
+                        ),
+                        style:
+                            OutlinedButton.styleFrom(
+                          padding:
+                              const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                          shape:
+                              RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(
+                              12,
+                            ),
                           ),
                         ),
                       ),
                     ),
-                    const SizedBox(width: 12),
+
+                    const SizedBox(
+                      width: 12,
+                    ),
+
+                    // GALLERY
                     Expanded(
-                      child: ElevatedButton.icon(
+                      child:
+                          ElevatedButton.icon(
                         onPressed: () {
-                          Navigator.of(ctx).pop();
-                          _addMoreImages('gallery');
+                          Navigator.of(
+                            ctx,
+                          ).pop();
+
+                          _addMoreImages(
+                            'gallery',
+                          );
                         },
-                        icon: const Icon(Icons.photo_library_rounded),
-                        label: const Text('Gallery'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: _effectiveType.badgeColor,
-                          foregroundColor: Colors.white,
-                          padding: const EdgeInsets.symmetric(vertical: 14),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
+                        icon:
+                            const Icon(
+                          Icons
+                              .photo_library_rounded,
+                        ),
+                        label:
+                            const Text(
+                          'Gallery',
+                        ),
+                        style:
+                            ElevatedButton.styleFrom(
+                          backgroundColor:
+                              _effectiveType
+                                  .badgeColor,
+                          foregroundColor:
+                              Colors.white,
+                          padding:
+                              const EdgeInsets.symmetric(
+                            vertical: 14,
+                          ),
+                          shape:
+                              RoundedRectangleBorder(
+                            borderRadius:
+                                BorderRadius.circular(
+                              12,
+                            ),
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+
+                const SizedBox(
+                  height: 8,
+                ),
               ],
             ),
           ),
@@ -177,10 +325,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
-  void _openImageEditor(String imageId, String imagePath, int index) async {
-    final updatedPath = await Navigator.of(context).push<String>(
+  // ============================================================
+  // IMAGE EDITOR
+  // ============================================================
+
+  Future<void> _openImageEditor(
+    String imageId,
+    String imagePath,
+    int index,
+  ) async {
+    final updatedPath =
+        await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) => ImageEditorScreen(
+        builder: (_) =>
+            ImageEditorScreen(
           imageId: imageId,
           imagePath: imagePath,
           pageIndex: index,
@@ -188,167 +346,318 @@ class _ReviewScreenState extends State<ReviewScreen> {
       ),
     );
 
-    if (updatedPath != null && mounted) {
+    if (!mounted) return;
+
+    if (updatedPath != null) {
       setState(() {});
     }
   }
 
+  // ============================================================
+  // PREVIEW
+  // ============================================================
+
   void _openPreview() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => PreviewScreen(
-          existingDocument: widget.existingDocument,
-          conversionType: _effectiveType,
-          onSave: _isEditingExisting ? _saveExistingDocumentChanges : null,
+        builder: (_) =>
+            PreviewScreen(
+          existingDocument:
+              widget.existingDocument,
+          conversionType:
+              _effectiveType,
+          onSave: _isEditingExisting
+              ? _saveExistingDocumentChanges
+              : null,
         ),
       ),
     );
   }
 
-  Future<void> _saveExistingDocumentChanges() async {
-    final imagePaths = context.read<ImageSelectionProvider>().getImageFilePaths();
+  // ============================================================
+  // SAVE EXISTING DOCUMENT
+  // ============================================================
+
+  Future<void>
+      _saveExistingDocumentChanges() async {
+    final imagePaths =
+        context
+            .read<ImageSelectionProvider>()
+            .getImageFilePaths();
+
     if (imagePaths.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
           content: Text(
-            'Cannot save empty document. At least 1 ${_effectiveType == ConversionType.ppt ? 'slide' : 'page'} is required.',
+            'Cannot save empty document. '
+            'At least 1 $_itemLabelSingular '
+            'is required.',
           ),
-          backgroundColor: AppTheme.errorColor,
+          backgroundColor:
+              AppTheme.errorColor,
         ),
       );
+
       return;
     }
 
-    setState(() => _isSaving = true);
+    if (_isSaving) return;
+
+    setState(() {
+      _isSaving = true;
+    });
 
     try {
-      await context.read<PdfManagerProvider>().updateDocumentContent(
+      await context
+          .read<PdfManagerProvider>()
+          .updateDocumentContent(
             widget.existingDocument!.id,
             imagePaths,
           );
 
       if (!mounted) return;
-      context.read<ImageSelectionProvider>().clearAllImages();
 
-      ScaffoldMessenger.of(context).showSnackBar(
+      context
+          .read<ImageSelectionProvider>()
+          .clearAllImages();
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
         SnackBar(
-          content: Text('${_effectiveType.shortName} updated successfully!'),
-          backgroundColor: AppTheme.successColor,
+          content: Text(
+            '${_effectiveType.shortName} '
+            'updated successfully!',
+          ),
+          backgroundColor:
+              AppTheme.successColor,
         ),
       );
 
       Navigator.of(context).pop(true);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to save changes: $e'),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context)
+          .showSnackBar(
+        SnackBar(
+          content:
+              Text('Failed to save changes: $e'),
+          backgroundColor:
+              AppTheme.errorColor,
+        ),
+      );
     } finally {
-      if (mounted) setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+        });
+      }
     }
   }
 
+  // ============================================================
+  // GENERATE DOCUMENT
+  // ============================================================
+
   void _generateDocument() {
+    if (_isSaving) return;
+
     if (_isEditingExisting) {
       _saveExistingDocumentChanges();
-    } else {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PdfGenerationScreen(conversionType: _effectiveType),
-        ),
-      );
+      return;
     }
+
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            PdfGenerationScreen(
+          conversionType:
+              _effectiveType,
+        ),
+      ),
+    );
   }
+
+  // ============================================================
+  // BACK HANDLING
+  // ============================================================
 
   Future<void> _handleBack() async {
     if (_isReordering) {
-      setState(() => _isReordering = false);
+      setState(() {
+        _isReordering = false;
+      });
+
       return;
     }
 
-    final hasUnsaved = context.read<ImageSelectionProvider>().hasUnsavedChanges;
+    final imageProvider =
+        context.read<ImageSelectionProvider>();
+
+    final hasUnsaved =
+        imageProvider.hasUnsavedChanges;
+
     if (!hasUnsaved) {
-      context.read<ImageSelectionProvider>().clearAllImages();
-      Navigator.of(context).pop();
+      imageProvider.clearAllImages();
+
+      if (mounted) {
+        Navigator.of(context).pop();
+      }
+
       return;
     }
 
-    final action = await UnsavedChangesDialog.show(
+    final action =
+        await UnsavedChangesDialog.show(
       context,
       title: 'Discard Changes?',
       message: _isEditingExisting
-          ? 'You have unsaved changes to "${widget.existingDocument!.fileName}". What would you like to do?'
-          : 'You have unsaved changes. What would you like to do?',
+          ? 'You have unsaved changes to '
+              '"${widget.existingDocument!.fileName}". '
+              'What would you like to do?'
+          : 'You have unsaved changes. '
+              'What would you like to do?',
       saveLabel: _isEditingExisting
           ? 'Save Changes'
           : 'Generate ${_effectiveType.shortName}',
-      discardLabel: 'Discard Changes',
+      discardLabel:
+          'Discard Changes',
     );
 
     if (!mounted) return;
 
-    if (action == UnsavedChangesAction.save) {
+    if (action ==
+        UnsavedChangesAction.save) {
       _generateDocument();
-    } else if (action == UnsavedChangesAction.discard) {
-      context.read<ImageSelectionProvider>().clearAllImages();
+    } else if (action ==
+        UnsavedChangesAction.discard) {
+      imageProvider.clearAllImages();
+
       Navigator.of(context).pop();
     }
   }
 
+  // ============================================================
+  // BUILD
+  // ============================================================
+
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-    final itemUnit = _effectiveType == ConversionType.ppt ? 'slides' : 'pages';
+    final theme =
+        Theme.of(context);
+
+    final colorScheme =
+        theme.colorScheme;
+
+    final isDark =
+        theme.brightness ==
+            Brightness.dark;
+
+    final imageCount =
+        context.watch<
+                ImageSelectionProvider>()
+            .imageCount;
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
-        if (!didPop) _handleBack();
+      onPopInvokedWithResult:
+          (didPop, result) {
+        if (!didPop) {
+          _handleBack();
+        }
       },
       child: Scaffold(
-        backgroundColor: colorScheme.surface,
+        backgroundColor:
+            colorScheme.surface,
+
+        // ======================================================
+        // APP BAR
+        // ======================================================
+
         appBar: AppBar(
           leading: IconButton(
-            icon: const Icon(Icons.arrow_back_rounded),
+            icon: const Icon(
+              Icons.arrow_back_rounded,
+            ),
             tooltip: 'Back',
-            onPressed: _handleBack,
+            onPressed:
+                _handleBack,
           ),
+
           title: Text(
             _isEditingExisting
-                ? widget.existingDocument!.title
-                : 'Review & Organize (${_effectiveType.shortName})',
-            overflow: TextOverflow.ellipsis,
+                ? widget
+                    .existingDocument!
+                    .title
+                : 'Review & Organize '
+                    '(${_effectiveType.shortName})',
+            overflow:
+                TextOverflow.ellipsis,
           ),
-          backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-          foregroundColor: colorScheme.onSurface,
+
+          backgroundColor:
+              isDark
+                  ? AppTheme.surfaceDark
+                  : AppTheme.surfaceLight,
+
+          foregroundColor:
+              colorScheme.onSurface,
+
           elevation: 0,
+
           actions: [
+            // PREVIEW
             IconButton(
-              icon: const Icon(Icons.preview_rounded),
-              tooltip: 'Preview Document',
-              onPressed: _openPreview,
+              icon: const Icon(
+                Icons.preview_rounded,
+              ),
+              tooltip:
+                  'Preview Document',
+              onPressed:
+                  imageCount == 0
+                      ? null
+                      : _openPreview,
             ),
+
+            // COUNT
             Padding(
-              padding: const EdgeInsets.only(right: 12.0),
+              padding:
+                  const EdgeInsets.only(
+                right: 12,
+              ),
               child: Center(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: _effectiveType.badgeColor.withValues(alpha: 0.15),
-                    borderRadius: BorderRadius.circular(8),
+                  padding:
+                      const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration:
+                      BoxDecoration(
+                    color:
+                        _effectiveType
+                            .badgeColor
+                            .withValues(
+                      alpha: 0.15,
+                    ),
+                    borderRadius:
+                        BorderRadius.circular(
+                      8,
+                    ),
                   ),
                   child: Text(
-                    '${context.watch<ImageSelectionProvider>().imageCount} $itemUnit',
+                    '$imageCount '
+                    '${_isPpt ? 'slides' : 'pages'}',
                     style: TextStyle(
-                      fontWeight: FontWeight.w700,
+                      fontWeight:
+                          FontWeight.w700,
                       fontSize: 12,
-                      color: _effectiveType.badgeColor,
+                      color:
+                          _effectiveType
+                              .badgeColor,
                     ),
                   ),
                 ),
@@ -356,218 +665,175 @@ class _ReviewScreenState extends State<ReviewScreen> {
             ),
           ],
         ),
+
+        // ======================================================
+        // BODY
+        // ======================================================
+
         body: Stack(
           children: [
-            Consumer<ImageSelectionProvider>(
-              builder: (context, imageProvider, _) {
-                if (!imageProvider.hasImages) {
-                  return Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.image_not_supported,
-                          size: 60,
-                          color: colorScheme.onSurface.withValues(alpha: 0.3),
-                        ),
-                        const SizedBox(height: 16),
-                        Text(
-                          'No images in document',
-                          style: TextStyle(
-                            fontSize: 16,
-                            color: colorScheme.onSurface.withValues(alpha: 0.6),
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _showAddImagesBottomSheet,
-                          icon: const Icon(Icons.add_photo_alternate_rounded),
-                          label: Text('Add $itemLabel'),
-                          style: ElevatedButton.styleFrom(
-                            backgroundColor: _effectiveType.badgeColor,
-                            foregroundColor: Colors.white,
-                          ),
-                        ),
-                      ],
-                    ),
+            Consumer<
+                ImageSelectionProvider>(
+              builder: (
+                context,
+                imageProvider,
+                _,
+              ) {
+                if (!imageProvider
+                    .hasImages) {
+                  return _buildEmptyState(
+                    colorScheme,
                   );
                 }
 
                 return Column(
                   children: [
-                    // Image Grid or Reorderable List
+                    // ==================================================
+                    // IMAGE GRID / REORDER
+                    // ==================================================
+
                     Expanded(
-                      child: _isReordering
-                          ? ReorderableListView.builder(
-                              buildDefaultDragHandles: false,
-                              padding: EdgeInsets.all(
-                                ResponsiveHelper.getGridSpacing(context),
-                              ),
-                              itemCount: imageProvider.selectedImages.length,
-                              onReorder: _reorderImages,
-                              itemBuilder: (context, index) {
-                                final imageItem = imageProvider.selectedImages[index];
-                                return _buildReorderableRowItem(imageItem, index);
-                              },
-                            )
-                          : GridView.builder(
-                              padding: EdgeInsets.all(
-                                ResponsiveHelper.getGridSpacing(context),
-                              ),
-                              gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
-                                crossAxisCount: ResponsiveHelper.getGridCrossAxisCount(context),
-                                crossAxisSpacing: ResponsiveHelper.getGridSpacing(context),
-                                mainAxisSpacing: ResponsiveHelper.getGridSpacing(context),
-                                childAspectRatio: _effectiveType == ConversionType.ppt ? 1.15 : 0.82,
-                              ),
-                              itemCount: imageProvider.selectedImages.length,
-                              itemBuilder: (context, index) {
-                                final imageItem = imageProvider.selectedImages[index];
-                                return _buildImageItem(imageItem, index);
-                              },
-                            ),
+                      child:
+                          _isReordering
+                              ? ReorderableListView
+                                  .builder(
+                                  buildDefaultDragHandles:
+                                      false,
+                                  padding:
+                                      EdgeInsets.all(
+                                    ResponsiveHelper
+                                        .getGridSpacing(
+                                      context,
+                                    ),
+                                  ),
+                                  itemCount:
+                                      imageProvider
+                                          .selectedImages
+                                          .length,
+                                  onReorder:
+                                      _reorderImages,
+                                  itemBuilder:
+                                      (
+                                    context,
+                                    index,
+                                  ) {
+                                    final imageItem =
+                                        imageProvider
+                                            .selectedImages[
+                                      index
+                                    ];
+
+                                    return _buildReorderableRowItem(
+                                      imageItem,
+                                      index,
+                                    );
+                                  },
+                                )
+                              : GridView.builder(
+                                  padding:
+                                      EdgeInsets.all(
+                                    ResponsiveHelper
+                                        .getGridSpacing(
+                                      context,
+                                    ),
+                                  ),
+                                  gridDelegate:
+                                      SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount:
+                                        ResponsiveHelper
+                                            .getGridCrossAxisCount(
+                                      context,
+                                    ),
+                                    crossAxisSpacing:
+                                        ResponsiveHelper
+                                            .getGridSpacing(
+                                      context,
+                                    ),
+                                    mainAxisSpacing:
+                                        ResponsiveHelper
+                                            .getGridSpacing(
+                                      context,
+                                    ),
+
+                                    // PPTX = landscape
+                                    // PDF/DOCX = portrait
+                                    childAspectRatio:
+                                        _isPpt
+                                            ? 1.55
+                                            : 0.82,
+                                  ),
+                                  itemCount:
+                                      imageProvider
+                                          .selectedImages
+                                          .length,
+                                  itemBuilder:
+                                      (
+                                    context,
+                                    index,
+                                  ) {
+                                    final imageItem =
+                                        imageProvider
+                                            .selectedImages[
+                                      index
+                                    ];
+
+                                    return _buildImageItem(
+                                      imageItem,
+                                      index,
+                                    );
+                                  },
+                                ),
                     ),
 
-                    // Bottom Control Toolbar & Generate Button
+                    // ==================================================
+                    // BOTTOM TOOLBAR
+                    // ==================================================
+
                     SafeArea(
                       top: false,
-                      child: Container(
-                        padding: EdgeInsets.all(
-                          ResponsiveHelper.getResponsivePadding(context),
-                        ),
-                        decoration: BoxDecoration(
-                          color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                          border: Border(
-                            top: BorderSide(
-                              color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
-                            ),
-                          ),
-                          boxShadow: [
-                            BoxShadow(
-                              color: Colors.black.withValues(alpha: isDark ? 0.2 : 0.05),
-                              blurRadius: 8,
-                              offset: const Offset(0, -2),
-                            ),
-                          ],
-                        ),
-                        child: Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            // Action buttons row: Add Images, Reorder, Preview
-                            Row(
-                              children: [
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: _showAddImagesBottomSheet,
-                                    icon: const Icon(Icons.add_rounded, size: 18),
-                                    label: const Text('Add'),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: _toggleReorderMode,
-                                    icon: Icon(
-                                      _isReordering
-                                          ? Icons.check_rounded
-                                          : Icons.swap_vert_rounded,
-                                      size: 18,
-                                    ),
-                                    label: Text(_isReordering ? 'Done' : 'Reorder'),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      backgroundColor: _isReordering
-                                          ? _effectiveType.badgeColor.withValues(alpha: 0.15)
-                                          : null,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 8),
-                                Expanded(
-                                  child: OutlinedButton.icon(
-                                    onPressed: _openPreview,
-                                    icon: const Icon(Icons.preview_rounded, size: 18),
-                                    label: const Text('Preview'),
-                                    style: OutlinedButton.styleFrom(
-                                      padding: const EdgeInsets.symmetric(vertical: 8),
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.circular(10),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                            const SizedBox(height: 10),
-
-                            // Primary Action Button (Save Changes or Generate Format)
-                            SizedBox(
-                              width: double.infinity,
-                              height: ResponsiveHelper.getResponsiveButtonHeight(context),
-                              child: ElevatedButton.icon(
-                                onPressed: _generateDocument,
-                                icon: Icon(
-                                  _isEditingExisting
-                                      ? Icons.save_rounded
-                                      : _effectiveType.icon,
-                                ),
-                                label: Text(
-                                  _isEditingExisting
-                                      ? 'Save Changes'
-                                      : 'Generate ${_effectiveType.shortName}',
-                                  style: TextStyle(
-                                    fontSize: ResponsiveHelper.getResponsiveFontSize(
-                                      context,
-                                      mobileSize: 14,
-                                      tabletSize: 16,
-                                      desktopSize: 18,
-                                    ),
-                                    fontWeight: FontWeight.w700,
-                                  ),
-                                ),
-                                style: ElevatedButton.styleFrom(
-                                  backgroundColor: _isEditingExisting
-                                      ? AppTheme.primaryColor
-                                      : _effectiveType.badgeColor,
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(12),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
+                      child:
+                          _buildBottomToolbar(
+                        isDark,
                       ),
                     ),
                   ],
                 );
               },
             ),
+
+            // ======================================================
+            // SAVING OVERLAY
+            // ======================================================
+
             if (_isSaving)
               Container(
-                color: Colors.black45,
+                color:
+                    Colors.black45,
                 child: const Center(
                   child: Card(
                     child: Padding(
-                      padding: EdgeInsets.all(24.0),
+                      padding:
+                          EdgeInsets.all(24),
                       child: Column(
-                        mainAxisSize: MainAxisSize.min,
+                        mainAxisSize:
+                            MainAxisSize.min,
                         children: [
-                          CircularProgressIndicator(color: AppTheme.primaryColor),
-                          SizedBox(height: 16),
+                          CircularProgressIndicator(
+                            color:
+                                AppTheme
+                                    .primaryColor,
+                          ),
+                          SizedBox(
+                            height: 16,
+                          ),
                           Text(
                             'Saving document changes...',
-                            style: TextStyle(fontWeight: FontWeight.w600),
+                            style:
+                                TextStyle(
+                              fontWeight:
+                                  FontWeight
+                                      .w600,
+                            ),
                           ),
                         ],
                       ),
@@ -581,87 +847,527 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
-  String get itemLabel => _effectiveType == ConversionType.ppt ? 'Slides' : 'Pages';
+  // ============================================================
+  // EMPTY STATE
+  // ============================================================
 
-  Widget _buildImageItem(dynamic imageItem, int index) {
-    final itemUnit = _effectiveType == ConversionType.ppt ? 'Slide' : '';
+  Widget _buildEmptyState(
+    ColorScheme colorScheme,
+  ) {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(24),
+        child: Column(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Icon(
+              _isPpt
+                  ? Icons
+                      .slideshow_outlined
+                  : Icons
+                      .image_not_supported,
+              size: 60,
+              color: colorScheme
+                  .onSurface
+                  .withValues(
+                alpha: 0.3,
+              ),
+            ),
+
+            const SizedBox(
+              height: 16,
+            ),
+
+            Text(
+              'No $_itemLabelSingular'
+              '${_isPpt ? 's' : 's'} in document',
+              style: TextStyle(
+                fontSize: 16,
+                color: colorScheme
+                    .onSurface
+                    .withValues(
+                  alpha: 0.6,
+                ),
+              ),
+            ),
+
+            const SizedBox(
+              height: 16,
+            ),
+
+            ElevatedButton.icon(
+              onPressed:
+                  _showAddImagesBottomSheet,
+              icon: const Icon(
+                Icons
+                    .add_photo_alternate_rounded,
+              ),
+              label: Text(
+                'Add $_itemLabel',
+              ),
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    _effectiveType
+                        .badgeColor,
+                foregroundColor:
+                    Colors.white,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BOTTOM TOOLBAR
+  // ============================================================
+
+  Widget _buildBottomToolbar(
+    bool isDark,
+  ) {
+    return Container(
+      padding: EdgeInsets.all(
+        ResponsiveHelper
+            .getResponsivePadding(
+          context,
+        ),
+      ),
+      decoration:
+          BoxDecoration(
+        color: isDark
+            ? AppTheme.surfaceDark
+            : AppTheme.surfaceLight,
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? AppTheme.dividerDark
+                : AppTheme.dividerColor,
+          ),
+        ),
+        boxShadow: [
+          BoxShadow(
+            color:
+                Colors.black.withValues(
+              alpha:
+                  isDark ? 0.2 : 0.05,
+            ),
+            blurRadius: 8,
+            offset:
+                const Offset(0, -2),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize:
+            MainAxisSize.min,
+        children: [
+          // ======================================================
+          // ACTION BUTTONS
+          // ======================================================
+
+          Row(
+            children: [
+              // ADD
+              Expanded(
+                child:
+                    OutlinedButton.icon(
+                  onPressed:
+                      _showAddImagesBottomSheet,
+                  icon: const Icon(
+                    Icons.add_rounded,
+                    size: 18,
+                  ),
+                  label:
+                      const Text('Add'),
+                  style:
+                      OutlinedButton.styleFrom(
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      vertical: 8,
+                    ),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        10,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(
+                width: 8,
+              ),
+
+              // REORDER
+              Expanded(
+                child:
+                    OutlinedButton.icon(
+                  onPressed:
+                      _toggleReorderMode,
+                  icon: Icon(
+                    _isReordering
+                        ? Icons
+                            .check_rounded
+                        : Icons
+                            .swap_vert_rounded,
+                    size: 18,
+                  ),
+                  label: Text(
+                    _isReordering
+                        ? 'Done'
+                        : 'Reorder',
+                  ),
+                  style:
+                      OutlinedButton.styleFrom(
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      vertical: 8,
+                    ),
+                    backgroundColor:
+                        _isReordering
+                            ? _effectiveType
+                                .badgeColor
+                                .withValues(
+                                alpha: 0.15,
+                              )
+                            : null,
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        10,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(
+                width: 8,
+              ),
+
+              // PREVIEW
+              Expanded(
+                child:
+                    OutlinedButton.icon(
+                  onPressed:
+                      _openPreview,
+                  icon: const Icon(
+                    Icons.preview_rounded,
+                    size: 18,
+                  ),
+                  label:
+                      const Text(
+                    'Preview',
+                  ),
+                  style:
+                      OutlinedButton.styleFrom(
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      vertical: 8,
+                    ),
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        10,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(
+            height: 10,
+          ),
+
+          // ======================================================
+          // GENERATE BUTTON
+          // ======================================================
+
+          SizedBox(
+            width:
+                double.infinity,
+            height:
+                ResponsiveHelper
+                    .getResponsiveButtonHeight(
+              context,
+            ),
+            child:
+                ElevatedButton.icon(
+              onPressed:
+                  _generateDocument,
+              icon: Icon(
+                _isEditingExisting
+                    ? Icons
+                        .save_rounded
+                    : _effectiveType
+                        .icon,
+              ),
+              label: Text(
+                _isEditingExisting
+                    ? 'Save Changes'
+                    : 'Generate '
+                        '${_effectiveType.shortName}',
+                style: TextStyle(
+                  fontSize:
+                      ResponsiveHelper
+                          .getResponsiveFontSize(
+                    context,
+                    mobileSize: 14,
+                    tabletSize: 16,
+                    desktopSize: 18,
+                  ),
+                  fontWeight:
+                      FontWeight.w700,
+                ),
+              ),
+              style:
+                  ElevatedButton.styleFrom(
+                backgroundColor:
+                    _isEditingExisting
+                        ? AppTheme
+                            .primaryColor
+                        : _effectiveType
+                            .badgeColor,
+                foregroundColor:
+                    Colors.white,
+                shape:
+                    RoundedRectangleBorder(
+                  borderRadius:
+                      BorderRadius.circular(
+                    12,
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // GRID IMAGE ITEM
+  // ============================================================
+
+  Widget _buildImageItem(
+    dynamic imageItem,
+    int index,
+  ) {
+    final itemLabel =
+        _isPpt ? 'Slide' : '';
+
     return Card(
-      clipBehavior: Clip.antiAlias,
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+      clipBehavior:
+          Clip.antiAlias,
+      shape:
+          RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(
+          14,
+        ),
+      ),
       elevation: 2,
       child: Stack(
         fit: StackFit.expand,
         children: [
+          // ======================================================
+          // IMAGE
+          // ======================================================
+
           GestureDetector(
-            onTap: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
-            child: Image.file(
-              File(imageItem.filePath),
-              fit: BoxFit.cover,
-              cacheWidth: 220,
-              cacheHeight: 220,
-              filterQuality: FilterQuality.medium,
+            onTap: () =>
+                _openImageEditor(
+              imageItem.id,
+              imageItem.filePath,
+              index,
+            ),
+            child: Container(
+              color: Colors.white,
+              child: Image.file(
+                File(
+                  imageItem.filePath,
+                ),
+                fit: _isPpt
+                    ? BoxFit.contain
+                    : BoxFit.cover,
+                cacheWidth: 500,
+                cacheHeight: 500,
+                filterQuality:
+                    FilterQuality.medium,
+                errorBuilder:
+                    (
+                  context,
+                  error,
+                  stackTrace,
+                ) {
+                  return const Center(
+                    child: Icon(
+                      Icons
+                          .broken_image_outlined,
+                      size: 42,
+                      color:
+                          Colors.grey,
+                    ),
+                  );
+                },
+              ),
             ),
           ),
-          // Page/Slide Number Badge
+
+          // ======================================================
+          // PAGE / SLIDE NUMBER
+          // ======================================================
+
           Positioned(
             top: 8,
             left: 8,
             child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-              decoration: BoxDecoration(
-                color: _effectiveType.badgeColor,
-                borderRadius: BorderRadius.circular(8),
+              padding:
+                  const EdgeInsets
+                      .symmetric(
+                horizontal: 8,
+                vertical: 4,
+              ),
+              decoration:
+                  BoxDecoration(
+                color:
+                    _effectiveType
+                        .badgeColor,
+                borderRadius:
+                    BorderRadius.circular(
+                  8,
+                ),
               ),
               child: Text(
-                itemUnit.isNotEmpty ? '$itemUnit ${index + 1}' : '${index + 1}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontWeight: FontWeight.bold,
+                itemLabel.isNotEmpty
+                    ? '$itemLabel ${index + 1}'
+                    : '${index + 1}',
+                style:
+                    const TextStyle(
+                  color:
+                      Colors.white,
+                  fontWeight:
+                      FontWeight.bold,
                   fontSize: 12,
                 ),
               ),
             ),
           ),
-          // Delete Button
+
+          // ======================================================
+          // DELETE
+          // ======================================================
+
           Positioned(
             top: 8,
             right: 8,
-            child: GestureDetector(
-              onTap: () => _removeImage(imageItem.id),
-              child: Container(
-                padding: const EdgeInsets.all(5),
-                decoration: const BoxDecoration(
-                  color: AppTheme.errorColor,
-                  shape: BoxShape.circle,
+            child:
+                GestureDetector(
+              onTap: () =>
+                  _removeImage(
+                imageItem.id,
+              ),
+              child:
+                  Container(
+                padding:
+                    const EdgeInsets
+                        .all(5),
+                decoration:
+                    const BoxDecoration(
+                  color:
+                      AppTheme
+                          .errorColor,
+                  shape:
+                      BoxShape.circle,
                 ),
-                child: const Icon(Icons.close, color: Colors.white, size: 15),
+                child:
+                    const Icon(
+                  Icons.close,
+                  color:
+                      Colors.white,
+                  size: 15,
+                ),
               ),
             ),
           ),
-          // Edit Button
+
+          // ======================================================
+          // EDIT
+          // ======================================================
+
           Positioned(
             bottom: 8,
             left: 8,
-            child: GestureDetector(
-              onTap: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
-                  color: Colors.black.withValues(alpha: 0.70),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: Colors.white24),
+            child:
+                GestureDetector(
+              onTap: () =>
+                  _openImageEditor(
+                imageItem.id,
+                imageItem.filePath,
+                index,
+              ),
+              child:
+                  Container(
+                padding:
+                    const EdgeInsets
+                        .symmetric(
+                  horizontal: 8,
+                  vertical: 4,
+                ),
+                decoration:
+                    BoxDecoration(
+                  color: Colors
+                      .black
+                      .withValues(
+                    alpha: 0.70,
+                  ),
+                  borderRadius:
+                      BorderRadius.circular(
+                    8,
+                  ),
+                  border:
+                      Border.all(
+                    color:
+                        Colors.white24,
+                  ),
                 ),
                 child: const Row(
-                  mainAxisSize: MainAxisSize.min,
+                  mainAxisSize:
+                      MainAxisSize.min,
                   children: [
-                    Icon(Icons.tune_rounded, color: Colors.white, size: 13),
-                    SizedBox(width: 4),
+                    Icon(
+                      Icons
+                          .tune_rounded,
+                      color:
+                          Colors.white,
+                      size: 13,
+                    ),
+                    SizedBox(
+                      width: 4,
+                    ),
                     Text(
                       'Edit',
-                      style: TextStyle(
-                        color: Colors.white,
+                      style:
+                          TextStyle(
+                        color:
+                            Colors.white,
                         fontSize: 11,
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight
+                                .w600,
                       ),
                     ),
                   ],
@@ -669,33 +1375,65 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ),
             ),
           ),
-          // Source Badge
+
+          // ======================================================
+          // SOURCE BADGE
+          // ======================================================
+
           Positioned(
             bottom: 8,
             right: 8,
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-              decoration: BoxDecoration(
-                color: Colors.black.withValues(alpha: 0.50),
-                borderRadius: BorderRadius.circular(6),
+            child:
+                Container(
+              padding:
+                  const EdgeInsets
+                      .symmetric(
+                horizontal: 6,
+                vertical: 3,
+              ),
+              decoration:
+                  BoxDecoration(
+                color: Colors
+                    .black
+                    .withValues(
+                  alpha: 0.50,
+                ),
+                borderRadius:
+                    BorderRadius.circular(
+                  6,
+                ),
               ),
               child: Row(
-                mainAxisSize: MainAxisSize.min,
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   Icon(
-                    imageItem.source == 'camera'
-                        ? Icons.camera_alt_rounded
-                        : Icons.photo_library_rounded,
+                    imageItem
+                                .source ==
+                            'camera'
+                        ? Icons
+                            .camera_alt_rounded
+                        : Icons
+                            .photo_library_rounded,
                     size: 11,
-                    color: Colors.white70,
+                    color:
+                        Colors.white70,
                   ),
-                  const SizedBox(width: 3),
+                  const SizedBox(
+                    width: 3,
+                  ),
                   Text(
-                    imageItem.source == 'camera' ? 'Cam' : 'Gal',
-                    style: const TextStyle(
-                      color: Colors.white70,
+                    imageItem.source ==
+                            'camera'
+                        ? 'Cam'
+                        : 'Gal',
+                    style:
+                        const TextStyle(
+                      color:
+                          Colors.white70,
                       fontSize: 10,
-                      fontWeight: FontWeight.w500,
+                      fontWeight:
+                          FontWeight.w500,
                     ),
                   ),
                 ],
@@ -707,56 +1445,156 @@ class _ReviewScreenState extends State<ReviewScreen> {
     );
   }
 
-  Widget _buildReorderableRowItem(dynamic imageItem, int index) {
-    final isDark = Theme.of(context).brightness == Brightness.dark;
-    final itemLabel = _effectiveType == ConversionType.ppt ? 'Slide' : 'Page';
+  // ============================================================
+  // REORDERABLE ITEM
+  // ============================================================
+
+  Widget _buildReorderableRowItem(
+    dynamic imageItem,
+    int index,
+  ) {
+    final isDark =
+        Theme.of(context)
+                .brightness ==
+            Brightness.dark;
 
     return Card(
-      key: ValueKey(imageItem.id),
-      margin: const EdgeInsets.symmetric(vertical: 4),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-      color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+      key:
+          ValueKey(imageItem.id),
+      margin:
+          const EdgeInsets.symmetric(
+        vertical: 4,
+      ),
+      shape:
+          RoundedRectangleBorder(
+        borderRadius:
+            BorderRadius.circular(
+          12,
+        ),
+      ),
+      color: isDark
+          ? AppTheme.surfaceDark
+          : AppTheme.surfaceLight,
       child: ListTile(
-        leading: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
-          child: Image.file(
-            File(imageItem.filePath),
+        leading:
+            ClipRRect(
+          borderRadius:
+              BorderRadius.circular(
+            8,
+          ),
+          child:
+              Image.file(
+            File(
+              imageItem.filePath,
+            ),
             width: 48,
             height: 48,
-            fit: BoxFit.cover,
+            fit: _isPpt
+                ? BoxFit.contain
+                : BoxFit.cover,
             cacheWidth: 96,
             cacheHeight: 96,
+            errorBuilder:
+                (
+              context,
+              error,
+              stackTrace,
+            ) {
+              return const Icon(
+                Icons
+                    .broken_image_outlined,
+                color:
+                    Colors.grey,
+              );
+            },
           ),
         ),
+
         title: Text(
-          '$itemLabel ${index + 1}',
-          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 14),
+          '$_itemLabelSingular ${index + 1}',
+          style:
+              const TextStyle(
+            fontWeight:
+                FontWeight.w600,
+            fontSize: 14,
+          ),
         ),
+
         subtitle: Text(
-          imageItem.source == 'camera' ? 'Camera' : 'Gallery',
+          imageItem.source ==
+                  'camera'
+              ? 'Camera'
+              : 'Gallery',
           style: TextStyle(
             fontSize: 12,
-            color: Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.6),
+            color: Theme.of(
+              context,
+            )
+                .colorScheme
+                .onSurface
+                .withValues(
+              alpha: 0.6,
+            ),
           ),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
+
+        trailing:
+            Row(
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
+            // EDIT
             IconButton(
-              icon: const Icon(Icons.tune_rounded, size: 20),
-              tooltip: 'Edit $itemLabel',
-              onPressed: () => _openImageEditor(imageItem.id, imageItem.filePath, index),
+              icon:
+                  const Icon(
+                Icons
+                    .tune_rounded,
+                size: 20,
+              ),
+              tooltip:
+                  'Edit $_itemLabelSingular',
+              onPressed: () =>
+                  _openImageEditor(
+                imageItem.id,
+                imageItem.filePath,
+                index,
+              ),
             ),
+
+            // DELETE
             IconButton(
-              icon: const Icon(Icons.delete_outline_rounded, size: 20, color: AppTheme.errorColor),
-              tooltip: 'Delete $itemLabel',
-              onPressed: () => _removeImage(imageItem.id),
+              icon:
+                  const Icon(
+                Icons
+                    .delete_outline_rounded,
+                size: 20,
+                color: AppTheme
+                    .errorColor,
+              ),
+              tooltip:
+                  'Delete $_itemLabelSingular',
+              onPressed: () =>
+                  _removeImage(
+                imageItem.id,
+              ),
             ),
+
+            // DRAG HANDLE
             ReorderableDragStartListener(
               index: index,
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8.0),
-                child: Icon(Icons.drag_handle_rounded, color: Colors.grey),
+              child:
+                  const Padding(
+                padding:
+                    EdgeInsets.symmetric(
+                  horizontal: 8,
+                ),
+                child:
+                    Icon(
+                  Icons
+                      .drag_handle_rounded,
+                  color:
+                      Colors.grey,
+                ),
               ),
             ),
           ],

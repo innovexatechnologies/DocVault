@@ -33,11 +33,18 @@ class PdfViewerScreen extends StatefulWidget {
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   late final ConversionType _docType;
 
-  // PDF viewer
+  // ============================================================
+  // PDF VIEWER
+  // ============================================================
+
   PdfControllerPinch? _pdfController;
 
-  // DOCX / PPTX viewer
-  final PageController _pageController = PageController();
+  // ============================================================
+  // DOCX / PPTX VIEWER
+  // ============================================================
+
+  late final PageController _pageController;
+
   List<String> _documentPages = [];
 
   int _actualPageCount = 0;
@@ -48,19 +55,38 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   String? _errorMessage;
 
+  // ============================================================
+  // DOCUMENT TYPE
+  // ============================================================
+
   bool get _isPdf => _docType == ConversionType.pdf;
+
   bool get _isPpt => _docType == ConversionType.ppt;
+
+ 
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
 
-    _docType = ConversionType.fromFileName(widget.fileName);
+    _docType = ConversionType.fromFileName(
+      widget.fileName,
+    );
+
+    // Important:
+    // PageController itself does not decide vertical/horizontal.
+    // PageView below explicitly decides it based on PPTX/DOCX.
+
+    _pageController = PageController();
 
     final file = File(widget.filePath);
 
     if (!file.existsSync()) {
-      _errorMessage = 'Document file not found on device.';
+      _errorMessage =
+          'Document file not found on device.';
       _isLoading = false;
       return;
     }
@@ -74,9 +100,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Future<void> _initializeViewer() async {
     try {
+      // ========================================================
+      // PDF
+      // ========================================================
+
       if (_isPdf) {
         _pdfController = PdfControllerPinch(
-          document: PdfDocument.openFile(widget.filePath),
+          document: PdfDocument.openFile(
+            widget.filePath,
+          ),
         );
 
         if (mounted) {
@@ -90,14 +122,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       // ========================================================
       // DOCX / PPTX
-      //
-      // IMPORTANT:
-      // No Office -> PDF conversion.
-      //
-      // FileUtils extracts/render pages directly for the viewer.
       // ========================================================
 
-      final pages = await FileUtils.extractPagesFromDocument(
+      final pages =
+          await FileUtils.extractPagesFromDocument(
         widget.filePath,
       );
 
@@ -136,7 +164,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         [
           XFile(widget.filePath),
         ],
-        text: 'Sharing ${widget.fileName} from DocVault',
+        text:
+            'Sharing ${widget.fileName} from DocVault',
       );
     } catch (e) {
       if (!mounted) return;
@@ -154,7 +183,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Future<void> _exportDocument() async {
     try {
-      final provider = context.read<PdfManagerProvider>();
+      final provider =
+          context.read<PdfManagerProvider>();
 
       final doc = provider.documents.firstWhere(
         (d) =>
@@ -166,13 +196,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           filePath: widget.filePath,
           fileSizeBytes: 0,
           pageCount:
-              _actualPageCount > 0 ? _actualPageCount : 1,
+              _actualPageCount > 0
+                  ? _actualPageCount
+                  : 1,
           createdAt: DateTime.now(),
           modifiedAt: DateTime.now(),
         ),
       );
 
-      final exportedPath = await provider.exportPdf(doc.id);
+      final exportedPath =
+          await provider.exportPdf(doc.id);
 
       if (!mounted) return;
 
@@ -201,7 +234,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // ============================================================
 
   Future<void> _editDocument() async {
-    final provider = context.read<PdfManagerProvider>();
+    final provider =
+        context.read<PdfManagerProvider>();
 
     final doc = provider.documents.firstWhere(
       (d) =>
@@ -213,7 +247,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         filePath: widget.filePath,
         fileSizeBytes: 0,
         pageCount:
-            _actualPageCount > 0 ? _actualPageCount : 1,
+            _actualPageCount > 0
+                ? _actualPageCount
+                : 1,
         createdAt: DateTime.now(),
         modifiedAt: DateTime.now(),
       ),
@@ -247,7 +283,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     Text(
                       'Loading document for editing...',
                       style: TextStyle(
-                        fontWeight: FontWeight.w600,
+                        fontWeight:
+                            FontWeight.w600,
                       ),
                     ),
                   ],
@@ -280,7 +317,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         markUnsaved: false,
       );
 
-      final result = await Navigator.of(context).push<bool>(
+      final result =
+          await Navigator.of(context).push<bool>(
         MaterialPageRoute(
           builder: (_) => ReviewScreen(
             existingDocument: doc,
@@ -310,9 +348,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Future<void> _openWithExternalApp() async {
     try {
-      final result = await OpenFile.open(
-        widget.filePath,
-      );
+      final result =
+          await OpenFile.open(widget.filePath);
 
       if (!mounted) return;
 
@@ -335,7 +372,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   // ============================================================
-  // SAVE EXTERNAL DOCUMENT TO DOCVAULT
+  // SAVE EXTERNAL DOCUMENT
   // ============================================================
 
   Future<void> _saveToDocVaultLibrary() async {
@@ -346,7 +383,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     });
 
     try {
-      final sourceFile = File(widget.filePath);
+      final sourceFile =
+          File(widget.filePath);
 
       if (!await sourceFile.exists()) {
         throw Exception(
@@ -366,7 +404,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         recursive: true,
       );
 
-      if (sourceFile.path != destinationFile.path) {
+      if (sourceFile.path !=
+          destinationFile.path) {
         await sourceFile.copy(
           destinationPath,
         );
@@ -418,12 +457,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(message),
-        behavior: SnackBarBehavior.floating,
+        behavior:
+            SnackBarBehavior.floating,
         backgroundColor: isError
             ? AppTheme.errorColor
             : AppTheme.successColor,
         shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
+          borderRadius:
+              BorderRadius.circular(10),
         ),
       ),
     );
@@ -435,33 +476,49 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark =
-        theme.brightness == Brightness.dark;
+    final theme =
+        Theme.of(context);
 
-    final itemUnit = _isPpt ? 'Slide' : 'Page';
+    final colorScheme =
+        theme.colorScheme;
+
+    final isDark =
+        theme.brightness ==
+            Brightness.dark;
+
+    final itemUnit =
+        _isPpt ? 'Slide' : 'Page';
 
     return Scaffold(
       backgroundColor: isDark
           ? AppTheme.bgDark
           : const Color(0xFFE8ECEB),
+
+      // ========================================================
+      // APP BAR
+      // ========================================================
+
       appBar: AppBar(
         leading: IconButton(
           icon: const Icon(
             Icons.arrow_back_rounded,
           ),
           onPressed: () {
-            Navigator.of(context).maybePop();
+            Navigator.of(context)
+                .maybePop();
           },
           tooltip: 'Back',
         ),
+
         backgroundColor: isDark
             ? AppTheme.surfaceDark
             : AppTheme.surfaceLight,
+
         foregroundColor:
             colorScheme.onSurface,
+
         elevation: 0,
+
         title: Column(
           crossAxisAlignment:
               CrossAxisAlignment.start,
@@ -473,29 +530,38 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   TextOverflow.ellipsis,
               style: const TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight:
+                    FontWeight.w700,
               ),
             ),
+
             if (_actualPageCount > 0)
               Text(
                 '$itemUnit $_currentPage of $_actualPageCount',
                 style: TextStyle(
                   fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: colorScheme.onSurface
-                      .withValues(alpha: 0.6),
+                  fontWeight:
+                      FontWeight.w500,
+                  color: colorScheme
+                      .onSurface
+                      .withValues(
+                    alpha: 0.6,
+                  ),
                 ),
               ),
           ],
         ),
+
         actions: [
           if (!widget.isExternal)
             IconButton(
               icon: const Icon(
                 Icons.tune_rounded,
               ),
-              onPressed: _editDocument,
-              tooltip: 'Edit Document',
+              onPressed:
+                  _editDocument,
+              tooltip:
+                  'Edit Document',
             ),
 
           if (widget.isExternal)
@@ -507,12 +573,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                       child:
                           CircularProgressIndicator(
                         strokeWidth: 2,
-                        color:
-                            AppTheme.primaryColor,
+                        color: AppTheme
+                            .primaryColor,
                       ),
                     )
                   : const Icon(
-                      Icons.bookmark_add_outlined,
+                      Icons
+                          .bookmark_add_outlined,
                     ),
               onPressed:
                   _isSavingToDocVault
@@ -536,7 +603,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             icon: const Icon(
               Icons.share_outlined,
             ),
-            onPressed: _shareDocument,
+            onPressed:
+                _shareDocument,
             tooltip:
                 'Share Document',
           ),
@@ -552,6 +620,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           ),
         ],
       ),
+
       body: _buildBody(
         colorScheme,
         isDark,
@@ -577,7 +646,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return _buildPdfViewer();
     }
 
-    return _buildOfficeViewer(isDark);
+    return _buildOfficeViewer(
+      isDark,
+    );
   }
 
   // ============================================================
@@ -598,12 +669,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             const Icon(
               Icons.error_outline_rounded,
               size: 52,
-              color: AppTheme.errorColor,
+              color:
+                  AppTheme.errorColor,
             ),
-            const SizedBox(height: 16),
+
+            const SizedBox(
+              height: 16,
+            ),
+
             Text(
               _errorMessage!,
-              textAlign: TextAlign.center,
+              textAlign:
+                  TextAlign.center,
               style: TextStyle(
                 fontSize: 16,
                 color:
@@ -612,12 +689,17 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     FontWeight.w600,
               ),
             ),
-            const SizedBox(height: 20),
+
+            const SizedBox(
+              height: 20,
+            ),
+
             ElevatedButton.icon(
               onPressed:
                   _openWithExternalApp,
               icon: const Icon(
-                Icons.open_in_new_rounded,
+                Icons
+                    .open_in_new_rounded,
               ),
               label: const Text(
                 'Open in System App',
@@ -636,8 +718,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   Widget _buildPdfViewer() {
     if (_pdfController == null) {
       return const Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.primaryColor,
+        child:
+            CircularProgressIndicator(
+          color:
+              AppTheme.primaryColor,
         ),
       );
     }
@@ -645,8 +729,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     return Stack(
       children: [
         PdfViewPinch(
-          controller: _pdfController!,
-          onDocumentLoaded: (document) {
+          controller:
+              _pdfController!,
+
+          onDocumentLoaded:
+              (document) {
             if (!mounted) return;
 
             setState(() {
@@ -656,14 +743,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               _isLoading = false;
             });
           },
-          onPageChanged: (page) {
+
+          onPageChanged:
+              (page) {
             if (!mounted) return;
 
             setState(() {
               _currentPage = page;
             });
           },
-          onDocumentError: (error) {
+
+          onDocumentError:
+              (error) {
             if (!mounted) return;
 
             setState(() {
@@ -673,10 +764,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             });
           },
         ),
+
         if (_isLoading)
           const Center(
-            child: CircularProgressIndicator(
-              color: AppTheme.primaryColor,
+            child:
+                CircularProgressIndicator(
+              color:
+                  AppTheme.primaryColor,
             ),
           ),
       ],
@@ -692,8 +786,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   ) {
     if (_isLoading) {
       return const Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.primaryColor,
+        child:
+            CircularProgressIndicator(
+          color:
+              AppTheme.primaryColor,
         ),
       );
     }
@@ -706,55 +802,113 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
     }
 
+    // ==========================================================
+    // DOCUMENT ASPECT RATIO
+    // ==========================================================
+    //
+    // PPTX = 16:9 landscape
+    // DOCX = A4 portrait
+    //
     final aspectRatio =
-        _isPpt ? (16 / 9) : (1 / 1.414);
+        _isPpt
+            ? 16 / 9
+            : 1 / 1.414;
+
+    // ==========================================================
+    // IMPORTANT:
+    //
+    // PPTX:
+    // LEFT  <----> RIGHT
+    //
+    // DOCX:
+    // TOP
+    //  |
+    //  v
+    // BOTTOM
+    //
+    // ==========================================================
+
+    final scrollDirection =
+        _isPpt
+            ? Axis.horizontal
+            : Axis.vertical;
 
     return Column(
       children: [
+        // ======================================================
+        // MAIN DOCUMENT VIEWER
+        // ======================================================
+
         Expanded(
           child: PageView.builder(
-            controller: _pageController,
+            controller:
+                _pageController,
+
+            // THIS IS THE IMPORTANT PART
+            scrollDirection:
+                scrollDirection,
+
+            physics:
+                const PageScrollPhysics(),
+
             itemCount:
                 _documentPages.length,
-            onPageChanged: (index) {
+
+            onPageChanged:
+                (index) {
               if (!mounted) return;
 
               setState(() {
-                _currentPage = index + 1;
+                _currentPage =
+                    index + 1;
               });
             },
+
             itemBuilder:
                 (context, index) {
               final path =
-                  _documentPages[index];
+                  _documentPages[
+                      index];
 
               return Center(
                 child: Padding(
                   padding:
-                      const EdgeInsets.symmetric(
+                      const EdgeInsets
+                          .symmetric(
                     horizontal: 16,
                     vertical: 12,
                   ),
+
                   child: AspectRatio(
                     aspectRatio:
                         aspectRatio,
+
                     child: Container(
                       width:
                           double.infinity,
+
                       decoration:
                           BoxDecoration(
-                        color: Colors.white,
+                        color:
+                            Colors.white,
+
                         borderRadius:
-                            BorderRadius.circular(
-                          _isPpt ? 12 : 8,
+                            BorderRadius
+                                .circular(
+                          _isPpt
+                              ? 12
+                              : 8,
                         ),
+
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black
+                            color: Colors
+                                .black
                                 .withValues(
                               alpha: 0.15,
                             ),
-                            blurRadius: 16,
+                            blurRadius:
+                                16,
                             offset:
                                 const Offset(
                               0,
@@ -763,16 +917,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                           ),
                         ],
                       ),
+
                       clipBehavior:
                           Clip.antiAlias,
+
                       child: Stack(
-                        fit:
-                            StackFit.expand,
+                        fit: StackFit
+                            .expand,
+
                         children: [
+                          // ==================================================
+                          // PAGE / SLIDE IMAGE
+                          // ==================================================
+
                           Image.file(
                             File(path),
-                            fit:
-                                BoxFit.contain,
+                            fit: BoxFit
+                                .contain,
+
                             errorBuilder:
                                 (
                               context,
@@ -790,34 +952,49 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                               );
                             },
                           ),
+
+                          // ==================================================
+                          // PAGE NUMBER
+                          // ==================================================
+
                           Positioned(
                             bottom: 8,
                             right: 8,
-                            child: Container(
+
+                            child:
+                                Container(
                               padding:
                                   const EdgeInsets
                                       .symmetric(
-                                horizontal: 8,
-                                vertical: 4,
+                                horizontal:
+                                    8,
+                                vertical:
+                                    4,
                               ),
+
                               decoration:
                                   BoxDecoration(
                                 color:
                                     Colors.black54,
                                 borderRadius:
-                                    BorderRadius.circular(
+                                    BorderRadius
+                                        .circular(
                                   6,
                                 ),
                               ),
+
                               child: Text(
                                 '${index + 1}',
+
                                 style:
                                     const TextStyle(
                                   color:
                                       Colors.white,
-                                  fontSize: 11,
+                                  fontSize:
+                                      11,
                                   fontWeight:
-                                      FontWeight.bold,
+                                      FontWeight
+                                          .bold,
                                 ),
                               ),
                             ),
@@ -839,60 +1016,82 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         if (_documentPages.length > 1)
           Container(
             height: 72,
+
             padding:
-                const EdgeInsets.symmetric(
+                const EdgeInsets
+                    .symmetric(
               vertical: 8,
             ),
+
             color: isDark
                 ? AppTheme.surfaceDark
                 : AppTheme.surfaceLight,
+
             child:
                 ListView.separated(
               scrollDirection:
                   Axis.horizontal,
+
               padding:
-                  const EdgeInsets.symmetric(
+                  const EdgeInsets
+                      .symmetric(
                 horizontal: 16,
               ),
+
               itemCount:
                   _documentPages.length,
+
               separatorBuilder:
                   (context, index) =>
                       const SizedBox(
-                    width: 8,
-                  ),
+                width: 8,
+              ),
+
               itemBuilder:
                   (context, index) {
                 final isSelected =
                     index ==
-                        _currentPage - 1;
+                        _currentPage -
+                            1;
 
                 return GestureDetector(
                   onTap: () {
                     _pageController
                         .animateToPage(
                       index,
+
                       duration:
                           const Duration(
-                        milliseconds: 300,
+                        milliseconds:
+                            300,
                       ),
-                      curve:
-                          Curves.easeInOut,
+
+                      curve: Curves
+                          .easeInOut,
                     );
                   },
-                  child: AnimatedContainer(
+
+                  child:
+                      AnimatedContainer(
                     duration:
                         const Duration(
-                      milliseconds: 200,
+                      milliseconds:
+                          200,
                     ),
+
                     width:
-                        _isPpt ? 72 : 52,
+                        _isPpt
+                            ? 72
+                            : 52,
+
                     decoration:
                         BoxDecoration(
                       borderRadius:
-                          BorderRadius.circular(
+                          BorderRadius
+                              .circular(
                         6,
                       ),
+
                       border:
                           Border.all(
                         color: isSelected
@@ -903,15 +1102,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                         width: 2,
                       ),
                     ),
+
                     clipBehavior:
                         Clip.antiAlias,
+
                     child: Image.file(
                       File(
                         _documentPages[
                             index],
                       ),
+
                       fit:
                           BoxFit.cover,
+
                       errorBuilder:
                           (
                         context,
@@ -935,12 +1138,23 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
   @override
   void dispose() {
     _pdfController?.dispose();
+
     _pageController.dispose();
+
     super.dispose();
   }
 }
 
-typedef DocumentViewerScreen = PdfViewerScreen;
+// ================================================================
+// BACKWARD COMPATIBILITY
+// ================================================================
+
+typedef DocumentViewerScreen =
+    PdfViewerScreen;
