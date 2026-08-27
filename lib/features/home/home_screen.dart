@@ -53,7 +53,6 @@ class HomeScreen extends StatelessWidget {
 
     return Scaffold(
       backgroundColor: backgroundColor,
-
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
@@ -65,7 +64,6 @@ class HomeScreen extends StatelessWidget {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-
                 // =================================================================
                 // HEADER
                 // =================================================================
@@ -73,11 +71,8 @@ class HomeScreen extends StatelessWidget {
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
-
-                    // APP LOGO + NAME
                     Row(
                       children: [
-
                         Container(
                           width: isMobile ? 46 : 52,
                           height: isMobile ? 46 : 52,
@@ -106,9 +101,7 @@ class HomeScreen extends StatelessWidget {
                             size: 27,
                           ),
                         ),
-
                         const SizedBox(width: 12),
-
                         Text(
                           AppConstants.appName,
                           style: TextStyle(
@@ -138,9 +131,7 @@ class HomeScreen extends StatelessWidget {
                       ),
                       child: IconButton(
                         onPressed: () {
-                          context
-                              .read<ThemeProvider>()
-                              .toggleTheme();
+                          context.read<ThemeProvider>().toggleTheme();
                         },
                         icon: Icon(
                           isDark
@@ -228,7 +219,6 @@ class HomeScreen extends StatelessWidget {
 
                 Row(
                   children: [
-
                     Container(
                       width: 5,
                       height: 29,
@@ -244,9 +234,7 @@ class HomeScreen extends StatelessWidget {
                         borderRadius: BorderRadius.circular(10),
                       ),
                     ),
-
                     const SizedBox(width: 14),
-
                     Text(
                       'Popular Conversions',
                       style: TextStyle(
@@ -271,7 +259,7 @@ class HomeScreen extends StatelessWidget {
                   isMobile: isMobile,
                   title: 'Images to PDF',
                   description:
-                      'Convert your images into\nhigh-quality PDF files.',
+                      'Convert your images into high-quality PDF files.',
                   buttonText: 'Create PDF',
                   icon: Icons.picture_as_pdf_rounded,
                   iconLetter: 'PDF',
@@ -287,7 +275,7 @@ class HomeScreen extends StatelessWidget {
                   },
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
 
                 // =================================================================
                 // DOCX
@@ -299,7 +287,7 @@ class HomeScreen extends StatelessWidget {
                   isMobile: isMobile,
                   title: 'Images to DOCX',
                   description:
-                      'Convert images to editable\nWord documents.',
+                      'Convert images to editable Word documents.',
                   buttonText: 'Create DOCX',
                   icon: Icons.article_rounded,
                   iconLetter: 'W',
@@ -315,7 +303,7 @@ class HomeScreen extends StatelessWidget {
                   },
                 ),
 
-                const SizedBox(height: 18),
+                const SizedBox(height: 12),
 
                 // =================================================================
                 // PPT
@@ -327,7 +315,7 @@ class HomeScreen extends StatelessWidget {
                   isMobile: isMobile,
                   title: 'Images to PPT',
                   description:
-                      'Convert images to powerful\nPowerPoint presentations.',
+                      'Convert images to powerful PowerPoint presentations.',
                   buttonText: 'Create PPT',
                   icon: Icons.slideshow_rounded,
                   iconLetter: 'P',
@@ -343,7 +331,7 @@ class HomeScreen extends StatelessWidget {
                   },
                 ),
 
-                const SizedBox(height: 22),
+                const SizedBox(height: 18),
 
                 // =================================================================
                 // ALL FILES
@@ -367,7 +355,7 @@ class HomeScreen extends StatelessWidget {
   }
 
   // ===========================================================================
-  // CONVERSION CARD
+  // COMPACT CONVERSION CARD
   // ===========================================================================
 
   Widget _buildConversionCard(
@@ -392,214 +380,187 @@ class HomeScreen extends StatelessWidget {
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.fromLTRB(
-        isMobile ? 18 : 24,
-        isMobile ? 18 : 24,
-        isMobile ? 18 : 24,
-        isMobile ? 16 : 20,
+      padding: EdgeInsets.all(
+        isMobile ? 13 : 16,
       ),
       decoration: BoxDecoration(
         color: isDark
             ? const Color(0xFF0B1020)
             : Colors.white,
-        borderRadius: BorderRadius.circular(
-          isMobile ? 22 : 26,
-        ),
+        borderRadius: BorderRadius.circular(20),
         border: Border.all(
           color: gradient.first.withValues(
-            alpha: isDark ? 0.30 : 0.15,
+            alpha: isDark ? 0.28 : 0.14,
           ),
-          width: 1.3,
+          width: 1.2,
         ),
         boxShadow: [
           BoxShadow(
             color: gradient.first.withValues(
-              alpha: isDark ? 0.10 : 0.07,
+              alpha: isDark ? 0.08 : 0.06,
             ),
-            blurRadius: 25,
-            offset: const Offset(0, 10),
+            blurRadius: 18,
+            offset: const Offset(0, 7),
           ),
         ],
       ),
-      child: Column(
+      child: Row(
         children: [
+          // ===================================================================
+          // COMPACT ICON
+          // ===================================================================
 
-          // TOP CONTENT
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
+          Container(
+            width: isMobile ? 64 : 72,
+            height: isMobile ? 64 : 72,
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                colors: gradient,
+                begin: Alignment.topLeft,
+                end: Alignment.bottomRight,
+              ),
+              borderRadius: BorderRadius.circular(17),
+              boxShadow: [
+                BoxShadow(
+                  color: gradient.first.withValues(
+                    alpha: 0.22,
+                  ),
+                  blurRadius: 14,
+                  offset: const Offset(0, 6),
+                ),
+              ],
+            ),
+            child: Stack(
+              children: [
+                Center(
+                  child: Icon(
+                    icon,
+                    color: Colors.white,
+                    size: isMobile ? 32 : 36,
+                  ),
+                ),
 
-              // ICON
-              Container(
-                width: isMobile ? 112 : 126,
-                height: isMobile ? 112 : 126,
+                Positioned(
+                  top: 5,
+                  right: 5,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 5,
+                      vertical: 3,
+                    ),
+                    decoration: BoxDecoration(
+                      color: Colors.white.withValues(
+                        alpha: 0.96,
+                      ),
+                      borderRadius: BorderRadius.circular(5),
+                    ),
+                    child: Text(
+                      iconLetter,
+                      style: TextStyle(
+                        fontSize: iconLetter == 'PDF' ? 7 : 9,
+                        fontWeight: FontWeight.w900,
+                        color: gradient.first,
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 13),
+
+          // ===================================================================
+          // TITLE + DESCRIPTION
+          // ===================================================================
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Text(
+                  title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: isMobile ? 17 : 19,
+                    fontWeight: FontWeight.w800,
+                    color: primaryText,
+                    letterSpacing: -0.3,
+                  ),
+                ),
+
+                const SizedBox(height: 4),
+
+                Text(
+                  description,
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: isMobile ? 11 : 12,
+                    height: 1.3,
+                    color: secondaryText,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ],
+            ),
+          ),
+
+          const SizedBox(width: 10),
+
+          // ===================================================================
+          // CREATE BUTTON
+          // ===================================================================
+
+          Material(
+            color: Colors.transparent,
+            child: InkWell(
+              onTap: onTap,
+              borderRadius: BorderRadius.circular(14),
+              child: Container(
+                height: isMobile ? 42 : 46,
+                padding: EdgeInsets.symmetric(
+                  horizontal: isMobile ? 11 : 14,
+                ),
                 decoration: BoxDecoration(
                   gradient: LinearGradient(
                     colors: gradient,
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
+                    begin: Alignment.centerLeft,
+                    end: Alignment.centerRight,
                   ),
-                  borderRadius: BorderRadius.circular(21),
+                  borderRadius: BorderRadius.circular(14),
                   boxShadow: [
                     BoxShadow(
                       color: gradient.first.withValues(
-                        alpha: 0.28,
+                        alpha: 0.18,
                       ),
-                      blurRadius: 22,
-                      offset: const Offset(0, 9),
+                      blurRadius: 10,
+                      offset: const Offset(0, 4),
                     ),
                   ],
                 ),
-                child: Stack(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-
-                    Center(
-                      child: Icon(
-                        icon,
-                        color: Colors.white,
-                        size: isMobile ? 57 : 64,
-                      ),
+                    const Icon(
+                      Icons.add_rounded,
+                      color: Colors.white,
+                      size: 19,
                     ),
-
-                    // SMALL LABEL
-                    Positioned(
-                      right: 7,
-                      top: 7,
-                      child: Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 4,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.white.withValues(
-                            alpha: 0.95,
-                          ),
-                          borderRadius:
-                              BorderRadius.circular(7),
-                        ),
-                        child: Text(
-                          iconLetter,
-                          style: TextStyle(
-                            fontSize: iconLetter == 'PDF'
-                                ? 10
-                                : 13,
-                            fontWeight: FontWeight.w900,
-                            color: gradient.first,
-                          ),
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              const SizedBox(width: 17),
-
-              // TITLE + DESCRIPTION
-              Expanded(
-                child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
-                  children: [
-
-                    Text(
-                      title,
-                      style: TextStyle(
-                        fontSize: isMobile ? 21 : 25,
-                        fontWeight: FontWeight.w800,
-                        color: primaryText,
-                        letterSpacing: -0.5,
-                      ),
-                    ),
-
-                    const SizedBox(height: 9),
-
-                    Text(
-                      description,
-                      style: TextStyle(
-                        fontSize: isMobile ? 13 : 15,
-                        height: 1.45,
-                        color: secondaryText,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
-              // ARROW
-              Container(
-                width: 48,
-                height: 48,
-                decoration: BoxDecoration(
-                  color: gradient.first.withValues(
-                    alpha: isDark ? 0.10 : 0.07,
-                  ),
-                  shape: BoxShape.circle,
-                ),
-                child: Icon(
-                  Icons.chevron_right_rounded,
-                  color: gradient.first,
-                  size: 30,
-                ),
-              ),
-            ],
-          ),
-
-          const SizedBox(height: 18),
-
-          // CREATE BUTTON
-          SizedBox(
-            width: double.infinity,
-            height: isMobile ? 52 : 58,
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: gradient,
-                  begin: Alignment.centerLeft,
-                  end: Alignment.centerRight,
-                ),
-                borderRadius: BorderRadius.circular(30),
-                boxShadow: [
-                  BoxShadow(
-                    color: gradient.first.withValues(
-                      alpha: isDark ? 0.20 : 0.14,
-                    ),
-                    blurRadius: 16,
-                    offset: const Offset(0, 6),
-                  ),
-                ],
-              ),
-              child: Material(
-                color: Colors.transparent,
-                child: InkWell(
-                  onTap: onTap,
-                  borderRadius:
-                      BorderRadius.circular(30),
-                  child: Center(
-                    child: Row(
-                      mainAxisAlignment:
-                          MainAxisAlignment.center,
-                      children: [
-
-                        const Icon(
-                          Icons.description_rounded,
+                    if (!isMobile) ...[
+                      const SizedBox(width: 5),
+                      Text(
+                        buttonText,
+                        style: const TextStyle(
                           color: Colors.white,
-                          size: 21,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w800,
                         ),
-
-                        const SizedBox(width: 9),
-
-                        Text(
-                          buttonText,
-                          style: TextStyle(
-                            color: Colors.white,
-                            fontSize: isMobile ? 16 : 17,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
@@ -651,7 +612,6 @@ class HomeScreen extends StatelessWidget {
           ),
           child: Row(
             children: [
-
               // FOLDER ICON
               Container(
                 width: isMobile ? 48 : 54,
@@ -676,10 +636,8 @@ class HomeScreen extends StatelessWidget {
 
               Expanded(
                 child: Column(
-                  crossAxisAlignment:
-                      CrossAxisAlignment.start,
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-
                     Text(
                       'All Files',
                       style: TextStyle(
@@ -688,9 +646,7 @@ class HomeScreen extends StatelessWidget {
                         color: primaryText,
                       ),
                     ),
-
                     const SizedBox(height: 4),
-
                     Text(
                       'View and manage your documents',
                       style: TextStyle(

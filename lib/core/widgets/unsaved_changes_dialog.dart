@@ -18,7 +18,8 @@ class UnsavedChangesDialog extends StatelessWidget {
   const UnsavedChangesDialog({
     super.key,
     this.title = 'Unsaved Changes',
-    this.message = 'You have unsaved changes. What would you like to do?',
+    this.message =
+        'You have unsaved changes. What would you like to do?',
     this.saveLabel = 'Save Changes',
     this.discardLabel = 'Discard',
     this.cancelLabel = 'Cancel',
@@ -28,7 +29,8 @@ class UnsavedChangesDialog extends StatelessWidget {
   static Future<UnsavedChangesAction?> show(
     BuildContext context, {
     String title = 'Unsaved Changes',
-    String message = 'You have unsaved changes. What would you like to do?',
+    String message =
+        'You have unsaved changes. What would you like to do?',
     String saveLabel = 'Save Changes',
     String discardLabel = 'Discard',
     String cancelLabel = 'Cancel',
@@ -55,31 +57,49 @@ class UnsavedChangesDialog extends StatelessWidget {
     final colorScheme = theme.colorScheme;
 
     return AlertDialog(
-      backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
+      backgroundColor: isDark
+          ? AppTheme.surfaceDark
+          : AppTheme.surfaceLight,
+      surfaceTintColor: Colors.transparent,
+      elevation: 8,
       shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(20),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      titlePadding: const EdgeInsets.fromLTRB(
+        22,
+        22,
+        22,
+        8,
+      ),
+      contentPadding: const EdgeInsets.fromLTRB(
+        22,
+        8,
+        22,
+        8,
       ),
       title: Row(
         children: [
           Container(
-            padding: const EdgeInsets.all(8),
+            width: 46,
+            height: 46,
             decoration: BoxDecoration(
-              color: AppTheme.accentColor.withValues(alpha: 0.15),
-              borderRadius: BorderRadius.circular(10),
+              color:
+                  AppTheme.accentColor.withValues(alpha: 0.12),
+              borderRadius: BorderRadius.circular(14),
             ),
             child: const Icon(
               Icons.warning_amber_rounded,
               color: AppTheme.accentColor,
-              size: 22,
+              size: 25,
             ),
           ),
-          const SizedBox(width: 12),
+          const SizedBox(width: 13),
           Expanded(
             child: Text(
               title,
               style: TextStyle(
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
+                fontWeight: FontWeight.w800,
                 color: colorScheme.onSurface,
               ),
             ),
@@ -90,45 +110,74 @@ class UnsavedChangesDialog extends StatelessWidget {
         message,
         style: TextStyle(
           fontSize: 14,
-          height: 1.45,
-          color: colorScheme.onSurface.withValues(alpha: 0.75),
+          height: 1.5,
+          color:
+              colorScheme.onSurface.withValues(alpha: 0.68),
         ),
       ),
-      actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+      actionsPadding: const EdgeInsets.fromLTRB(
+        16,
+        10,
+        16,
+        16,
+      ),
       actions: [
         TextButton(
-          onPressed: () => Navigator.of(context).pop(UnsavedChangesAction.cancel),
+          onPressed: () => Navigator.of(context)
+              .pop(UnsavedChangesAction.cancel),
+          style: TextButton.styleFrom(
+            foregroundColor:
+                colorScheme.onSurface.withValues(alpha: 0.6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+          ),
           child: Text(
             cancelLabel,
-            style: TextStyle(
+            style: const TextStyle(
               fontWeight: FontWeight.w600,
-              color: colorScheme.onSurface.withValues(alpha: 0.6),
             ),
           ),
         ),
         TextButton(
-          onPressed: () => Navigator.of(context).pop(UnsavedChangesAction.discard),
+          onPressed: () => Navigator.of(context)
+              .pop(UnsavedChangesAction.discard),
+          style: TextButton.styleFrom(
+            foregroundColor: AppTheme.errorColor,
+            padding: const EdgeInsets.symmetric(
+              horizontal: 12,
+              vertical: 10,
+            ),
+          ),
           child: Text(
             discardLabel,
             style: const TextStyle(
               fontWeight: FontWeight.w700,
-              color: AppTheme.errorColor,
             ),
           ),
         ),
         if (showSave)
           ElevatedButton(
-            onPressed: () => Navigator.of(context).pop(UnsavedChangesAction.save),
+            onPressed: () => Navigator.of(context)
+                .pop(UnsavedChangesAction.save),
             style: ElevatedButton.styleFrom(
               backgroundColor: AppTheme.primaryColor,
               foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 11,
+              ),
               shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(10),
+                borderRadius: BorderRadius.circular(12),
               ),
             ),
             child: Text(
               saveLabel,
-              style: const TextStyle(fontWeight: FontWeight.w700),
+              style: const TextStyle(
+                fontWeight: FontWeight.w700,
+              ),
             ),
           ),
       ],
