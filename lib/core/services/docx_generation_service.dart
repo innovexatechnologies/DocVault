@@ -13,6 +13,17 @@ import '../utils/file_utils.dart';
 class DocxGenerationService {
   DocxGenerationService();
 
+  /// Generates a DOCX file from selected images.
+  ///
+  /// Performance optimized:
+  /// - Heavy image processing runs in a background isolate.
+  /// - Large images are resized before being added to DOCX.
+  /// - JPEG quality is reduced slightly for faster generation.
+  /// - JPEG files are stored without ZIP compression because JPEG
+  ///   is already compressed.
+  /// - ZIP uses bestSpeed compression.
+  ///
+  /// Each image becomes one Word page.
   Future<DocumentResult> generateDocxFromImages(
     List<String> imagePaths,
   ) async {
@@ -24,10 +35,16 @@ class DocxGenerationService {
 
     final startTimestamp = DateTime.now();
 
-    // Create a separate copy of the list for the isolate.
+    // Make a separate list for the background isolate.
     final paths = List<String>.from(imagePaths);
 
-    // All heavy processing happens in a background isolate.
+    // ============================================================
+    // HEAVY WORK
+    // ============================================================
+    //
+    // Image decoding, resizing, JPEG encoding and DOCX creation
+    // happen outside the Flutter UI isolate.
+    //
     final Uint8List docxBytes = await Isolate.run(
       () => _generateDocxInBackground(paths),
     );
@@ -38,28 +55,39 @@ class DocxGenerationService {
       );
     }
 
-    // Generate file name.
-    final fileName =
-        await FileUtils.generatePdfFileName(
+    // ============================================================
+    // FILE NAME
+    // ============================================================
+
+    final fileName = await FileUtils.generatePdfFileName(
       ConversionType.docs,
     );
 
-    // Get app documents directory.
+    // ============================================================
+    // APP DOCUMENT DIRECTORY
+    // ============================================================
+
     final appDocDir =
         await FileUtils.getAppDocumentsDirectory();
 
     final destinationPath =
         '${appDocDir.path}/$fileName';
 
-    // Save file.
+    // ============================================================
+    // SAVE FILE
+    // ============================================================
+
     final targetFile = File(destinationPath);
 
     await targetFile.writeAsBytes(
       docxBytes,
-      flush: true,
+      flush: false,
     );
 
-    // Verify file.
+    // ============================================================
+    // VERIFY
+    // ============================================================
+
     if (!await targetFile.exists()) {
       throw Exception(
         'Failed to create Word document.',
@@ -74,6 +102,10 @@ class DocxGenerationService {
       );
     }
 
+    // ============================================================
+    // RESULT
+    // ============================================================
+
     return DocumentResult(
       filePath: destinationPath,
       fileName: fileName,
@@ -84,18 +116,58 @@ class DocxGenerationService {
   }
 }
 
-// ================================================================
+// ============================================================================
 // BACKGROUND DOCX GENERATION
-// ================================================================
+// ============================================================================
 
 Uint8List _generateDocxInBackground(
   List<String> imagePaths,
 ) {
   final archive = Archive();
 
-  // ==============================================================
-  // BASIC DOCX FILES
-  // ==============================================================
+  final imageCount = imagePaths.length;
+
+  // ==========================================================================
+  // PERFORMANCE SETTINGS
+  // ==========================================================================
+
+  // Large camera images such as:
+  //
+  // 4000 x 3000
+  // 4032 x 3024
+  // 6000 x 4000
+  //
+  // are unnecessarily large for a Word page.
+  //
+  // Keeping images around 1600-1800px is enough for normal document use.
+  //
+  const int maxImageWidth = 1800;
+  const int maxImageHeight = 2400;
+
+  // JPEG quality.
+  //
+  // 80 provides a good balance between:
+  // - image quality
+  // - generation speed
+  // - DOCX size
+  //
+  const int jpegQuality = 80;
+
+  // Word Letter page usable area.
+  //
+  // Letter:
+  // 8.5 x 11 inches
+  //
+  // 1 inch margins:
+  // usable width  = 6.5 inches
+  // usable height = 9 inches
+  //
+  const int maxUsableWidthEmu = 5943600;
+  const int maxUsableHeightEmu = 8229600;
+
+  // ==========================================================================
+  // DOCX BASIC FILES
+  // ==========================================================================
 
   _addTextFile(
     archive,
@@ -112,9 +184,7 @@ Uint8List _generateDocxInBackground(
   _addTextFile(
     archive,
     'word/_rels/document.xml.rels',
-    _buildDocumentRelsXml(
-      imagePaths.length,
-    ),
+    _buildDocumentRelsXml(imageCount),
   );
 
   _addTextFile(
@@ -129,27 +199,15 @@ Uint8List _generateDocxInBackground(
     _buildSettingsXml(),
   );
 
-  // ==============================================================
+  // ==========================================================================
   // IMAGE DIMENSIONS
-  // ==============================================================
+  // ==========================================================================
 
   final dimensions = <_ImageDimension>[];
 
-  // Maximum image resolution.
-  //
-  // Large phone/camera images can be 4000x3000 or larger.
-  // There is no need to keep that huge resolution inside DOCX.
-  //
-  const int maxImageWidth = 1800;
-  const int maxImageHeight = 2400;
-
-  // Letter page usable area after 1-inch margins.
-  const int maxUsableWidthEmu = 5943600;
-  const int maxUsableHeightEmu = 8229600;
-
-  // ==============================================================
+  // ==========================================================================
   // PROCESS IMAGES
-  // ==============================================================
+  // ==========================================================================
 
   for (int i = 0; i < imagePaths.length; i++) {
     final imagePath = imagePaths[i];
@@ -162,12 +220,11 @@ Uint8List _generateDocxInBackground(
       );
     }
 
-    // ------------------------------------------------------------
-    // READ IMAGE
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
+    // READ
+    // ------------------------------------------------------------------------
 
-    final originalBytes =
-        imageFile.readAsBytesSync();
+    final originalBytes = imageFile.readAsBytesSync();
 
     if (originalBytes.isEmpty) {
       throw Exception(
@@ -175,12 +232,13 @@ Uint8List _generateDocxInBackground(
       );
     }
 
-    // ------------------------------------------------------------
-    // DECODE IMAGE
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
+    // DECODE
+    // ------------------------------------------------------------------------
 
-    final decodedImage =
-        img.decodeImage(originalBytes);
+    final decodedImage = img.decodeImage(
+      originalBytes,
+    );
 
     if (decodedImage == null) {
       throw Exception(
@@ -188,9 +246,16 @@ Uint8List _generateDocxInBackground(
       );
     }
 
-    // ------------------------------------------------------------
-    // RESIZE LARGE IMAGES
-    // ------------------------------------------------------------
+    if (decodedImage.width <= 0 ||
+        decodedImage.height <= 0) {
+      throw Exception(
+        'Invalid image dimensions: $imagePath',
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // RESIZE ONLY IF NECESSARY
+    // ------------------------------------------------------------------------
 
     img.Image processedImage = decodedImage;
 
@@ -224,21 +289,13 @@ Uint8List _generateDocxInBackground(
       );
     }
 
-    // ------------------------------------------------------------
-    // CONVERT TO JPEG
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
+    // JPEG ENCODE
+    // ------------------------------------------------------------------------
 
-    // Quality 85 is a good balance between:
-    //
-    // - Quality
-    // - File size
-    // - CPU usage
-    // - Generation speed
-    //
-
-    final jpegBytes = img.encodeJpg(
+    final List<int> jpegBytes = img.encodeJpg(
       processedImage,
-      quality: 85,
+      quality: jpegQuality,
     );
 
     if (jpegBytes.isEmpty) {
@@ -247,9 +304,9 @@ Uint8List _generateDocxInBackground(
       );
     }
 
-    // ------------------------------------------------------------
-    // IMAGE SIZE IN EMU
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
+    // IMAGE DIMENSIONS
+    // ------------------------------------------------------------------------
 
     int widthEmu =
         processedImage.width * 9525;
@@ -257,31 +314,29 @@ Uint8List _generateDocxInBackground(
     int heightEmu =
         processedImage.height * 9525;
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // FIT WIDTH
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     if (widthEmu > maxUsableWidthEmu) {
       final double scale =
           maxUsableWidthEmu / widthEmu;
 
-      widthEmu =
-          maxUsableWidthEmu;
+      widthEmu = maxUsableWidthEmu;
 
       heightEmu =
           (heightEmu * scale).round();
     }
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // FIT HEIGHT
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     if (heightEmu > maxUsableHeightEmu) {
       final double scale =
           maxUsableHeightEmu / heightEmu;
 
-      heightEmu =
-          maxUsableHeightEmu;
+      heightEmu = maxUsableHeightEmu;
 
       widthEmu =
           (widthEmu * scale).round();
@@ -294,12 +349,21 @@ Uint8List _generateDocxInBackground(
       ),
     );
 
-    // ------------------------------------------------------------
-    // ADD IMAGE TO DOCX
-    // ------------------------------------------------------------
-
+    // ------------------------------------------------------------------------
+    // ADD JPEG TO DOCX
+    // ------------------------------------------------------------------------
+    //
+    // IMPORTANT:
+    //
+    // JPEG is already compressed.
+    //
+    // Normal ArchiveFile would make ZIP compression work on JPEG again.
+    // That can take noticeable time for large images.
+    //
+    // noCompress() stores the JPEG directly in the ZIP.
+    //
     archive.addFile(
-      ArchiveFile(
+      ArchiveFile.noCompress(
         'word/media/image${i + 1}.jpeg',
         jpegBytes.length,
         jpegBytes,
@@ -307,27 +371,28 @@ Uint8List _generateDocxInBackground(
     );
   }
 
-  // ==============================================================
+  // ==========================================================================
   // DOCUMENT XML
-  // ==============================================================
-
-  final documentXml =
-      _buildDocumentXml(dimensions);
+  // ==========================================================================
 
   _addTextFile(
     archive,
     'word/document.xml',
-    documentXml,
+    _buildDocumentXml(dimensions),
   );
 
-  // ==============================================================
-  // CREATE ZIP / DOCX
-  // ==============================================================
-
+  // ==========================================================================
+  // ZIP / DOCX
+  // ==========================================================================
+  //
+  // bestSpeed is much faster than maximum compression.
+  //
   final zipEncoder = ZipEncoder();
 
-  final encoded =
-      zipEncoder.encode(archive);
+  final List<int> encoded = zipEncoder.encode(
+    archive,
+    level: DeflateLevel.bestSpeed,
+  );
 
   if (encoded.isEmpty) {
     throw Exception(
@@ -338,9 +403,9 @@ Uint8List _generateDocxInBackground(
   return Uint8List.fromList(encoded);
 }
 
-// ================================================================
+// ============================================================================
 // ADD TEXT FILE
-// ================================================================
+// ============================================================================
 
 void _addTextFile(
   Archive archive,
@@ -358,9 +423,9 @@ void _addTextFile(
   );
 }
 
-// ================================================================
+// ============================================================================
 // CONTENT TYPES
-// ================================================================
+// ============================================================================
 
 String _buildContentTypesXml() {
   return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -393,9 +458,9 @@ String _buildContentTypesXml() {
 </Types>''';
 }
 
-// ================================================================
+// ============================================================================
 // ROOT RELATIONSHIPS
-// ================================================================
+// ============================================================================
 
 String _buildRootRelsXml() {
   return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -410,9 +475,9 @@ String _buildRootRelsXml() {
 </Relationships>''';
 }
 
-// ================================================================
+// ============================================================================
 // DOCUMENT RELATIONSHIPS
-// ================================================================
+// ============================================================================
 
 String _buildDocumentRelsXml(
   int imageCount,
@@ -458,9 +523,9 @@ String _buildDocumentRelsXml(
   return sb.toString();
 }
 
-// ================================================================
+// ============================================================================
 // STYLES
-// ================================================================
+// ============================================================================
 
 String _buildStylesXml() {
   return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -503,9 +568,9 @@ String _buildStylesXml() {
 </w:styles>''';
 }
 
-// ================================================================
+// ============================================================================
 // SETTINGS
-// ================================================================
+// ============================================================================
 
 String _buildSettingsXml() {
   return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
@@ -523,9 +588,9 @@ String _buildSettingsXml() {
 </w:settings>''';
 }
 
-// ================================================================
+// ============================================================================
 // DOCUMENT XML
-// ================================================================
+// ============================================================================
 
 String _buildDocumentXml(
   List<_ImageDimension> dimensions,
@@ -545,11 +610,13 @@ String _buildDocumentXml(
     'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">',
   );
 
-  sb.writeln('<w:body>');
+  sb.writeln(
+    '<w:body>',
+  );
 
-  // ==============================================================
+  // ==========================================================================
   // EACH IMAGE = ONE PAGE
-  // ==============================================================
+  // ==========================================================================
 
   for (int i = 0; i < dimensions.length; i++) {
     final dimension = dimensions[i];
@@ -566,9 +633,9 @@ String _buildDocumentXml(
     final int docPrId =
         i + 1;
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Paragraph
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<w:p>');
 
@@ -581,17 +648,17 @@ String _buildDocumentXml(
 
     sb.writeln('</w:pPr>');
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Run
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<w:r>');
 
     sb.writeln('<w:drawing>');
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Inline picture
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln(
       '<wp:inline '
@@ -601,14 +668,12 @@ String _buildDocumentXml(
       'distR="0">',
     );
 
-    // Image dimensions.
     sb.writeln(
       '<wp:extent '
       'cx="$widthEmu" '
       'cy="$heightEmu"/>',
     );
 
-    // Effect extent.
     sb.writeln(
       '<wp:effectExtent '
       'l="0" '
@@ -617,7 +682,6 @@ String _buildDocumentXml(
       'b="0"/>',
     );
 
-    // Document properties.
     sb.writeln(
       '<wp:docPr '
       'id="$docPrId" '
@@ -637,9 +701,9 @@ String _buildDocumentXml(
       '</wp:cNvGraphicFramePr>',
     );
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Graphic
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<a:graphic>');
 
@@ -648,15 +712,15 @@ String _buildDocumentXml(
       'uri="http://schemas.openxmlformats.org/drawingml/2006/picture">',
     );
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Picture
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<pic:pic>');
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Non visual properties
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<pic:nvPicPr>');
 
@@ -680,11 +744,13 @@ String _buildDocumentXml(
       '</pic:cNvPicPr>',
     );
 
-    sb.writeln('</pic:nvPicPr>');
+    sb.writeln(
+      '</pic:nvPicPr>',
+    );
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Image fill
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<pic:blipFill>');
 
@@ -701,9 +767,9 @@ String _buildDocumentXml(
 
     sb.writeln('</pic:blipFill>');
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Shape
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('<pic:spPr>');
 
@@ -724,7 +790,8 @@ String _buildDocumentXml(
     sb.writeln('</a:xfrm>');
 
     sb.writeln(
-      '<a:prstGeom prst="rect">',
+      '<a:prstGeom '
+      'prst="rect">',
     );
 
     sb.writeln('<a:avLst/>');
@@ -733,9 +800,9 @@ String _buildDocumentXml(
 
     sb.writeln('</pic:spPr>');
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Close picture
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     sb.writeln('</pic:pic>');
 
@@ -751,9 +818,9 @@ String _buildDocumentXml(
 
     sb.writeln('</w:p>');
 
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
     // Page break
-    // ------------------------------------------------------------
+    // ------------------------------------------------------------------------
 
     if (i < dimensions.length - 1) {
       sb.writeln('<w:p>');
@@ -770,15 +837,15 @@ String _buildDocumentXml(
     }
   }
 
-  // ==============================================================
+  // ==========================================================================
   // SECTION PROPERTIES
-  // ==============================================================
+  // ==========================================================================
 
   sb.writeln('<w:sectPr>');
 
-  // Letter page:
-  // Width  = 12240 twips
-  // Height = 15840 twips
+  // Letter:
+  // 8.5 x 11 inches
+  // 12240 x 15840 twips
 
   sb.writeln(
     '<w:pgSz '
@@ -786,8 +853,7 @@ String _buildDocumentXml(
     'w:h="15840"/>',
   );
 
-  // 1 inch margins:
-  // 1 inch = 1440 twips
+  // 1 inch margins.
 
   sb.writeln(
     '<w:pgMar '
@@ -809,9 +875,9 @@ String _buildDocumentXml(
   return sb.toString();
 }
 
-// ================================================================
+// ============================================================================
 // IMAGE DIMENSION MODEL
-// ================================================================
+// ============================================================================
 
 class _ImageDimension {
   final int widthEmu;
