@@ -154,7 +154,7 @@ class HomeScreen extends StatelessWidget {
                 // =================================================================
 
                 Text(
-                  'Convert.',
+                  'Transform.',
                   style: TextStyle(
                     fontSize: isMobile ? 38 : 48,
                     fontWeight: FontWeight.w900,
@@ -165,7 +165,7 @@ class HomeScreen extends StatelessWidget {
                 ),
 
                 Text(
-                  'Create.',
+                  'Generate.',
                   style: TextStyle(
                     fontSize: isMobile ? 38 : 48,
                     fontWeight: FontWeight.w900,
@@ -186,7 +186,7 @@ class HomeScreen extends StatelessWidget {
                     ).createShader(bounds);
                   },
                   child: Text(
-                    'Simplified.',
+                    'Export.',
                     style: TextStyle(
                       fontSize: isMobile ? 38 : 48,
                       fontWeight: FontWeight.w900,
