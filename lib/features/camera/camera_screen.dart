@@ -29,6 +29,7 @@ class _CameraScreenState extends State<CameraScreen> {
   bool _isInitializing = true;
   String? _errorMessage;
   int _captureCount = 0;
+  bool _isCapturing = false;
 
   @override
   void initState() {
@@ -67,7 +68,13 @@ class _CameraScreenState extends State<CameraScreen> {
   // ==========================================================
 
   Future<void> _capturePhoto() async {
+    if (_isCapturing) return;
+
     try {
+      setState(() {
+        _isCapturing = true;
+      });
+
       final image = await _cameraService.capturePhoto();
 
       if (mounted && image != null) {
@@ -80,24 +87,68 @@ class _CameraScreenState extends State<CameraScreen> {
 
         setState(() {
           _captureCount++;
+          _isCapturing = false;
         });
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(
-              'Photo captured ($_captureCount)',
+            content: Row(
+              children: [
+                const Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                ),
+                const SizedBox(width: 10),
+                Text(
+                  'Photo captured ($_captureCount)',
+                  style: const TextStyle(
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+              ],
             ),
             duration: const Duration(seconds: 1),
             backgroundColor: AppTheme.successColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         );
+      } else {
+        if (mounted) {
+          setState(() {
+            _isCapturing = false;
+          });
+        }
       }
     } catch (e) {
       if (mounted) {
+        setState(() {
+          _isCapturing = false;
+        });
+
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to capture photo'),
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.white,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Failed to capture photo',
+                ),
+              ],
+            ),
             backgroundColor: AppTheme.errorColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         );
       }
@@ -105,49 +156,83 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   // ==========================================================
-  // NAVIGATION
+  // EFFECTIVE CONVERSION TYPE
   // ==========================================================
 
   ConversionType get _effectiveType {
     final routeArgs = ModalRoute.of(context)?.settings.arguments;
+
     if (routeArgs is ConversionType) {
       return routeArgs;
     }
+
     return widget.conversionType;
   }
 
+  // ==========================================================
+  // GO TO REVIEW
+  // ==========================================================
+
   void _goToReview() {
+    if (_captureCount <= 0) return;
+
     Navigator.of(context).pushReplacement(
       MaterialPageRoute(
-        builder: (_) => ReviewScreen(conversionType: _effectiveType),
+        builder: (_) => ReviewScreen(
+          conversionType: _effectiveType,
+        ),
       ),
     );
   }
 
+  // ==========================================================
+  // GO TO GALLERY
+  // ==========================================================
+
   Future<void> _goToGallery() async {
     try {
       final galleryService = GalleryService();
+
       final imagePaths = await galleryService.pickImages();
 
       if (!mounted) return;
 
       if (imagePaths.isNotEmpty) {
         context.read<ImageSelectionProvider>().addImages(
-              imagePaths,
-              'gallery',
-            );
+          imagePaths,
+          'gallery',
+        );
+
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => ReviewScreen(conversionType: _effectiveType),
+            builder: (_) => ReviewScreen(
+              conversionType: _effectiveType,
+            ),
           ),
         );
       }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Failed to open gallery'),
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(
+                  Icons.error_outline_rounded,
+                  color: Colors.white,
+                ),
+                SizedBox(width: 10),
+                Text(
+                  'Failed to open gallery',
+                ),
+              ],
+            ),
             backgroundColor: AppTheme.errorColor,
+            behavior: SnackBarBehavior.floating,
+            margin: const EdgeInsets.all(16),
+            shape: RoundedRectangleBorder(
+              borderRadius: BorderRadius.circular(16),
+            ),
           ),
         );
       }
@@ -166,6 +251,68 @@ class _CameraScreenState extends State<CameraScreen> {
   }
 
   // ==========================================================
+  // CAMERA PREVIEW
+  // ==========================================================
+
+  Widget _buildCameraPreview() {
+    final controller = _cameraService.controller;
+
+    if (!controller.value.isInitialized) {
+      return const ColoredBox(
+        color: Colors.black,
+      );
+    }
+
+    return Positioned.fill(
+      child: FittedBox(
+        fit: BoxFit.cover,
+        child: SizedBox(
+          width: controller.value.previewSize?.height ?? 1,
+          height: controller.value.previewSize?.width ?? 1,
+          child: CameraPreview(controller),
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
+  // GLASS BUTTON
+  // ==========================================================
+
+  Widget _glassButton({
+    required Widget child,
+    required VoidCallback onTap,
+    double padding = 12,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(18),
+        child: Container(
+          padding: EdgeInsets.all(padding),
+          decoration: BoxDecoration(
+            color: Colors.black.withValues(alpha: 0.42),
+            borderRadius: BorderRadius.circular(18),
+            border: Border.all(
+              color: Colors.white.withValues(alpha: 0.16),
+              width: 1,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.25),
+                blurRadius: 15,
+                offset: const Offset(0, 5),
+              ),
+            ],
+          ),
+          child: child,
+        ),
+      ),
+    );
+  }
+
+  // ==========================================================
   // BUILD
   // ==========================================================
 
@@ -176,15 +323,68 @@ class _CameraScreenState extends State<CameraScreen> {
     final isDark = theme.brightness == Brightness.dark;
 
     // ========================================================
-    // CAMERA INITIALIZING
+    // INITIALIZING
     // ========================================================
 
     if (_isInitializing) {
       return Scaffold(
         backgroundColor: colorScheme.surface,
         body: Center(
-          child: CircularProgressIndicator(
-            color: colorScheme.primary,
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Container(
+                width: 72,
+                height: 72,
+                decoration: BoxDecoration(
+                  gradient: LinearGradient(
+                    colors: [
+                      AppTheme.primaryColor,
+                      AppTheme.accentColor,
+                    ],
+                  ),
+                  shape: BoxShape.circle,
+                  boxShadow: [
+                    BoxShadow(
+                      color: AppTheme.primaryColor.withValues(
+                        alpha: 0.35,
+                      ),
+                      blurRadius: 25,
+                      spreadRadius: 3,
+                    ),
+                  ],
+                ),
+                child: const Center(
+                  child: SizedBox(
+                    width: 28,
+                    height: 28,
+                    child: CircularProgressIndicator(
+                      strokeWidth: 3,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+              ),
+              const SizedBox(height: 24),
+              Text(
+                'Starting Camera',
+                style: TextStyle(
+                  color: colorScheme.onSurface,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Please wait...',
+                style: TextStyle(
+                  color: colorScheme.onSurface.withValues(
+                    alpha: 0.55,
+                  ),
+                  fontSize: 14,
+                ),
+              ),
+            ],
           ),
         ),
       );
@@ -214,7 +414,6 @@ class _CameraScreenState extends State<CameraScreen> {
 
       return Scaffold(
         backgroundColor: colorScheme.surface,
-
         appBar: AppBar(
           title: const Text(
             AppConstants.camera,
@@ -223,7 +422,6 @@ class _CameraScreenState extends State<CameraScreen> {
           foregroundColor: colorScheme.onSurface,
           elevation: 0,
         ),
-
         body: Center(
           child: Padding(
             padding: EdgeInsets.all(
@@ -232,9 +430,7 @@ class _CameraScreenState extends State<CameraScreen> {
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
-                // ==================================================
                 // ERROR ICON
-                // ==================================================
 
                 Container(
                   width: errorIconSize + 30,
@@ -256,9 +452,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   height: responsivePadding,
                 ),
 
-                // ==================================================
                 // ERROR MESSAGE
-                // ==================================================
 
                 Text(
                   _errorMessage!,
@@ -274,9 +468,7 @@ class _CameraScreenState extends State<CameraScreen> {
                   height: responsivePadding * 1.33,
                 ),
 
-                // ==================================================
                 // GALLERY BUTTON
-                // ==================================================
 
                 SizedBox(
                   height: buttonHeight,
@@ -294,7 +486,7 @@ class _CameraScreenState extends State<CameraScreen> {
                       foregroundColor: colorScheme.onPrimary,
                       elevation: 0,
                       shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(16),
                       ),
                     ),
                   ),
@@ -306,9 +498,9 @@ class _CameraScreenState extends State<CameraScreen> {
       );
     }
 
-    // ==========================================================
-    // CAMERA SCREEN
-    // ==========================================================
+    // ========================================================
+    // CAMERA UI
+    // ========================================================
 
     return PopScope(
       canPop: true,
@@ -318,140 +510,275 @@ class _CameraScreenState extends State<CameraScreen> {
         }
       },
       child: Scaffold(
-        // Camera preview naturally remains dark/black.
         backgroundColor: Colors.black,
-
         body: Stack(
+          fit: StackFit.expand,
           children: [
             // ====================================================
             // CAMERA PREVIEW
             // ====================================================
 
-            CameraPreview(
-              _cameraService.controller,
+            _buildCameraPreview(),
+
+            // ====================================================
+            // CAMERA DARK GRADIENT OVERLAY
+            // ====================================================
+
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.topCenter,
+                      end: Alignment.bottomCenter,
+                      colors: [
+                        Colors.black.withValues(alpha: 0.48),
+                        Colors.transparent,
+                        Colors.transparent,
+                        Colors.black.withValues(alpha: 0.82),
+                      ],
+                      stops: const [
+                        0.0,
+                        0.25,
+                        0.55,
+                        1.0,
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
 
             // ====================================================
             // TOP BAR
             // ====================================================
 
-            SafeArea(
-              child: Padding(
-                padding: EdgeInsets.all(
-                  ResponsiveHelper.getGridSpacing(context),
-                ),
-                child: Row(
-                  mainAxisAlignment:
-                      MainAxisAlignment.spaceBetween,
-                  children: [
-                    // =================================================
-                    // BACK BUTTON
-                    // =================================================
+            Positioned(
+              top: 0,
+              left: 0,
+              right: 0,
+              child: SafeArea(
+                child: Padding(
+                  padding: EdgeInsets.fromLTRB(
+                    ResponsiveHelper.isMobile(context)
+                        ? 18
+                        : 26,
+                    12,
+                    ResponsiveHelper.isMobile(context)
+                        ? 18
+                        : 26,
+                    0,
+                  ),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      // BACK BUTTON
 
-                    GestureDetector(
-                      onTap: () {
-                        Navigator.of(context).maybePop();
-                      },
-
-                      child: Container(
-                        padding: EdgeInsets.all(
-                          ResponsiveHelper.isMobile(context)
-                              ? 8.0
-                              : 10.0,
-                        ),
-                        decoration: BoxDecoration(
-                          color: Colors.black.withValues(
-                            alpha: 0.55,
-                          ),
-                          borderRadius:
-                              BorderRadius.circular(12),
-
-                          border: Border.all(
-                            color: Colors.white.withValues(
-                              alpha: 0.12,
-                            ),
-                          ),
-                        ),
+                      _glassButton(
+                        onTap: () {
+                          Navigator.of(context).maybePop();
+                        },
+                        padding: ResponsiveHelper.isMobile(context)
+                            ? 10
+                            : 12,
                         child: Icon(
                           Icons.arrow_back_rounded,
                           color: Colors.white,
-                          size:
-                              ResponsiveHelper.isMobile(context)
-                                  ? 24.0
-                                  : 28.0,
+                          size: ResponsiveHelper.isMobile(context)
+                              ? 24
+                              : 28,
                         ),
                       ),
-                    ),
 
-                    // =================================================
-                    // PHOTO COUNT
-                    // =================================================
+                      const SizedBox(width: 14),
 
-                    Container(
-                      padding: EdgeInsets.symmetric(
-                        horizontal:
-                            ResponsiveHelper.isMobile(context)
-                                ? 12.0
-                                : 16.0,
-                        vertical:
-                            ResponsiveHelper.isMobile(context)
-                                ? 6.0
-                                : 8.0,
-                      ),
-                      decoration: BoxDecoration(
-                        color: AppTheme.primaryColor,
-                        borderRadius:
-                            BorderRadius.circular(20),
+                      // TITLE
 
-                        boxShadow: [
-                          BoxShadow(
-                            color: AppTheme.primaryColor
-                                .withValues(
-                              alpha: 0.30,
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment:
+                              CrossAxisAlignment.start,
+                          children: [
+                            const Text(
+                              'Scan Document',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 19,
+                                fontWeight: FontWeight.w800,
+                                letterSpacing: -0.3,
+                              ),
                             ),
-                            blurRadius: 12,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      child: Text(
-                        'Photos: $_captureCount',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w700,
-                          fontSize:
-                              ResponsiveHelper
-                                  .getResponsiveFontSize(
-                            context,
-                            mobileSize: 13,
-                            tabletSize: 14,
-                            desktopSize: 15,
-                          ),
+                            const SizedBox(height: 2),
+                            Text(
+                              'Capture high-quality images',
+                              style: TextStyle(
+                                color: Colors.white.withValues(
+                                  alpha: 0.68,
+                                ),
+                                fontSize: 12,
+                                fontWeight: FontWeight.w500,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                  ],
+
+                      // PHOTO COUNTER
+
+                      AnimatedContainer(
+                        duration: const Duration(
+                          milliseconds: 250,
+                        ),
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 14,
+                          vertical: 9,
+                        ),
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            colors: [
+                              AppTheme.primaryColor,
+                              AppTheme.accentColor,
+                            ],
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(22),
+                          border: Border.all(
+                            color: Colors.white.withValues(
+                              alpha: 0.18,
+                            ),
+                          ),
+                          boxShadow: [
+                            BoxShadow(
+                              color: AppTheme.primaryColor
+                                  .withValues(alpha: 0.35),
+                              blurRadius: 18,
+                              spreadRadius: 1,
+                            ),
+                          ],
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            const Icon(
+                              Icons.collections_rounded,
+                              color: Colors.white,
+                              size: 17,
+                            ),
+                            const SizedBox(width: 6),
+                            Text(
+                              '$_captureCount',
+                              style: const TextStyle(
+                                color: Colors.white,
+                                fontSize: 14,
+                                fontWeight: FontWeight.w800,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
 
-            // ==========================================================
-            // BOTTOM CONTROLS
-            // ==========================================================
+            // ====================================================
+            // SCAN FRAME
+            // ====================================================
+
+            Positioned.fill(
+              child: IgnorePointer(
+                child: Center(
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 32,
+                      vertical: 150,
+                    ),
+                    child: Container(
+                      decoration: BoxDecoration(
+                        borderRadius: BorderRadius.circular(22),
+                        border: Border.all(
+                          color: Colors.white.withValues(
+                            alpha: 0.28,
+                          ),
+                          width: 1.5,
+                        ),
+                      ),
+                      child: Stack(
+                        children: [
+                          // TOP LEFT
+
+                          Positioned(
+                            top: -1,
+                            left: -1,
+                            child: _corner(
+                              top: true,
+                              left: true,
+                            ),
+                          ),
+
+                          // TOP RIGHT
+
+                          Positioned(
+                            top: -1,
+                            right: -1,
+                            child: _corner(
+                              top: true,
+                              left: false,
+                            ),
+                          ),
+
+                          // BOTTOM LEFT
+
+                          Positioned(
+                            bottom: -1,
+                            left: -1,
+                            child: _corner(
+                              top: false,
+                              left: true,
+                            ),
+                          ),
+
+                          // BOTTOM RIGHT
+
+                          Positioned(
+                            bottom: -1,
+                            right: -1,
+                            child: _corner(
+                              top: false,
+                              left: false,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+
+            // ====================================================
+            // BOTTOM CONTROL AREA
+            // ====================================================
 
             Positioned(
-              bottom: 0,
               left: 0,
               right: 0,
+              bottom: 0,
               child: SafeArea(
+                top: false,
                 child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 20,
+                  padding: EdgeInsets.fromLTRB(
+                    22,
+                    22,
+                    22,
+                    ResponsiveHelper.isMobile(context)
+                        ? 18
+                        : 24,
                   ),
                   decoration: BoxDecoration(
                     color: Colors.black.withValues(
-                      alpha: 0.78,
+                      alpha: 0.68,
                     ),
                     border: Border(
                       top: BorderSide(
@@ -461,125 +788,222 @@ class _CameraScreenState extends State<CameraScreen> {
                       ),
                     ),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                    crossAxisAlignment: CrossAxisAlignment.center,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
                     children: [
                       // ==================================================
-                      // GALLERY SHORTCUT
+                      // HELPER TEXT
                       // ==================================================
-                      Flexible(
-                        child: Center(
-                          child: InkWell(
-                            onTap: _goToGallery,
-                            borderRadius: BorderRadius.circular(16),
-                            child: Container(
-                              padding: const EdgeInsets.all(12),
-                              decoration: BoxDecoration(
-                                color: Colors.white.withValues(alpha: 0.15),
-                                borderRadius: BorderRadius.circular(16),
-                                border: Border.all(
-                                  color: Colors.white.withValues(alpha: 0.20),
+
+                      Text(
+                        _captureCount == 0
+                            ? 'Position your document inside the frame'
+                            : '$_captureCount photo${_captureCount == 1 ? '' : 's'} captured',
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          color: Colors.white.withValues(
+                            alpha: 0.70,
+                          ),
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+
+                      const SizedBox(height: 18),
+
+                      // ==================================================
+                      // CONTROLS
+                      // ==================================================
+
+                      Row(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.center,
+                        children: [
+                          // ==================================================
+                          // GALLERY
+                          // ==================================================
+
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: _glassButton(
+                                onTap: _goToGallery,
+                                padding: 13,
+                                child: const Icon(
+                                  Icons.photo_library_outlined,
+                                  color: Colors.white,
+                                  size: 27,
                                 ),
                               ),
-                              child: const Icon(
-                                Icons.photo_library_outlined,
-                                color: Colors.white,
-                                size: 26,
-                              ),
                             ),
                           ),
-                        ),
-                      ),
 
-                      // ==================================================
-                      // SHUTTER CAPTURE BUTTON
-                      // ==================================================
-                      GestureDetector(
-                        onTap: _capturePhoto,
-                        child: Container(
-                          width: 74,
-                          height: 74,
-                          decoration: BoxDecoration(
-                            color: AppTheme.primaryColor,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: Colors.white.withValues(alpha: 0.90),
-                              width: 4,
-                            ),
-                            boxShadow: [
-                              BoxShadow(
-                                color: AppTheme.primaryColor.withValues(alpha: 0.50),
-                                blurRadius: 18,
-                                spreadRadius: 3,
-                              ),
-                            ],
-                          ),
-                          child: const Center(
-                            child: Icon(
-                              Icons.camera_alt_rounded,
-                              color: Colors.white,
-                              size: 32,
-                            ),
-                          ),
-                        ),
-                      ),
+                          // ==================================================
+                          // CAPTURE BUTTON
+                          // ==================================================
 
-                      // ==================================================
-                      // DONE / REVIEW BUTTON
-                      // ==================================================
-                      Flexible(
-                        child: Center(
-                          child: InkWell(
-                            onTap: _captureCount > 0 ? _goToReview : null,
-                            borderRadius: BorderRadius.circular(16),
+                          GestureDetector(
+                            onTap: _isCapturing
+                                ? null
+                                : _capturePhoto,
                             child: AnimatedContainer(
-                              duration: const Duration(milliseconds: 200),
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 12,
+                              duration: const Duration(
+                                milliseconds: 180,
                               ),
+                              width: 82,
+                              height: 82,
                               decoration: BoxDecoration(
-                                color: _captureCount > 0
-                                    ? AppTheme.successColor
-                                    : Colors.white.withValues(alpha: 0.10),
-                                borderRadius: BorderRadius.circular(16),
-                                boxShadow: _captureCount > 0
-                                    ? [
-                                        BoxShadow(
-                                          color: AppTheme.successColor.withValues(alpha: 0.4),
-                                          blurRadius: 10,
-                                          offset: const Offset(0, 3),
-                                        ),
-                                      ]
-                                    : null,
-                              ),
-                              child: Row(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Icon(
-                                    Icons.check_rounded,
-                                    color: _captureCount > 0
-                                        ? Colors.white
-                                        : Colors.white38,
-                                    size: 22,
-                                  ),
-                                  if (_captureCount > 0) ...[
-                                    const SizedBox(width: 4),
-                                    Text(
-                                      '$_captureCount',
-                                      style: const TextStyle(
-                                        color: Colors.white,
-                                        fontWeight: FontWeight.bold,
-                                        fontSize: 15,
-                                      ),
-                                    ),
+                                shape: BoxShape.circle,
+                                gradient: LinearGradient(
+                                  begin: Alignment.topLeft,
+                                  end: Alignment.bottomRight,
+                                  colors: [
+                                    AppTheme.primaryColor,
+                                    AppTheme.accentColor,
                                   ],
+                                ),
+                                border: Border.all(
+                                  color: Colors.white.withValues(
+                                    alpha: 0.95,
+                                  ),
+                                  width: 4,
+                                ),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: AppTheme.primaryColor
+                                        .withValues(alpha: 0.55),
+                                    blurRadius: 25,
+                                    spreadRadius: 4,
+                                  ),
+                                  BoxShadow(
+                                    color: AppTheme.accentColor
+                                        .withValues(alpha: 0.25),
+                                    blurRadius: 40,
+                                    spreadRadius: 5,
+                                  ),
                                 ],
                               ),
+                              child: Center(
+                                child: _isCapturing
+                                    ? const SizedBox(
+                                        width: 29,
+                                        height: 29,
+                                        child:
+                                            CircularProgressIndicator(
+                                          strokeWidth: 3,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Icon(
+                                        Icons.camera_alt_rounded,
+                                        color: Colors.white,
+                                        size: 34,
+                                      ),
+                              ),
                             ),
                           ),
-                        ),
+
+                          // ==================================================
+                          // DONE BUTTON
+                          // ==================================================
+
+                          Expanded(
+                            child: Align(
+                              alignment: Alignment.centerRight,
+                              child: Material(
+                                color: Colors.transparent,
+                                child: InkWell(
+                                  onTap: _captureCount > 0
+                                      ? _goToReview
+                                      : null,
+                                  borderRadius:
+                                      BorderRadius.circular(18),
+                                  child: AnimatedContainer(
+                                    duration: const Duration(
+                                      milliseconds: 220,
+                                    ),
+                                    padding:
+                                        const EdgeInsets.symmetric(
+                                      horizontal: 15,
+                                      vertical: 13,
+                                    ),
+                                    decoration: BoxDecoration(
+                                      gradient: _captureCount > 0
+                                          ? LinearGradient(
+                                              colors: [
+                                                AppTheme.successColor,
+                                                const Color(
+                                                  0xFF35C979,
+                                                ),
+                                              ],
+                                            )
+                                          : null,
+                                      color: _captureCount == 0
+                                          ? Colors.white.withValues(
+                                              alpha: 0.09,
+                                            )
+                                          : null,
+                                      borderRadius:
+                                          BorderRadius.circular(18),
+                                      border: Border.all(
+                                        color: _captureCount > 0
+                                            ? Colors.white.withValues(
+                                                alpha: 0.12,
+                                              )
+                                            : Colors.white.withValues(
+                                                alpha: 0.10,
+                                              ),
+                                      ),
+                                      boxShadow:
+                                          _captureCount > 0
+                                              ? [
+                                                  BoxShadow(
+                                                    color: AppTheme
+                                                        .successColor
+                                                        .withValues(
+                                                      alpha: 0.30,
+                                                    ),
+                                                    blurRadius: 16,
+                                                    offset:
+                                                        const Offset(
+                                                      0,
+                                                      5,
+                                                    ),
+                                                  ),
+                                                ]
+                                              : null,
+                                    ),
+                                    child: Row(
+                                      mainAxisSize:
+                                          MainAxisSize.min,
+                                      children: [
+                                        Icon(
+                                          Icons.check_rounded,
+                                          color: _captureCount > 0
+                                              ? Colors.white
+                                              : Colors.white38,
+                                          size: 22,
+                                        ),
+                                        if (_captureCount > 0) ...[
+                                          const SizedBox(width: 5),
+                                          Text(
+                                            'Done',
+                                            style: const TextStyle(
+                                              color: Colors.white,
+                                              fontSize: 14,
+                                              fontWeight:
+                                                  FontWeight.w800,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -590,5 +1014,109 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       ),
     );
+  }
+
+  // ==========================================================
+  // SCAN FRAME CORNER
+  // ==========================================================
+
+  Widget _corner({
+    required bool top,
+    required bool left,
+  }) {
+    return SizedBox(
+      width: 30,
+      height: 30,
+      child: CustomPaint(
+        painter: _CornerPainter(
+          color: AppTheme.accentColor,
+          top: top,
+          left: left,
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================
+// CORNER PAINTER
+// ============================================================
+
+class _CornerPainter extends CustomPainter {
+  final Color color;
+  final bool top;
+  final bool left;
+
+  _CornerPainter({
+    required this.color,
+    required this.top,
+    required this.left,
+  });
+
+  @override
+  void paint(
+    Canvas canvas,
+    Size size,
+  ) {
+    final paint = Paint()
+      ..color = color
+      ..strokeWidth = 3
+      ..style = PaintingStyle.stroke
+      ..strokeCap = StrokeCap.round;
+
+    final path = Path();
+
+    if (top && left) {
+      path.moveTo(2, size.height);
+      path.lineTo(2, 7);
+      path.quadraticBezierTo(
+        2,
+        2,
+        7,
+        2,
+      );
+      path.lineTo(size.width, 2);
+    } else if (top && !left) {
+      path.moveTo(0, 2);
+      path.lineTo(size.width - 7, 2);
+      path.quadraticBezierTo(
+        size.width - 2,
+        2,
+        size.width - 2,
+        7,
+      );
+      path.lineTo(size.width - 2, size.height);
+    } else if (!top && left) {
+      path.moveTo(2, 0);
+      path.lineTo(2, size.height - 7);
+      path.quadraticBezierTo(
+        2,
+        size.height - 2,
+        7,
+        size.height - 2,
+      );
+      path.lineTo(size.width, size.height - 2);
+    } else {
+      path.moveTo(0, size.height - 2);
+      path.lineTo(size.width - 7, size.height - 2);
+      path.quadraticBezierTo(
+        size.width - 2,
+        size.height - 2,
+        size.width - 2,
+        size.height - 7,
+      );
+      path.lineTo(size.width - 2, 0);
+    }
+
+    canvas.drawPath(path, paint);
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _CornerPainter oldDelegate,
+  ) {
+    return oldDelegate.color != color ||
+        oldDelegate.top != top ||
+        oldDelegate.left != left;
   }
 }

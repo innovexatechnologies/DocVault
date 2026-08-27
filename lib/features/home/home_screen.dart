@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+
 import '../../core/constants/app_constants.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
@@ -10,7 +11,14 @@ import 'source_selection_screen.dart';
 class HomeScreen extends StatelessWidget {
   final VoidCallback? onNavigateToAllFiles;
 
-  const HomeScreen({super.key, this.onNavigateToAllFiles});
+  const HomeScreen({
+    super.key,
+    this.onNavigateToAllFiles,
+  });
+
+  // ===========================================================================
+  // NAVIGATION
+  // ===========================================================================
 
   void _navigateToSourceSelection(
     BuildContext context,
@@ -18,362 +26,337 @@ class HomeScreen extends StatelessWidget {
   ) {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) => SourceSelectionScreen(conversionType: conversionType),
+        builder: (_) => SourceSelectionScreen(
+          conversionType: conversionType,
+        ),
       ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    final padding = ResponsiveHelper.getResponsivePadding(context);
     final isMobile = ResponsiveHelper.isMobile(context);
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
     final isDark = theme.brightness == Brightness.dark;
 
+    final backgroundColor = isDark
+        ? const Color(0xFF020617)
+        : const Color(0xFFF9FAFC);
+
+    final primaryText = isDark
+        ? Colors.white
+        : const Color(0xFF111827);
+
+    final secondaryText = isDark
+        ? const Color(0xFFA7B0C3)
+        : const Color(0xFF64748B);
+
     return Scaffold(
-      backgroundColor: colorScheme.surface,
+      backgroundColor: backgroundColor,
+
       body: SafeArea(
         child: SingleChildScrollView(
           physics: const BouncingScrollPhysics(),
           child: Padding(
             padding: EdgeInsets.symmetric(
-              horizontal: padding,
-              vertical: isMobile ? 20 : 32,
+              horizontal: isMobile ? 18 : 32,
+              vertical: isMobile ? 18 : 28,
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                // ==========================================================
+
+                // =================================================================
                 // HEADER
-                // ==========================================================
+                // =================================================================
+
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+
+                    // APP LOGO + NAME
                     Row(
                       children: [
+
                         Container(
-                          width: isMobile ? 44 : 50,
-                          height: isMobile ? 44 : 50,
+                          width: isMobile ? 46 : 52,
+                          height: isMobile ? 46 : 52,
                           decoration: BoxDecoration(
                             gradient: const LinearGradient(
                               colors: [
-                                AppTheme.primaryColor,
-                                AppTheme.accentColor,
+                                Color(0xFF7C3AED),
+                                Color(0xFFEC4899),
                               ],
                               begin: Alignment.topLeft,
                               end: Alignment.bottomRight,
                             ),
-                            borderRadius: BorderRadius.circular(14),
+                            borderRadius: BorderRadius.circular(16),
                             boxShadow: [
                               BoxShadow(
-                                color: AppTheme.primaryColor.withValues(
-                                  alpha: isDark ? 0.20 : 0.15,
-                                ),
+                                color: const Color(0xFF7C3AED)
+                                    .withValues(alpha: 0.25),
                                 blurRadius: 18,
-                                offset: const Offset(0, 6),
+                                offset: const Offset(0, 7),
                               ),
                             ],
                           ),
-                          child: Icon(
+                          child: const Icon(
                             Icons.description_rounded,
-                            color: isDark ? AppTheme.bgDark : Colors.white,
-                            size: isMobile ? 24 : 28,
+                            color: Colors.white,
+                            size: 27,
                           ),
                         ),
+
                         const SizedBox(width: 12),
+
                         Text(
                           AppConstants.appName,
                           style: TextStyle(
                             fontSize: isMobile ? 20 : 24,
                             fontWeight: FontWeight.w800,
-                            letterSpacing: -0.5,
-                            color: colorScheme.onSurface,
+                            letterSpacing: -0.6,
+                            color: primaryText,
                           ),
                         ),
                       ],
                     ),
 
-                    // ======================================================
-                    // THEME TOGGLE
-                    // ======================================================
+                    // THEME BUTTON
                     Container(
-                      width: 44,
-                      height: 44,
+                      width: 48,
+                      height: 48,
                       decoration: BoxDecoration(
-                        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(14),
+                        color: isDark
+                            ? const Color(0xFF0B1020)
+                            : Colors.white,
+                        borderRadius: BorderRadius.circular(15),
                         border: Border.all(
-                          color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
+                          color: isDark
+                              ? const Color(0xFF29324A)
+                              : const Color(0xFFE2E8F0),
                         ),
                       ),
                       child: IconButton(
                         onPressed: () {
-                          context.read<ThemeProvider>().toggleTheme();
+                          context
+                              .read<ThemeProvider>()
+                              .toggleTheme();
                         },
                         icon: Icon(
                           isDark
                               ? Icons.light_mode_rounded
                               : Icons.dark_mode_rounded,
-                          color: colorScheme.onSurface,
-                          size: 21,
-                        ),
-                        tooltip: isDark
-                            ? 'Switch to Light Mode'
-                            : 'Switch to Dark Mode',
-                      ),
-                    ),
-                  ],
-                ),
-
-                SizedBox(height: isMobile ? 28 : 38),
-
-                // ==========================================================
-                // WELCOME
-                // ==========================================================
-                Text(
-                  'Your documents.',
-                  style: TextStyle(
-                    fontSize: isMobile ? 30 : 38,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                    letterSpacing: -1.2,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
-                Text(
-                  'Simplified.',
-                  style: TextStyle(
-                    fontSize: isMobile ? 30 : 38,
-                    fontWeight: FontWeight.w800,
-                    height: 1.1,
-                    letterSpacing: -1.2,
-                    color: AppTheme.primaryColor,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  'Convert, edit, organize and export your photos into professional files.',
-                  style: TextStyle(
-                    fontSize: isMobile ? 14 : 16,
-                    height: 1.5,
-                    color: colorScheme.onSurface.withValues(alpha: 0.60),
-                  ),
-                ),
-
-                SizedBox(height: isMobile ? 24 : 34),
-
-                // ==========================================================
-                // 1. IMAGES TO PDF CARD
-                // ==========================================================
-                _buildConversionHeroCard(
-                  context,
-                  title: 'Images to PDF',
-                  description:
-                      'Scan documents or choose images to generate a crisp, standardized PDF file.',
-                  buttonLabel: AppConstants.createPdf,
-                  icon: Icons.picture_as_pdf_rounded,
-                  gradientColors: [
-                    AppTheme.primaryColor,
-                    isDark ? const Color(0xFF00A77E) : const Color(0xFF087F73),
-                  ],
-                  onTap: () => _navigateToSourceSelection(
-                    context,
-                    ConversionType.pdf,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // ==========================================================
-                // 2. IMAGES TO DOCS CARD
-                // ==========================================================
-                _buildConversionHeroCard(
-                  context,
-                  title: 'Images to Docs',
-                  description:
-                      'Combine your photos into an editable Microsoft Word (.docx) document.',
-                  buttonLabel: 'Create DOCX',
-                  icon: Icons.article_rounded,
-                  gradientColors: [
-                    const Color(0xFF1565C0),
-                    isDark ? const Color(0xFF1976D2) : const Color(0xFF1E88E5),
-                  ],
-                  onTap: () => _navigateToSourceSelection(
-                    context,
-                    ConversionType.docs,
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // ==========================================================
-                // 3. IMAGES TO PPT CARD
-                // ==========================================================
-                _buildConversionHeroCard(
-                  context,
-                  title: 'Images to PPT',
-                  description:
-                      'Transform pages and photos into a widescreen PowerPoint (.pptx) presentation.',
-                  buttonLabel: 'Create PPTX',
-                  icon: Icons.slideshow_rounded,
-                  gradientColors: [
-                    const Color.fromARGB(255, 99, 0, 0),
-                    isDark ? const Color.fromARGB(255, 99, 0, 0) : const Color.fromARGB(255, 99, 0, 0),
-                  ],
-                  onTap: () => _navigateToSourceSelection(
-                    context,
-                    ConversionType.ppt,
-                  ),
-                ),
-
-                SizedBox(height: isMobile ? 26 : 34),
-
-                // ==========================================================
-                // ALL FILES QUICK ACCESS BANNER
-                // ==========================================================
-                Material(
-                  color: Colors.transparent,
-                  child: InkWell(
-                    onTap: () {
-                      if (onNavigateToAllFiles != null) {
-                        onNavigateToAllFiles!();
-                      } else {
-                        Navigator.of(context).pushNamed('/all-files');
-                      }
-                    },
-                    borderRadius: BorderRadius.circular(18),
-                    child: Container(
-                      width: double.infinity,
-                      padding: const EdgeInsets.all(16),
-                      decoration: BoxDecoration(
-                        color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                        borderRadius: BorderRadius.circular(18),
-                        border: Border.all(
-                          color: isDark
-                              ? AppTheme.dividerDark
-                              : AppTheme.dividerColor,
-                        ),
-                      ),
-                      child: Row(
-                        children: [
-                          Container(
-                            width: 44,
-                            height: 44,
-                            decoration: BoxDecoration(
-                              color: AppTheme.primaryColor.withValues(
-                                alpha: isDark ? 0.18 : 0.10,
-                              ),
-                              borderRadius: BorderRadius.circular(13),
-                            ),
-                            child: const Icon(
-                              Icons.folder_rounded,
-                              color: AppTheme.primaryColor,
-                              size: 22,
-                            ),
-                          ),
-                          const SizedBox(width: 14),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text(
-                                  'Saved Documents',
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.w700,
-                                    color: colorScheme.onSurface,
-                                  ),
-                                ),
-                                const SizedBox(height: 3),
-                                Text(
-                                  'View, share, rename and export your PDFs, DOCS and PPTs',
-                                  style: TextStyle(
-                                    fontSize: 11,
-                                    color: colorScheme.onSurface.withValues(
-                                      alpha: 0.55,
-                                    ),
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                          Icon(
-                            Icons.arrow_forward_ios_rounded,
-                            size: 14,
-                            color: colorScheme.onSurface.withValues(alpha: 0.4),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-
-                SizedBox(height: isMobile ? 20 : 28),
-
-                // ==========================================================
-                // INFO CARD
-                // ==========================================================
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(18),
-                  decoration: BoxDecoration(
-                    color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-                    borderRadius: BorderRadius.circular(18),
-                    border: Border.all(
-                      color: isDark
-                          ? AppTheme.dividerDark
-                          : AppTheme.dividerColor,
-                    ),
-                  ),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Container(
-                        width: 42,
-                        height: 42,
-                        decoration: BoxDecoration(
-                          color: AppTheme.primaryColor.withValues(
-                            alpha: isDark ? 0.14 : 0.10,
-                          ),
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        child: const Icon(
-                          Icons.verified_user_outlined,
-                          color: AppTheme.primaryColor,
+                          color: primaryText,
                           size: 22,
                         ),
                       ),
-                      const SizedBox(width: 14),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(
-                              'Private & Offline',
-                              style: TextStyle(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w700,
-                                color: colorScheme.onSurface,
-                              ),
-                            ),
-                            const SizedBox(height: 4),
-                            Text(
-                              'All files are converted locally on your phone without cloud uploads or an account.',
-                              style: TextStyle(
-                                fontSize: 12,
-                                height: 1.45,
-                                color: colorScheme.onSurface.withValues(
-                                  alpha: 0.58,
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ),
-                    ],
+                    ),
+                  ],
+                ),
+
+                SizedBox(
+                  height: isMobile ? 30 : 42,
+                ),
+
+                // =================================================================
+                // HERO TITLE
+                // =================================================================
+
+                Text(
+                  'Convert.',
+                  style: TextStyle(
+                    fontSize: isMobile ? 38 : 48,
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                    letterSpacing: -1.8,
+                    color: primaryText,
                   ),
                 ),
+
+                Text(
+                  'Create.',
+                  style: TextStyle(
+                    fontSize: isMobile ? 38 : 48,
+                    fontWeight: FontWeight.w900,
+                    height: 1.05,
+                    letterSpacing: -1.8,
+                    color: primaryText,
+                  ),
+                ),
+
+                ShaderMask(
+                  shaderCallback: (bounds) {
+                    return const LinearGradient(
+                      colors: [
+                        Color(0xFF3B82F6),
+                        Color(0xFF8B5CF6),
+                        Color(0xFFEC4899),
+                      ],
+                    ).createShader(bounds);
+                  },
+                  child: Text(
+                    'Simplified.',
+                    style: TextStyle(
+                      fontSize: isMobile ? 38 : 48,
+                      fontWeight: FontWeight.w900,
+                      height: 1.05,
+                      letterSpacing: -1.8,
+                      color: Colors.white,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 14),
+
+                Text(
+                  'Convert images to PDF, DOCX & PPT\ninstantly with high quality.',
+                  style: TextStyle(
+                    fontSize: isMobile ? 14 : 16,
+                    height: 1.55,
+                    color: secondaryText,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+
+                SizedBox(
+                  height: isMobile ? 30 : 38,
+                ),
+
+                // =================================================================
+                // POPULAR CONVERSIONS TITLE
+                // =================================================================
+
+                Row(
+                  children: [
+
+                    Container(
+                      width: 5,
+                      height: 29,
+                      decoration: BoxDecoration(
+                        gradient: const LinearGradient(
+                          colors: [
+                            Color(0xFF7C3AED),
+                            Color(0xFFEC4899),
+                          ],
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                        ),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                    ),
+
+                    const SizedBox(width: 14),
+
+                    Text(
+                      'Popular Conversions',
+                      style: TextStyle(
+                        fontSize: isMobile ? 21 : 24,
+                        fontWeight: FontWeight.w800,
+                        color: primaryText,
+                        letterSpacing: -0.4,
+                      ),
+                    ),
+                  ],
+                ),
+
+                const SizedBox(height: 18),
+
+                // =================================================================
+                // PDF
+                // =================================================================
+
+                _buildConversionCard(
+                  context,
+                  isDark: isDark,
+                  isMobile: isMobile,
+                  title: 'Images to PDF',
+                  description:
+                      'Convert your images into\nhigh-quality PDF files.',
+                  buttonText: 'Create PDF',
+                  icon: Icons.picture_as_pdf_rounded,
+                  iconLetter: 'PDF',
+                  gradient: const [
+                    Color(0xFFFF4D4D),
+                    Color(0xFFEC2E9A),
+                  ],
+                  onTap: () {
+                    _navigateToSourceSelection(
+                      context,
+                      ConversionType.pdf,
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 18),
+
+                // =================================================================
+                // DOCX
+                // =================================================================
+
+                _buildConversionCard(
+                  context,
+                  isDark: isDark,
+                  isMobile: isMobile,
+                  title: 'Images to DOCX',
+                  description:
+                      'Convert images to editable\nWord documents.',
+                  buttonText: 'Create DOCX',
+                  icon: Icons.article_rounded,
+                  iconLetter: 'W',
+                  gradient: const [
+                    Color(0xFF3489F5),
+                    Color(0xFF3155F5),
+                  ],
+                  onTap: () {
+                    _navigateToSourceSelection(
+                      context,
+                      ConversionType.docs,
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 18),
+
+                // =================================================================
+                // PPT
+                // =================================================================
+
+                _buildConversionCard(
+                  context,
+                  isDark: isDark,
+                  isMobile: isMobile,
+                  title: 'Images to PPT',
+                  description:
+                      'Convert images to powerful\nPowerPoint presentations.',
+                  buttonText: 'Create PPT',
+                  icon: Icons.slideshow_rounded,
+                  iconLetter: 'P',
+                  gradient: const [
+                    Color(0xFFFF8A22),
+                    Color(0xFFFF4E22),
+                  ],
+                  onTap: () {
+                    _navigateToSourceSelection(
+                      context,
+                      ConversionType.ppt,
+                    );
+                  },
+                ),
+
+                const SizedBox(height: 22),
+
+                // =================================================================
+                // ALL FILES
+                // =================================================================
+
+                _buildAllFilesCard(
+                  context,
+                  isDark: isDark,
+                  isMobile: isMobile,
+                  primaryText: primaryText,
+                  secondaryText: secondaryText,
+                ),
+
                 const SizedBox(height: 20),
               ],
             ),
@@ -383,113 +366,360 @@ class HomeScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildConversionHeroCard(
+  // ===========================================================================
+  // CONVERSION CARD
+  // ===========================================================================
+
+  Widget _buildConversionCard(
     BuildContext context, {
+    required bool isDark,
+    required bool isMobile,
     required String title,
     required String description,
-    required String buttonLabel,
+    required String buttonText,
     required IconData icon,
-    required List<Color> gradientColors,
+    required String iconLetter,
+    required List<Color> gradient,
     required VoidCallback onTap,
   }) {
-    final isMobile = ResponsiveHelper.isMobile(context);
-    final isDark = Theme.of(context).brightness == Brightness.dark;
+    final primaryText = isDark
+        ? Colors.white
+        : const Color(0xFF111827);
+
+    final secondaryText = isDark
+        ? const Color(0xFFAAB3C5)
+        : const Color(0xFF64748B);
 
     return Container(
       width: double.infinity,
-      padding: EdgeInsets.all(isMobile ? 18 : 24),
+      padding: EdgeInsets.fromLTRB(
+        isMobile ? 18 : 24,
+        isMobile ? 18 : 24,
+        isMobile ? 18 : 24,
+        isMobile ? 16 : 20,
+      ),
       decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: gradientColors,
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
+        color: isDark
+            ? const Color(0xFF0B1020)
+            : Colors.white,
+        borderRadius: BorderRadius.circular(
+          isMobile ? 22 : 26,
         ),
-        borderRadius: BorderRadius.circular(isMobile ? 20 : 26),
+        border: Border.all(
+          color: gradient.first.withValues(
+            alpha: isDark ? 0.30 : 0.15,
+          ),
+          width: 1.3,
+        ),
         boxShadow: [
           BoxShadow(
-            color: gradientColors.first.withValues(
-              alpha: isDark ? 0.22 : 0.16,
+            color: gradient.first.withValues(
+              alpha: isDark ? 0.10 : 0.07,
             ),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
+            blurRadius: 25,
+            offset: const Offset(0, 10),
           ),
         ],
       ),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+
+          // TOP CONTENT
           Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
+
+              // ICON
               Container(
-                width: isMobile ? 44 : 48,
-                height: isMobile ? 44 : 48,
+                width: isMobile ? 112 : 126,
+                height: isMobile ? 112 : 126,
                 decoration: BoxDecoration(
-                  color: Colors.white.withValues(alpha: 0.18),
-                  borderRadius: BorderRadius.circular(14),
-                ),
-                child: Icon(
-                  icon,
-                  color: Colors.white,
-                  size: isMobile ? 24 : 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Text(
-                  title,
-                  style: TextStyle(
-                    fontSize: isMobile ? 20 : 24,
-                    fontWeight: FontWeight.w800,
-                    color: Colors.white,
+                  gradient: LinearGradient(
+                    colors: gradient,
+                    begin: Alignment.topLeft,
+                    end: Alignment.bottomRight,
                   ),
+                  borderRadius: BorderRadius.circular(21),
+                  boxShadow: [
+                    BoxShadow(
+                      color: gradient.first.withValues(
+                        alpha: 0.28,
+                      ),
+                      blurRadius: 22,
+                      offset: const Offset(0, 9),
+                    ),
+                  ],
                 ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 12),
-          Text(
-            description,
-            style: TextStyle(
-              fontSize: isMobile ? 13 : 14,
-              height: 1.45,
-              color: Colors.white.withValues(alpha: 0.85),
-            ),
-          ),
-          const SizedBox(height: 18),
-          SizedBox(
-            width: double.infinity,
-            height: isMobile ? 48 : 52,
-            child: ElevatedButton(
-              onPressed: onTap,
-              style: ElevatedButton.styleFrom(
-                backgroundColor: Colors.white,
-                foregroundColor: gradientColors.first,
-                elevation: 0,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(14),
-                ),
-              ),
-              child: FittedBox(
-                fit: BoxFit.scaleDown,
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Stack(
                   children: [
-                    const Icon(Icons.add_rounded, size: 20),
-                    const SizedBox(width: 6),
-                    Text(
-                      buttonLabel,
-                      style: TextStyle(
-                        fontSize: isMobile ? 14 : 15,
-                        fontWeight: FontWeight.w700,
+
+                    Center(
+                      child: Icon(
+                        icon,
+                        color: Colors.white,
+                        size: isMobile ? 57 : 64,
+                      ),
+                    ),
+
+                    // SMALL LABEL
+                    Positioned(
+                      right: 7,
+                      top: 7,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withValues(
+                            alpha: 0.95,
+                          ),
+                          borderRadius:
+                              BorderRadius.circular(7),
+                        ),
+                        child: Text(
+                          iconLetter,
+                          style: TextStyle(
+                            fontSize: iconLetter == 'PDF'
+                                ? 10
+                                : 13,
+                            fontWeight: FontWeight.w900,
+                            color: gradient.first,
+                          ),
+                        ),
                       ),
                     ),
                   ],
                 ),
               ),
+
+              const SizedBox(width: 17),
+
+              // TITLE + DESCRIPTION
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+
+                    Text(
+                      title,
+                      style: TextStyle(
+                        fontSize: isMobile ? 21 : 25,
+                        fontWeight: FontWeight.w800,
+                        color: primaryText,
+                        letterSpacing: -0.5,
+                      ),
+                    ),
+
+                    const SizedBox(height: 9),
+
+                    Text(
+                      description,
+                      style: TextStyle(
+                        fontSize: isMobile ? 13 : 15,
+                        height: 1.45,
+                        color: secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              // ARROW
+              Container(
+                width: 48,
+                height: 48,
+                decoration: BoxDecoration(
+                  color: gradient.first.withValues(
+                    alpha: isDark ? 0.10 : 0.07,
+                  ),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.chevron_right_rounded,
+                  color: gradient.first,
+                  size: 30,
+                ),
+              ),
+            ],
+          ),
+
+          const SizedBox(height: 18),
+
+          // CREATE BUTTON
+          SizedBox(
+            width: double.infinity,
+            height: isMobile ? 52 : 58,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+                borderRadius: BorderRadius.circular(30),
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient.first.withValues(
+                      alpha: isDark ? 0.20 : 0.14,
+                    ),
+                    blurRadius: 16,
+                    offset: const Offset(0, 6),
+                  ),
+                ],
+              ),
+              child: Material(
+                color: Colors.transparent,
+                child: InkWell(
+                  onTap: onTap,
+                  borderRadius:
+                      BorderRadius.circular(30),
+                  child: Center(
+                    child: Row(
+                      mainAxisAlignment:
+                          MainAxisAlignment.center,
+                      children: [
+
+                        const Icon(
+                          Icons.description_rounded,
+                          color: Colors.white,
+                          size: 21,
+                        ),
+
+                        const SizedBox(width: 9),
+
+                        Text(
+                          buttonText,
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: isMobile ? 16 : 17,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
             ),
           ),
         ],
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // ALL FILES CARD
+  // ===========================================================================
+
+  Widget _buildAllFilesCard(
+    BuildContext context, {
+    required bool isDark,
+    required bool isMobile,
+    required Color primaryText,
+    required Color secondaryText,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: () {
+          if (onNavigateToAllFiles != null) {
+            onNavigateToAllFiles!();
+          } else {
+            Navigator.of(context).pushNamed(
+              '/all-files',
+            );
+          }
+        },
+        borderRadius: BorderRadius.circular(22),
+        child: Container(
+          width: double.infinity,
+          padding: EdgeInsets.all(
+            isMobile ? 17 : 22,
+          ),
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF0B1020)
+                : Colors.white,
+            borderRadius: BorderRadius.circular(22),
+            border: Border.all(
+              color: isDark
+                  ? const Color(0xFF202A42)
+                  : const Color(0xFFE2E8F0),
+            ),
+          ),
+          child: Row(
+            children: [
+
+              // FOLDER ICON
+              Container(
+                width: isMobile ? 48 : 54,
+                height: isMobile ? 48 : 54,
+                decoration: BoxDecoration(
+                  gradient: const LinearGradient(
+                    colors: [
+                      Color(0xFF6D4AFF),
+                      Color(0xFF9747FF),
+                    ],
+                  ),
+                  borderRadius: BorderRadius.circular(15),
+                ),
+                child: const Icon(
+                  Icons.folder_rounded,
+                  color: Colors.white,
+                  size: 27,
+                ),
+              ),
+
+              const SizedBox(width: 14),
+
+              Expanded(
+                child: Column(
+                  crossAxisAlignment:
+                      CrossAxisAlignment.start,
+                  children: [
+
+                    Text(
+                      'All Files',
+                      style: TextStyle(
+                        fontSize: isMobile ? 16 : 18,
+                        fontWeight: FontWeight.w800,
+                        color: primaryText,
+                      ),
+                    ),
+
+                    const SizedBox(height: 4),
+
+                    Text(
+                      'View and manage your documents',
+                      style: TextStyle(
+                        fontSize: isMobile ? 11 : 13,
+                        color: secondaryText,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+
+              Container(
+                width: 38,
+                height: 38,
+                decoration: BoxDecoration(
+                  color: isDark
+                      ? const Color(0xFF171E32)
+                      : const Color(0xFFF1F5F9),
+                  shape: BoxShape.circle,
+                ),
+                child: Icon(
+                  Icons.arrow_forward_ios_rounded,
+                  size: 15,
+                  color: secondaryText,
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

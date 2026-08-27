@@ -4,21 +4,21 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
-import 'core/theme/app_theme.dart';
 import 'core/providers/image_selection_provider.dart';
 import 'core/providers/pdf_manager_provider.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/services/external_pdf_service.dart';
+import 'core/theme/app_theme.dart';
 
-import 'features/splash/splash_screen.dart';
+import 'features/camera/camera_screen.dart';
 import 'features/home/main_navigation_screen.dart';
 import 'features/home/source_selection_screen.dart';
-import 'features/camera/camera_screen.dart';
 import 'features/image_selection/gallery_screen.dart';
-import 'features/pdf_generation/review_screen.dart';
-import 'features/pdf_generation/preview_screen.dart';
 import 'features/pdf_generation/pdf_generation_screen.dart';
+import 'features/pdf_generation/preview_screen.dart';
+import 'features/pdf_generation/review_screen.dart';
 import 'features/pdf_result/result_screen.dart';
+import 'features/splash/splash_screen.dart';
 
 import 'models/pdf_result.dart';
 
@@ -27,6 +27,10 @@ void main() {
 
   runApp(const MyApp());
 }
+
+// ============================================================================
+// MY APP
+// ============================================================================
 
 class MyApp extends StatefulWidget {
   const MyApp({super.key});
@@ -38,17 +42,21 @@ class MyApp extends StatefulWidget {
   State<MyApp> createState() => _MyAppState();
 }
 
+// ============================================================================
+// APP STATE
+// ============================================================================
+
 class _MyAppState extends State<MyApp> {
-  // ============================================================
-  // PDF / DOCUMENT INTENT CHANNEL
-  // ============================================================
+  // ==========================================================================
+  // NATIVE CHANNEL
+  // ==========================================================================
 
   static const MethodChannel _channel =
       MethodChannel('docvault/pdf_intent');
 
-  // ============================================================
+  // ==========================================================================
   // EXTERNAL DOCUMENT STATE
-  // ============================================================
+  // ==========================================================================
 
   bool _checkingInitialDocument = true;
 
@@ -58,85 +66,84 @@ class _MyAppState extends State<MyApp> {
 
   String? _lastProcessedUri;
 
-  // ============================================================
+  // ==========================================================================
   // INIT
-  // ============================================================
+  // ==========================================================================
 
   @override
   void initState() {
     super.initState();
 
-    if (!kIsWeb) {
-      _channel.setMethodCallHandler(_handleNativeCall);
-
-      _checkForInitialDocument();
-    } else {
+    if (kIsWeb) {
       _checkingInitialDocument = false;
+      return;
     }
+
+    _channel.setMethodCallHandler(_handleNativeCall);
+
+    _checkForInitialDocument();
   }
 
-  // ============================================================
-  // CHECK INITIAL EXTERNAL DOCUMENT
-  // ============================================================
+  // ==========================================================================
+  // INITIAL EXTERNAL DOCUMENT
+  // ==========================================================================
 
   Future<void> _checkForInitialDocument() async {
     try {
       debugPrint(
-        'Checking for initial external document...',
+        'DocVault: checking initial external document...',
       );
 
       final result =
           await _channel.invokeMethod('getInitialDocument');
 
       if (result != null) {
-        final data =
-            Map<Object?, Object?>.from(result);
+        final data = Map<Object?, Object?>.from(
+          result as Map,
+        );
 
-        final uri =
-            data['uri']?.toString();
+        final uri = data['uri']?.toString();
 
         if (uri != null && uri.isNotEmpty) {
           debugPrint(
-            'Initial external document found: $uri',
+            'DocVault: external document found: $uri',
           );
 
-          if (mounted) {
-            setState(() {
-              _initialExternalUri = uri;
-              _checkingInitialDocument = false;
-            });
-          }
+          if (!mounted) return;
+
+          setState(() {
+            _initialExternalUri = uri;
+            _checkingInitialDocument = false;
+          });
 
           return;
         }
       }
 
       debugPrint(
-        'No initial external document found.',
+        'DocVault: no external document found.',
       );
     } catch (e) {
       debugPrint(
-        'Initial document check error: $e',
+        'DocVault: initial document error: $e',
       );
     }
 
-    if (mounted) {
-      setState(() {
-        _checkingInitialDocument = false;
-      });
-    }
+    if (!mounted) return;
+
+    setState(() {
+      _checkingInitialDocument = false;
+    });
   }
 
-  // ============================================================
+  // ==========================================================================
   // HANDLE NEW DOCUMENT WHILE APP IS RUNNING
-  // ============================================================
+  // ==========================================================================
 
   Future<void> _handleNativeCall(
     MethodCall call,
   ) async {
-    if (kIsWeb) {
-      return;
-    }
+    if (kIsWeb) return;
 
     if (call.method != 'newDocument' &&
         call.method != 'newPdf') {
@@ -145,57 +152,56 @@ class _MyAppState extends State<MyApp> {
 
     try {
       if (call.arguments == null) {
+        debugPrint(
+          'DocVault: native document arguments are null.',
+        );
         return;
       }
 
-      final arguments =
-          Map<Object?, Object?>.from(
+      final arguments = Map<Object?, Object?>.from(
         call.arguments as Map,
       );
 
-      final uri =
-          arguments['uri']?.toString();
+      final uri = arguments['uri']?.toString();
 
       if (uri == null || uri.isEmpty) {
         debugPrint(
-          'New document URI is empty.',
+          'DocVault: received empty document URI.',
         );
         return;
       }
 
       debugPrint(
-        'New external document received: $uri',
+        'DocVault: new external document received: $uri',
       );
 
       await _openIncomingDocument(uri);
     } catch (e) {
       debugPrint(
-        'New document handling error: $e',
+        'DocVault: new document handling error: $e',
       );
     }
   }
 
-  // ============================================================
-  // OPEN EXTERNAL DOCUMENT
-  // ============================================================
+  // ==========================================================================
+  // OPEN INCOMING DOCUMENT
+  // ==========================================================================
 
   Future<void> _openIncomingDocument(
     String uri,
   ) async {
-    if (kIsWeb) {
-      return;
-    }
+    if (kIsWeb) return;
 
     if (_isOpeningExternalDocument) {
       debugPrint(
-        'External document is already opening.',
+        'DocVault: document is already opening.',
       );
       return;
     }
 
     if (_lastProcessedUri == uri) {
       debugPrint(
-        'External document already processed: $uri',
+        'DocVault: document already processed.',
       );
       return;
     }
@@ -204,7 +210,7 @@ class _MyAppState extends State<MyApp> {
 
     try {
       debugPrint(
-        'Importing external document...',
+        'DocVault: importing external document...',
       );
 
       final result =
@@ -212,9 +218,7 @@ class _MyAppState extends State<MyApp> {
         uri,
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
       final savedPath =
           result['filePath']?.toString();
@@ -237,11 +241,11 @@ class _MyAppState extends State<MyApp> {
       }
 
       debugPrint(
-        'Imported document path: $savedPath',
+        'DocVault: imported path = $savedPath',
       );
 
       debugPrint(
-        'Imported document name: $fileName',
+        'DocVault: imported name = $fileName',
       );
 
       _lastProcessedUri = uri;
@@ -255,12 +259,12 @@ class _MyAppState extends State<MyApp> {
         );
       }
 
-      // ========================================================
-      // IMPORTANT
+      // ======================================================================
+      // OPEN DOCUMENT VIEWER
       //
-      // pushReplacement removes the current startup screen.
-      // Therefore HomeScreen will NOT remain underneath.
-      // ========================================================
+      // pushReplacement is intentional:
+      // Home/Splash will not remain underneath the external document.
+      // ======================================================================
 
       navigator.pushReplacement(
         MaterialPageRoute(
@@ -273,36 +277,41 @@ class _MyAppState extends State<MyApp> {
       );
 
       debugPrint(
-        'External document viewer opened.',
+        'DocVault: external document viewer opened.',
       );
     } catch (e) {
       debugPrint(
-        'External document import error: $e',
+        'DocVault: external document import failed: $e',
       );
 
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
 
-      final messenger =
-          ScaffoldMessenger.maybeOf(context);
+      final context =
+          MyApp.navigatorKey.currentContext;
 
-      messenger?.showSnackBar(
-        SnackBar(
-          content: Text(
-            'Unable to open document: $e',
+      if (context != null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              'Unable to open document: $e',
+            ),
+            behavior: SnackBarBehavior.floating,
+            backgroundColor: AppTheme.errorColor,
+            shape: RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.circular(12),
+            ),
           ),
-          behavior: SnackBarBehavior.floating,
-        ),
-      );
+        );
+      }
     } finally {
       _isOpeningExternalDocument = false;
     }
   }
 
-  // ============================================================
+  // ==========================================================================
   // BUILD
-  // ============================================================
+  // ==========================================================================
 
   @override
   Widget build(BuildContext context) {
@@ -320,6 +329,7 @@ class _MyAppState extends State<MyApp> {
           create: (_) => ThemeProvider(),
         ),
       ],
+
       child: Consumer<ThemeProvider>(
         builder: (
           context,
@@ -333,28 +343,26 @@ class _MyAppState extends State<MyApp> {
 
             debugShowCheckedModeBanner: false,
 
+            // =================================================================
+            // THEMES
+            // =================================================================
+
             theme: AppTheme.lightTheme(),
 
             darkTheme: AppTheme.darkTheme(),
 
-            themeMode: themeProvider.themeMode,
+            themeMode:
+                themeProvider.themeMode,
 
-            // ==================================================
-            // STARTUP SCREEN
-            // ==================================================
+            // =================================================================
+            // STARTUP
+            // =================================================================
 
-            home: _checkingInitialDocument
-                ? const _ExternalDocumentCheckingScreen()
-                : _initialExternalUri != null
-                    ? _InitialExternalDocumentScreen(
-                        uri: _initialExternalUri!,
-                        onOpen: _openIncomingDocument,
-                      )
-                    : const SplashScreen(),
+            home: _buildStartupScreen(),
 
-            // ==================================================
+            // =================================================================
             // STATIC ROUTES
-            // ==================================================
+            // =================================================================
 
             routes: {
               '/splash': (context) =>
@@ -379,64 +387,113 @@ class _MyAppState extends State<MyApp> {
                   const PdfGenerationScreen(),
             },
 
-            // ==================================================
+            // =================================================================
             // DYNAMIC ROUTES
-            // ==================================================
+            // =================================================================
 
-            onGenerateRoute: (settings) {
-              if (settings.name == '/home') {
-                int initialIndex = 0;
-
-                if (settings.arguments is Map) {
-                  final map =
-                      settings.arguments as Map;
-
-                  initialIndex =
-                      (map['initialIndex'] as num?)
-                              ?.toInt() ??
-                          0;
-                }
-
-                return MaterialPageRoute(
-                  builder: (context) =>
-                      MainNavigationScreen(
-                    initialIndex: initialIndex,
-                  ),
-                );
-              }
-
-              if (settings.name == '/all-files') {
-                return MaterialPageRoute(
-                  builder: (context) =>
-                      const MainNavigationScreen(
-                    initialIndex: 1,
-                  ),
-                );
-              }
-
-              if (settings.name == '/result') {
-                final pdfResult =
-                    settings.arguments as PdfResult;
-
-                return MaterialPageRoute(
-                  builder: (context) =>
-                      ResultScreen(
-                    pdfResult: pdfResult,
-                  ),
-                );
-              }
-
-              return null;
-            },
+            onGenerateRoute: _generateRoute,
           );
         },
       ),
     );
   }
 
-  // ============================================================
+  // ==========================================================================
+  // STARTUP SCREEN
+  // ==========================================================================
+
+  Widget _buildStartupScreen() {
+    if (_checkingInitialDocument) {
+      return const _ExternalDocumentCheckingScreen();
+    }
+
+    if (_initialExternalUri != null) {
+      return _InitialExternalDocumentScreen(
+        uri: _initialExternalUri!,
+        onOpen: _openIncomingDocument,
+      );
+    }
+
+    return const SplashScreen();
+  }
+
+  // ==========================================================================
+  // ROUTES
+  // ==========================================================================
+
+  Route<dynamic>? _generateRoute(
+    RouteSettings settings,
+  ) {
+    // ========================================================================
+    // HOME
+    // ========================================================================
+
+    if (settings.name == '/home') {
+      int initialIndex = 0;
+
+      if (settings.arguments is Map) {
+        final map =
+            settings.arguments as Map;
+
+        initialIndex =
+            (map['initialIndex'] as num?)
+                    ?.toInt() ??
+                0;
+      }
+
+      return MaterialPageRoute(
+        builder: (_) => MainNavigationScreen(
+          initialIndex: initialIndex,
+        ),
+      );
+    }
+
+    // ========================================================================
+    // ALL FILES
+    // ========================================================================
+
+    if (settings.name == '/all-files') {
+      return MaterialPageRoute(
+        builder: (_) => const MainNavigationScreen(
+          initialIndex: 1,
+        ),
+      );
+    }
+
+    // ========================================================================
+    // RESULT
+    // ========================================================================
+
+    if (settings.name == '/result') {
+      if (settings.arguments is! PdfResult) {
+        return MaterialPageRoute(
+          builder: (_) => const _RouteErrorScreen(
+            message:
+                'Invalid document result.',
+          ),
+        );
+      }
+
+      final pdfResult =
+          settings.arguments as PdfResult;
+
+      return MaterialPageRoute(
+        builder: (_) => ResultScreen(
+          pdfResult: pdfResult,
+        ),
+      );
+    }
+
+    return MaterialPageRoute(
+      builder: (_) => const _RouteErrorScreen(
+        message: 'Page not found.',
+      ),
+    );
+  }
+
+  // ==========================================================================
   // DISPOSE
-  // ============================================================
+  // ==========================================================================
 
   @override
   void dispose() {
@@ -448,16 +505,9 @@ class _MyAppState extends State<MyApp> {
   }
 }
 
-// ================================================================
-// INITIAL DOCUMENT CHECKING SCREEN
-// ================================================================
-//
-// This screen is shown only for a very short time while Flutter
-// asks Android whether the app was launched with an external file.
-//
-// IMPORTANT:
-// It does NOT navigate to HomeScreen.
-//
+// ============================================================================
+// EXTERNAL DOCUMENT CHECKING SCREEN
+// ============================================================================
 
 class _ExternalDocumentCheckingScreen
     extends StatelessWidget {
@@ -465,24 +515,56 @@ class _ExternalDocumentCheckingScreen
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final isDark =
+        Theme.of(context).brightness ==
+            Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark
+          ? AppTheme.bgDark
+          : AppTheme.bgWhite,
+
       body: Center(
-        child: CircularProgressIndicator(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor,
+                borderRadius:
+                    BorderRadius.circular(22),
+              ),
+
+              child: const Icon(
+                Icons.description_rounded,
+                color: Colors.white,
+                size: 42,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
 }
 
-// ================================================================
+// ============================================================================
 // INITIAL EXTERNAL DOCUMENT SCREEN
-// ================================================================
-//
-// This screen is used ONLY when DocVault was launched by an
-// external PDF/DOCX/PPTX file.
-//
-// It directly starts document import.
-// HomeScreen is never shown.
-//
+// ============================================================================
 
 class _InitialExternalDocumentScreen
     extends StatefulWidget {
@@ -510,26 +592,151 @@ class _InitialExternalDocumentScreenState
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      _startOpening();
-    });
+    WidgetsBinding.instance.addPostFrameCallback(
+      (_) {
+        _startOpening();
+      },
+    );
   }
 
   Future<void> _startOpening() async {
-    if (_started) {
-      return;
-    }
+    if (_started) return;
 
     _started = true;
 
-    await widget.onOpen(widget.uri);
+    await widget.onOpen(
+      widget.uri,
+    );
   }
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    final isDark =
+        Theme.of(context).brightness ==
+            Brightness.dark;
+
+    return Scaffold(
+      backgroundColor: isDark
+          ? AppTheme.bgDark
+          : AppTheme.bgWhite,
+
       body: Center(
-        child: CircularProgressIndicator(),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 76,
+              height: 76,
+
+              decoration: BoxDecoration(
+                color: AppTheme.primaryColor,
+                borderRadius:
+                    BorderRadius.circular(22),
+              ),
+
+              child: const Icon(
+                Icons.description_rounded,
+                color: Colors.white,
+                size: 42,
+              ),
+            ),
+
+            const SizedBox(height: 20),
+
+            Text(
+              'Opening document...',
+              style: TextStyle(
+                fontSize: 16,
+                fontWeight: FontWeight.w700,
+                color: Theme.of(context)
+                    .colorScheme
+                    .onSurface,
+              ),
+            ),
+
+            const SizedBox(height: 14),
+
+            const SizedBox(
+              width: 26,
+              height: 26,
+              child: CircularProgressIndicator(
+                strokeWidth: 3,
+                color: AppTheme.primaryColor,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+// ============================================================================
+// ROUTE ERROR
+// ============================================================================
+
+class _RouteErrorScreen
+    extends StatelessWidget {
+  const _RouteErrorScreen({
+    required this.message,
+  });
+
+  final String message;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('DocVault'),
+      ),
+
+      body: Center(
+        child: Padding(
+          padding:
+              const EdgeInsets.all(24),
+
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const Icon(
+                Icons.error_outline_rounded,
+                size: 56,
+                color: AppTheme.errorColor,
+              ),
+
+              const SizedBox(height: 16),
+
+              Text(
+                message,
+                textAlign: TextAlign.center,
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context)
+                      .pushNamedAndRemoveUntil(
+                    '/home',
+                    (route) => false,
+                  );
+                },
+
+                icon: const Icon(
+                  Icons.home_rounded,
+                ),
+
+                label: const Text(
+                  'Go Home',
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

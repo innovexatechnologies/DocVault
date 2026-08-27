@@ -65,21 +65,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
   // ============================================================
 
   void _removeImage(String imageId) {
-    context
-        .read<ImageSelectionProvider>()
-        .removeImage(imageId);
+    context.read<ImageSelectionProvider>().removeImage(imageId);
 
     if (!mounted) return;
 
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Text(
-          _isPpt
-              ? 'Slide removed'
-              : 'Page removed',
+          _isPpt ? 'Slide removed' : 'Page removed',
         ),
-        duration:
-            const Duration(seconds: 1),
+        duration: const Duration(seconds: 1),
       ),
     );
   }
@@ -92,9 +87,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     int oldIndex,
     int newIndex,
   ) {
-    context
-        .read<ImageSelectionProvider>()
-        .reorderImages(
+    context.read<ImageSelectionProvider>().reorderImages(
           oldIndex,
           newIndex,
         );
@@ -104,9 +97,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
   // ADD MORE IMAGES
   // ============================================================
 
-  Future<void> _addMoreImages(
-    String source,
-  ) async {
+  Future<void> _addMoreImages(String source) async {
     if (source == 'camera') {
       if (!mounted) return;
 
@@ -118,12 +109,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
       return;
     }
 
-    final galleryService =
-        GalleryService();
+    final galleryService = GalleryService();
 
     try {
-      final imagePaths =
-          await galleryService.pickImages();
+      final imagePaths = await galleryService.pickImages();
 
       if (!mounted) return;
 
@@ -131,9 +120,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
         return;
       }
 
-      context
-          .read<ImageSelectionProvider>()
-          .addImages(
+      context.read<ImageSelectionProvider>().addImages(
             imagePaths,
             'gallery',
             markUnsaved: true,
@@ -145,8 +132,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
             'Added ${imagePaths.length} '
             '${imagePaths.length == 1 ? _itemLabelSingular.toLowerCase() : _itemLabel.toLowerCase()}',
           ),
-          duration:
-              const Duration(seconds: 1),
+          duration: const Duration(seconds: 1),
         ),
       );
     } catch (e) {
@@ -154,10 +140,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content:
-              Text('Failed to pick images'),
-          backgroundColor:
-              AppTheme.errorColor,
+          content: Text('Failed to pick images'),
+          backgroundColor: AppTheme.errorColor,
         ),
       );
     }
@@ -170,143 +154,90 @@ class _ReviewScreenState extends State<ReviewScreen> {
   void _showAddImagesBottomSheet() {
     showModalBottomSheet(
       context: context,
-      shape:
-          const RoundedRectangleBorder(
-        borderRadius:
-            BorderRadius.vertical(
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(
           top: Radius.circular(20),
         ),
       ),
       builder: (ctx) {
         return SafeArea(
           child: Padding(
-            padding:
-                const EdgeInsets.symmetric(
+            padding: const EdgeInsets.symmetric(
               horizontal: 20,
               vertical: 16,
             ),
             child: Column(
-              mainAxisSize:
-                  MainAxisSize.min,
+              mainAxisSize: MainAxisSize.min,
               children: [
                 Container(
                   width: 36,
                   height: 4,
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        Colors.grey.shade300,
-                    borderRadius:
-                        BorderRadius.circular(
-                      2,
-                    ),
+                  decoration: BoxDecoration(
+                    color: Colors.grey.shade300,
+                    borderRadius: BorderRadius.circular(2),
                   ),
                 ),
 
-                const SizedBox(
-                  height: 16,
-                ),
+                const SizedBox(height: 16),
 
                 Text(
                   _isEditingExisting
                       ? 'Add $_itemLabel to Document'
                       : 'Add More $_itemLabel',
-                  style:
-                      const TextStyle(
+                  style: const TextStyle(
                     fontSize: 17,
-                    fontWeight:
-                        FontWeight.bold,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
 
-                const SizedBox(
-                  height: 16,
-                ),
+                const SizedBox(height: 16),
 
                 Row(
                   children: [
-                    // CAMERA
                     Expanded(
-                      child:
-                          OutlinedButton.icon(
+                      child: OutlinedButton.icon(
                         onPressed: () {
-                          Navigator.of(
-                            ctx,
-                          ).pop();
-
-                          _addMoreImages(
-                            'camera',
-                          );
+                          Navigator.of(ctx).pop();
+                          _addMoreImages('camera');
                         },
-                        icon:
-                            const Icon(
-                          Icons
-                              .camera_alt_rounded,
+                        icon: const Icon(
+                          Icons.camera_alt_rounded,
                         ),
-                        label:
-                            const Text(
-                          'Camera',
-                        ),
-                        style:
-                            OutlinedButton.styleFrom(
-                          padding:
-                              const EdgeInsets.symmetric(
+                        label: const Text('Camera'),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(
                             vertical: 14,
                           ),
-                          shape:
-                              RoundedRectangleBorder(
+                          shape: RoundedRectangleBorder(
                             borderRadius:
-                                BorderRadius.circular(
-                              12,
-                            ),
+                                BorderRadius.circular(12),
                           ),
                         ),
                       ),
                     ),
 
-                    const SizedBox(
-                      width: 12,
-                    ),
+                    const SizedBox(width: 12),
 
-                    // GALLERY
                     Expanded(
-                      child:
-                          ElevatedButton.icon(
+                      child: ElevatedButton.icon(
                         onPressed: () {
-                          Navigator.of(
-                            ctx,
-                          ).pop();
-
-                          _addMoreImages(
-                            'gallery',
-                          );
+                          Navigator.of(ctx).pop();
+                          _addMoreImages('gallery');
                         },
-                        icon:
-                            const Icon(
-                          Icons
-                              .photo_library_rounded,
+                        icon: const Icon(
+                          Icons.photo_library_rounded,
                         ),
-                        label:
-                            const Text(
-                          'Gallery',
-                        ),
-                        style:
-                            ElevatedButton.styleFrom(
+                        label: const Text('Gallery'),
+                        style: ElevatedButton.styleFrom(
                           backgroundColor:
-                              _effectiveType
-                                  .badgeColor,
-                          foregroundColor:
-                              Colors.white,
-                          padding:
-                              const EdgeInsets.symmetric(
+                              _effectiveType.badgeColor,
+                          foregroundColor: Colors.white,
+                          padding: const EdgeInsets.symmetric(
                             vertical: 14,
                           ),
-                          shape:
-                              RoundedRectangleBorder(
+                          shape: RoundedRectangleBorder(
                             borderRadius:
-                                BorderRadius.circular(
-                              12,
-                            ),
+                                BorderRadius.circular(12),
                           ),
                         ),
                       ),
@@ -314,9 +245,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   ],
                 ),
 
-                const SizedBox(
-                  height: 8,
-                ),
+                const SizedBox(height: 8),
               ],
             ),
           ),
@@ -337,8 +266,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
     final updatedPath =
         await Navigator.of(context).push<String>(
       MaterialPageRoute(
-        builder: (_) =>
-            ImageEditorScreen(
+        builder: (_) => ImageEditorScreen(
           imageId: imageId,
           imagePath: imagePath,
           pageIndex: index,
@@ -360,12 +288,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
   void _openPreview() {
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            PreviewScreen(
-          existingDocument:
-              widget.existingDocument,
-          conversionType:
-              _effectiveType,
+        builder: (_) => PreviewScreen(
+          existingDocument: widget.existingDocument,
+          conversionType: _effectiveType,
           onSave: _isEditingExisting
               ? _saveExistingDocumentChanges
               : null,
@@ -378,26 +303,21 @@ class _ReviewScreenState extends State<ReviewScreen> {
   // SAVE EXISTING DOCUMENT
   // ============================================================
 
-  Future<void>
-      _saveExistingDocumentChanges() async {
-    final imagePaths =
-        context
-            .read<ImageSelectionProvider>()
-            .getImageFilePaths();
+  Future<void> _saveExistingDocumentChanges() async {
+    final imagePaths = context
+        .read<ImageSelectionProvider>()
+        .getImageFilePaths();
 
     if (imagePaths.isEmpty) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
             'Cannot save empty document. '
-            'At least 1 $_itemLabelSingular '
-            'is required.',
+            'At least 1 $_itemLabelSingular is required.',
           ),
-          backgroundColor:
-              AppTheme.errorColor,
+          backgroundColor: AppTheme.errorColor,
         ),
       );
 
@@ -424,15 +344,12 @@ class _ReviewScreenState extends State<ReviewScreen> {
           .read<ImageSelectionProvider>()
           .clearAllImages();
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: Text(
-            '${_effectiveType.shortName} '
-            'updated successfully!',
+            '${_effectiveType.shortName} updated successfully!',
           ),
-          backgroundColor:
-              AppTheme.successColor,
+          backgroundColor: AppTheme.successColor,
         ),
       );
 
@@ -440,13 +357,10 @@ class _ReviewScreenState extends State<ReviewScreen> {
     } catch (e) {
       if (!mounted) return;
 
-      ScaffoldMessenger.of(context)
-          .showSnackBar(
+      ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content:
-              Text('Failed to save changes: $e'),
-          backgroundColor:
-              AppTheme.errorColor,
+          content: Text('Failed to save changes: $e'),
+          backgroundColor: AppTheme.errorColor,
         ),
       );
     } finally {
@@ -472,10 +386,8 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
     Navigator.of(context).push(
       MaterialPageRoute(
-        builder: (_) =>
-            PdfGenerationScreen(
-          conversionType:
-              _effectiveType,
+        builder: (_) => PdfGenerationScreen(
+          conversionType: _effectiveType,
         ),
       ),
     );
@@ -510,8 +422,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
       return;
     }
 
-    final action =
-        await UnsavedChangesDialog.show(
+    final action = await UnsavedChangesDialog.show(
       context,
       title: 'Discard Changes?',
       message: _isEditingExisting
@@ -523,19 +434,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
       saveLabel: _isEditingExisting
           ? 'Save Changes'
           : 'Generate ${_effectiveType.shortName}',
-      discardLabel:
-          'Discard Changes',
+      discardLabel: 'Discard Changes',
     );
 
     if (!mounted) return;
 
-    if (action ==
-        UnsavedChangesAction.save) {
+    if (action == UnsavedChangesAction.save) {
       _generateDocument();
-    } else if (action ==
-        UnsavedChangesAction.discard) {
+    } else if (action == UnsavedChangesAction.discard) {
       imageProvider.clearAllImages();
-
       Navigator.of(context).pop();
     }
   }
@@ -546,32 +453,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme =
-        Theme.of(context);
-
-    final colorScheme =
-        theme.colorScheme;
-
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     final isDark =
-        theme.brightness ==
-            Brightness.dark;
+        theme.brightness == Brightness.dark;
 
     final imageCount =
-        context.watch<
-                ImageSelectionProvider>()
-            .imageCount;
+        context.watch<ImageSelectionProvider>().imageCount;
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult:
-          (didPop, result) {
+      onPopInvokedWithResult: (didPop, result) {
         if (!didPop) {
           _handleBack();
         }
       },
       child: Scaffold(
-        backgroundColor:
-            colorScheme.surface,
+        backgroundColor: colorScheme.surface,
 
         // ======================================================
         // APP BAR
@@ -583,81 +481,60 @@ class _ReviewScreenState extends State<ReviewScreen> {
               Icons.arrow_back_rounded,
             ),
             tooltip: 'Back',
-            onPressed:
-                _handleBack,
+            onPressed: _handleBack,
           ),
 
           title: Text(
             _isEditingExisting
-                ? widget
-                    .existingDocument!
-                    .title
+                ? widget.existingDocument!.title
                 : 'Review & Organize '
                     '(${_effectiveType.shortName})',
-            overflow:
-                TextOverflow.ellipsis,
+            overflow: TextOverflow.ellipsis,
           ),
 
-          backgroundColor:
-              isDark
-                  ? AppTheme.surfaceDark
-                  : AppTheme.surfaceLight,
+          backgroundColor: isDark
+              ? AppTheme.surfaceDark
+              : AppTheme.surfaceLight,
 
-          foregroundColor:
-              colorScheme.onSurface,
+          foregroundColor: colorScheme.onSurface,
 
           elevation: 0,
 
           actions: [
-            // PREVIEW
             IconButton(
               icon: const Icon(
                 Icons.preview_rounded,
               ),
-              tooltip:
-                  'Preview Document',
-              onPressed:
-                  imageCount == 0
-                      ? null
-                      : _openPreview,
+              tooltip: 'Preview Document',
+              onPressed: imageCount == 0
+                  ? null
+                  : _openPreview,
             ),
 
-            // COUNT
             Padding(
-              padding:
-                  const EdgeInsets.only(
+              padding: const EdgeInsets.only(
                 right: 12,
               ),
               child: Center(
                 child: Container(
-                  padding:
-                      const EdgeInsets.symmetric(
+                  padding: const EdgeInsets.symmetric(
                     horizontal: 8,
                     vertical: 4,
                   ),
-                  decoration:
-                      BoxDecoration(
-                    color:
-                        _effectiveType
-                            .badgeColor
-                            .withValues(
-                      alpha: 0.15,
-                    ),
+                  decoration: BoxDecoration(
+                    color: _effectiveType.badgeColor
+                        .withValues(alpha: 0.15),
                     borderRadius:
-                        BorderRadius.circular(
-                      8,
-                    ),
+                        BorderRadius.circular(8),
                   ),
                   child: Text(
                     '$imageCount '
                     '${_isPpt ? 'slides' : 'pages'}',
                     style: TextStyle(
-                      fontWeight:
-                          FontWeight.w700,
+                      fontWeight: FontWeight.w700,
                       fontSize: 12,
                       color:
-                          _effectiveType
-                              .badgeColor,
+                          _effectiveType.badgeColor,
                     ),
                   ),
                 ),
@@ -672,15 +549,13 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
         body: Stack(
           children: [
-            Consumer<
-                ImageSelectionProvider>(
+            Consumer<ImageSelectionProvider>(
               builder: (
                 context,
                 imageProvider,
                 _,
               ) {
-                if (!imageProvider
-                    .hasImages) {
+                if (!imageProvider.hasImages) {
                   return _buildEmptyState(
                     colorScheme,
                   );
@@ -688,111 +563,85 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
                 return Column(
                   children: [
-                    // ==================================================
-                    // IMAGE GRID / REORDER
-                    // ==================================================
-
                     Expanded(
-                      child:
-                          _isReordering
-                              ? ReorderableListView
-                                  .builder(
-                                  buildDefaultDragHandles:
-                                      false,
-                                  padding:
-                                      EdgeInsets.all(
-                                    ResponsiveHelper
-                                        .getGridSpacing(
-                                      context,
-                                    ),
-                                  ),
-                                  itemCount:
-                                      imageProvider
-                                          .selectedImages
-                                          .length,
-                                  onReorder:
-                                      _reorderImages,
-                                  itemBuilder:
-                                      (
-                                    context,
-                                    index,
-                                  ) {
-                                    final imageItem =
-                                        imageProvider
-                                            .selectedImages[
-                                      index
-                                    ];
-
-                                    return _buildReorderableRowItem(
-                                      imageItem,
-                                      index,
-                                    );
-                                  },
-                                )
-                              : GridView.builder(
-                                  padding:
-                                      EdgeInsets.all(
-                                    ResponsiveHelper
-                                        .getGridSpacing(
-                                      context,
-                                    ),
-                                  ),
-                                  gridDelegate:
-                                      SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount:
-                                        ResponsiveHelper
-                                            .getGridCrossAxisCount(
-                                      context,
-                                    ),
-                                    crossAxisSpacing:
-                                        ResponsiveHelper
-                                            .getGridSpacing(
-                                      context,
-                                    ),
-                                    mainAxisSpacing:
-                                        ResponsiveHelper
-                                            .getGridSpacing(
-                                      context,
-                                    ),
-
-                                    // PPTX = landscape
-                                    // PDF/DOCX = portrait
-                                    childAspectRatio:
-                                        _isPpt
-                                            ? 1.55
-                                            : 0.82,
-                                  ),
-                                  itemCount:
-                                      imageProvider
-                                          .selectedImages
-                                          .length,
-                                  itemBuilder:
-                                      (
-                                    context,
-                                    index,
-                                  ) {
-                                    final imageItem =
-                                        imageProvider
-                                            .selectedImages[
-                                      index
-                                    ];
-
-                                    return _buildImageItem(
-                                      imageItem,
-                                      index,
-                                    );
-                                  },
+                      child: _isReordering
+                          ? ReorderableListView.builder(
+                              buildDefaultDragHandles:
+                                  false,
+                              padding: EdgeInsets.all(
+                                ResponsiveHelper
+                                    .getGridSpacing(
+                                  context,
                                 ),
-                    ),
+                              ),
+                              itemCount: imageProvider
+                                  .selectedImages.length,
+                              onReorder:
+                                  _reorderImages,
+                              itemBuilder: (
+                                context,
+                                index,
+                              ) {
+                                final imageItem =
+                                    imageProvider
+                                        .selectedImages[
+                                    index];
 
-                    // ==================================================
-                    // BOTTOM TOOLBAR
-                    // ==================================================
+                                return _buildReorderableRowItem(
+                                  imageItem,
+                                  index,
+                                );
+                              },
+                            )
+                          : GridView.builder(
+                              padding: EdgeInsets.all(
+                                ResponsiveHelper
+                                    .getGridSpacing(
+                                  context,
+                                ),
+                              ),
+                              gridDelegate:
+                                  SliverGridDelegateWithFixedCrossAxisCount(
+                                crossAxisCount:
+                                    ResponsiveHelper
+                                        .getGridCrossAxisCount(
+                                  context,
+                                ),
+                                crossAxisSpacing:
+                                    ResponsiveHelper
+                                        .getGridSpacing(
+                                  context,
+                                ),
+                                mainAxisSpacing:
+                                    ResponsiveHelper
+                                        .getGridSpacing(
+                                  context,
+                                ),
+                                childAspectRatio:
+                                    _isPpt ? 1.55 : 0.82,
+                              ),
+                              itemCount: imageProvider
+                                  .selectedImages.length,
+                              itemBuilder: (
+                                context,
+                                index,
+                              ) {
+                                final imageItem =
+                                    imageProvider
+                                        .selectedImages[
+                                    index];
+
+                                return _buildImageItem(
+                                  imageItem,
+                                  index,
+                                );
+                              },
+                            ),
+                    ),
 
                     SafeArea(
                       top: false,
-                      child:
-                          _buildBottomToolbar(
+                      child: _buildBottomToolbar(
                         isDark,
                       ),
                     ),
@@ -807,32 +656,25 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
             if (_isSaving)
               Container(
-                color:
-                    Colors.black45,
+                color: Colors.black45,
                 child: const Center(
                   child: Card(
                     child: Padding(
-                      padding:
-                          EdgeInsets.all(24),
+                      padding: EdgeInsets.all(24),
                       child: Column(
                         mainAxisSize:
                             MainAxisSize.min,
                         children: [
                           CircularProgressIndicator(
                             color:
-                                AppTheme
-                                    .primaryColor,
+                                AppTheme.primaryColor,
                           ),
-                          SizedBox(
-                            height: 16,
-                          ),
+                          SizedBox(height: 16),
                           Text(
                             'Saving document changes...',
-                            style:
-                                TextStyle(
+                            style: TextStyle(
                               fontWeight:
-                                  FontWeight
-                                      .w600,
+                                  FontWeight.w600,
                             ),
                           ),
                         ],
@@ -856,64 +698,46 @@ class _ReviewScreenState extends State<ReviewScreen> {
   ) {
     return Center(
       child: Padding(
-        padding:
-            const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(24),
         child: Column(
           mainAxisAlignment:
               MainAxisAlignment.center,
           children: [
             Icon(
               _isPpt
-                  ? Icons
-                      .slideshow_outlined
-                  : Icons
-                      .image_not_supported,
+                  ? Icons.slideshow_outlined
+                  : Icons.image_not_supported,
               size: 60,
-              color: colorScheme
-                  .onSurface
-                  .withValues(
-                alpha: 0.3,
-              ),
+              color: colorScheme.onSurface
+                  .withValues(alpha: 0.3),
             ),
 
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
 
             Text(
-              'No $_itemLabelSingular'
-              '${_isPpt ? 's' : 's'} in document',
+              'No $_itemLabel in document',
               style: TextStyle(
                 fontSize: 16,
-                color: colorScheme
-                    .onSurface
-                    .withValues(
-                  alpha: 0.6,
-                ),
+                color: colorScheme.onSurface
+                    .withValues(alpha: 0.6),
               ),
             ),
 
-            const SizedBox(
-              height: 16,
-            ),
+            const SizedBox(height: 16),
 
             ElevatedButton.icon(
               onPressed:
                   _showAddImagesBottomSheet,
               icon: const Icon(
-                Icons
-                    .add_photo_alternate_rounded,
+                Icons.add_photo_alternate_rounded,
               ),
               label: Text(
                 'Add $_itemLabel',
               ),
-              style:
-                  ElevatedButton.styleFrom(
+              style: ElevatedButton.styleFrom(
                 backgroundColor:
-                    _effectiveType
-                        .badgeColor,
-                foregroundColor:
-                    Colors.white,
+                    _effectiveType.badgeColor,
+                foregroundColor: Colors.white,
               ),
             ),
           ],
@@ -931,13 +755,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
   ) {
     return Container(
       padding: EdgeInsets.all(
-        ResponsiveHelper
-            .getResponsivePadding(
+        ResponsiveHelper.getResponsivePadding(
           context,
         ),
       ),
-      decoration:
-          BoxDecoration(
+      decoration: BoxDecoration(
         color: isDark
             ? AppTheme.surfaceDark
             : AppTheme.surfaceLight,
@@ -950,44 +772,32 @@ class _ReviewScreenState extends State<ReviewScreen> {
         ),
         boxShadow: [
           BoxShadow(
-            color:
-                Colors.black.withValues(
-              alpha:
-                  isDark ? 0.2 : 0.05,
+            color: Colors.black.withValues(
+              alpha: isDark ? 0.2 : 0.05,
             ),
             blurRadius: 8,
-            offset:
-                const Offset(0, -2),
+            offset: const Offset(0, -2),
           ),
         ],
       ),
       child: Column(
-        mainAxisSize:
-            MainAxisSize.min,
+        mainAxisSize: MainAxisSize.min,
         children: [
-          // ======================================================
-          // ACTION BUTTONS
-          // ======================================================
-
           Row(
             children: [
-              // ADD
               Expanded(
-                child:
-                    OutlinedButton.icon(
+                child: OutlinedButton.icon(
                   onPressed:
                       _showAddImagesBottomSheet,
                   icon: const Icon(
                     Icons.add_rounded,
                     size: 18,
                   ),
-                  label:
-                      const Text('Add'),
+                  label: const Text('Add'),
                   style:
                       OutlinedButton.styleFrom(
                     padding:
-                        const EdgeInsets
-                            .symmetric(
+                        const EdgeInsets.symmetric(
                       vertical: 8,
                     ),
                     shape:
@@ -1001,22 +811,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
               ),
 
-              const SizedBox(
-                width: 8,
-              ),
+              const SizedBox(width: 8),
 
-              // REORDER
               Expanded(
-                child:
-                    OutlinedButton.icon(
+                child: OutlinedButton.icon(
                   onPressed:
                       _toggleReorderMode,
                   icon: Icon(
                     _isReordering
-                        ? Icons
-                            .check_rounded
-                        : Icons
-                            .swap_vert_rounded,
+                        ? Icons.check_rounded
+                        : Icons.swap_vert_rounded,
                     size: 18,
                   ),
                   label: Text(
@@ -1027,8 +831,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                   style:
                       OutlinedButton.styleFrom(
                     padding:
-                        const EdgeInsets
-                            .symmetric(
+                        const EdgeInsets.symmetric(
                       vertical: 8,
                     ),
                     backgroundColor:
@@ -1050,29 +853,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 ),
               ),
 
-              const SizedBox(
-                width: 8,
-              ),
+              const SizedBox(width: 8),
 
-              // PREVIEW
               Expanded(
-                child:
-                    OutlinedButton.icon(
-                  onPressed:
-                      _openPreview,
+                child: OutlinedButton.icon(
+                  onPressed: _openPreview,
                   icon: const Icon(
                     Icons.preview_rounded,
                     size: 18,
                   ),
-                  label:
-                      const Text(
-                    'Preview',
-                  ),
+                  label: const Text('Preview'),
                   style:
                       OutlinedButton.styleFrom(
                     padding:
-                        const EdgeInsets
-                            .symmetric(
+                        const EdgeInsets.symmetric(
                       vertical: 8,
                     ),
                     shape:
@@ -1088,32 +882,20 @@ class _ReviewScreenState extends State<ReviewScreen> {
             ],
           ),
 
-          const SizedBox(
-            height: 10,
-          ),
-
-          // ======================================================
-          // GENERATE BUTTON
-          // ======================================================
+          const SizedBox(height: 10),
 
           SizedBox(
-            width:
-                double.infinity,
-            height:
-                ResponsiveHelper
-                    .getResponsiveButtonHeight(
+            width: double.infinity,
+            height: ResponsiveHelper
+                .getResponsiveButtonHeight(
               context,
             ),
-            child:
-                ElevatedButton.icon(
-              onPressed:
-                  _generateDocument,
+            child: ElevatedButton.icon(
+              onPressed: _generateDocument,
               icon: Icon(
                 _isEditingExisting
-                    ? Icons
-                        .save_rounded
-                    : _effectiveType
-                        .icon,
+                    ? Icons.save_rounded
+                    : _effectiveType.icon,
               ),
               label: Text(
                 _isEditingExisting
@@ -1121,34 +903,24 @@ class _ReviewScreenState extends State<ReviewScreen> {
                     : 'Generate '
                         '${_effectiveType.shortName}',
                 style: TextStyle(
-                  fontSize:
-                      ResponsiveHelper
-                          .getResponsiveFontSize(
+                  fontSize: ResponsiveHelper
+                      .getResponsiveFontSize(
                     context,
                     mobileSize: 14,
                     tabletSize: 16,
                     desktopSize: 18,
                   ),
-                  fontWeight:
-                      FontWeight.w700,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              style:
-                  ElevatedButton.styleFrom(
-                backgroundColor:
-                    _isEditingExisting
-                        ? AppTheme
-                            .primaryColor
-                        : _effectiveType
-                            .badgeColor,
-                foregroundColor:
-                    Colors.white,
-                shape:
-                    RoundedRectangleBorder(
+              style: ElevatedButton.styleFrom(
+                backgroundColor: _isEditingExisting
+                    ? AppTheme.primaryColor
+                    : _effectiveType.badgeColor,
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
                   borderRadius:
-                      BorderRadius.circular(
-                    12,
-                  ),
+                      BorderRadius.circular(12),
                 ),
               ),
             ),
@@ -1170,26 +942,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
         _isPpt ? 'Slide' : '';
 
     return Card(
-      clipBehavior:
-          Clip.antiAlias,
-      shape:
-          RoundedRectangleBorder(
+      clipBehavior: Clip.antiAlias,
+      shape: RoundedRectangleBorder(
         borderRadius:
-            BorderRadius.circular(
-          14,
-        ),
+            BorderRadius.circular(14),
       ),
       elevation: 2,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // ======================================================
-          // IMAGE
-          // ======================================================
-
           GestureDetector(
-            onTap: () =>
-                _openImageEditor(
+            onTap: () => _openImageEditor(
               imageItem.id,
               imageItem.filePath,
               index,
@@ -1197,9 +960,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
             child: Container(
               color: Colors.white,
               child: Image.file(
-                File(
-                  imageItem.filePath,
-                ),
+                File(imageItem.filePath),
                 fit: _isPpt
                     ? BoxFit.contain
                     : BoxFit.cover,
@@ -1207,19 +968,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 cacheHeight: 500,
                 filterQuality:
                     FilterQuality.medium,
-                errorBuilder:
-                    (
+                errorBuilder: (
                   context,
                   error,
                   stackTrace,
                 ) {
                   return const Center(
                     child: Icon(
-                      Icons
-                          .broken_image_outlined,
+                      Icons.broken_image_outlined,
                       size: 42,
-                      color:
-                          Colors.grey,
+                      color: Colors.grey,
                     ),
                   );
                 },
@@ -1236,31 +994,23 @@ class _ReviewScreenState extends State<ReviewScreen> {
             left: 8,
             child: Container(
               padding:
-                  const EdgeInsets
-                      .symmetric(
+                  const EdgeInsets.symmetric(
                 horizontal: 8,
                 vertical: 4,
               ),
-              decoration:
-                  BoxDecoration(
+              decoration: BoxDecoration(
                 color:
-                    _effectiveType
-                        .badgeColor,
+                    _effectiveType.badgeColor,
                 borderRadius:
-                    BorderRadius.circular(
-                  8,
-                ),
+                    BorderRadius.circular(8),
               ),
               child: Text(
                 itemLabel.isNotEmpty
                     ? '$itemLabel ${index + 1}'
                     : '${index + 1}',
-                style:
-                    const TextStyle(
-                  color:
-                      Colors.white,
-                  fontWeight:
-                      FontWeight.bold,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontWeight: FontWeight.bold,
                   fontSize: 12,
                 ),
               ),
@@ -1274,30 +1024,22 @@ class _ReviewScreenState extends State<ReviewScreen> {
           Positioned(
             top: 8,
             right: 8,
-            child:
-                GestureDetector(
-              onTap: () =>
-                  _removeImage(
+            child: GestureDetector(
+              onTap: () => _removeImage(
                 imageItem.id,
               ),
-              child:
-                  Container(
+              child: Container(
                 padding:
-                    const EdgeInsets
-                        .all(5),
+                    const EdgeInsets.all(5),
                 decoration:
                     const BoxDecoration(
                   color:
-                      AppTheme
-                          .errorColor,
-                  shape:
-                      BoxShape.circle,
+                      AppTheme.errorColor,
+                  shape: BoxShape.circle,
                 ),
-                child:
-                    const Icon(
+                child: const Icon(
                   Icons.close,
-                  color:
-                      Colors.white,
+                  color: Colors.white,
                   size: 15,
                 ),
               ),
@@ -1311,37 +1053,26 @@ class _ReviewScreenState extends State<ReviewScreen> {
           Positioned(
             bottom: 8,
             left: 8,
-            child:
-                GestureDetector(
-              onTap: () =>
-                  _openImageEditor(
+            child: GestureDetector(
+              onTap: () => _openImageEditor(
                 imageItem.id,
                 imageItem.filePath,
                 index,
               ),
-              child:
-                  Container(
+              child: Container(
                 padding:
-                    const EdgeInsets
-                        .symmetric(
+                    const EdgeInsets.symmetric(
                   horizontal: 8,
                   vertical: 4,
                 ),
                 decoration:
                     BoxDecoration(
-                  color: Colors
-                      .black
-                      .withValues(
-                    alpha: 0.70,
-                  ),
+                  color: Colors.black
+                      .withValues(alpha: 0.70),
                   borderRadius:
-                      BorderRadius.circular(
-                    8,
-                  ),
-                  border:
-                      Border.all(
-                    color:
-                        Colors.white24,
+                      BorderRadius.circular(8),
+                  border: Border.all(
+                    color: Colors.white24,
                   ),
                 ),
                 child: const Row(
@@ -1349,25 +1080,18 @@ class _ReviewScreenState extends State<ReviewScreen> {
                       MainAxisSize.min,
                   children: [
                     Icon(
-                      Icons
-                          .tune_rounded,
-                      color:
-                          Colors.white,
+                      Icons.tune_rounded,
+                      color: Colors.white,
                       size: 13,
                     ),
-                    SizedBox(
-                      width: 4,
-                    ),
+                    SizedBox(width: 4),
                     Text(
                       'Edit',
-                      style:
-                          TextStyle(
-                        color:
-                            Colors.white,
+                      style: TextStyle(
+                        color: Colors.white,
                         fontSize: 11,
                         fontWeight:
-                            FontWeight
-                                .w600,
+                            FontWeight.w600,
                       ),
                     ),
                   ],
@@ -1383,54 +1107,38 @@ class _ReviewScreenState extends State<ReviewScreen> {
           Positioned(
             bottom: 8,
             right: 8,
-            child:
-                Container(
+            child: Container(
               padding:
-                  const EdgeInsets
-                      .symmetric(
+                  const EdgeInsets.symmetric(
                 horizontal: 6,
                 vertical: 3,
               ),
               decoration:
                   BoxDecoration(
-                color: Colors
-                    .black
-                    .withValues(
-                  alpha: 0.50,
-                ),
+                color: Colors.black
+                    .withValues(alpha: 0.50),
                 borderRadius:
-                    BorderRadius.circular(
-                  6,
-                ),
+                    BorderRadius.circular(6),
               ),
               child: Row(
                 mainAxisSize:
                     MainAxisSize.min,
                 children: [
                   Icon(
-                    imageItem
-                                .source ==
-                            'camera'
-                        ? Icons
-                            .camera_alt_rounded
-                        : Icons
-                            .photo_library_rounded,
+                    imageItem.source == 'camera'
+                        ? Icons.camera_alt_rounded
+                        : Icons.photo_library_rounded,
                     size: 11,
-                    color:
-                        Colors.white70,
+                    color: Colors.white70,
                   ),
-                  const SizedBox(
-                    width: 3,
-                  ),
+                  const SizedBox(width: 3),
                   Text(
-                    imageItem.source ==
-                            'camera'
+                    imageItem.source == 'camera'
                         ? 'Cam'
                         : 'Gal',
                     style:
                         const TextStyle(
-                      color:
-                          Colors.white70,
+                      color: Colors.white70,
                       fontSize: 10,
                       fontWeight:
                           FontWeight.w500,
@@ -1454,13 +1162,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
     int index,
   ) {
     final isDark =
-        Theme.of(context)
-                .brightness ==
+        Theme.of(context).brightness ==
             Brightness.dark;
 
     return Card(
-      key:
-          ValueKey(imageItem.id),
+      key: ValueKey(imageItem.id),
       margin:
           const EdgeInsets.symmetric(
         vertical: 4,
@@ -1468,25 +1174,17 @@ class _ReviewScreenState extends State<ReviewScreen> {
       shape:
           RoundedRectangleBorder(
         borderRadius:
-            BorderRadius.circular(
-          12,
-        ),
+            BorderRadius.circular(12),
       ),
       color: isDark
           ? AppTheme.surfaceDark
           : AppTheme.surfaceLight,
       child: ListTile(
-        leading:
-            ClipRRect(
+        leading: ClipRRect(
           borderRadius:
-              BorderRadius.circular(
-            8,
-          ),
-          child:
-              Image.file(
-            File(
-              imageItem.filePath,
-            ),
+              BorderRadius.circular(8),
+          child: Image.file(
+            File(imageItem.filePath),
             width: 48,
             height: 48,
             fit: _isPpt
@@ -1494,17 +1192,14 @@ class _ReviewScreenState extends State<ReviewScreen> {
                 : BoxFit.cover,
             cacheWidth: 96,
             cacheHeight: 96,
-            errorBuilder:
-                (
+            errorBuilder: (
               context,
               error,
               stackTrace,
             ) {
               return const Icon(
-                Icons
-                    .broken_image_outlined,
-                color:
-                    Colors.grey,
+                Icons.broken_image_outlined,
+                color: Colors.grey,
               );
             },
           ),
@@ -1512,43 +1207,31 @@ class _ReviewScreenState extends State<ReviewScreen> {
 
         title: Text(
           '$_itemLabelSingular ${index + 1}',
-          style:
-              const TextStyle(
-            fontWeight:
-                FontWeight.w600,
+          style: const TextStyle(
+            fontWeight: FontWeight.w600,
             fontSize: 14,
           ),
         ),
 
         subtitle: Text(
-          imageItem.source ==
-                  'camera'
+          imageItem.source == 'camera'
               ? 'Camera'
               : 'Gallery',
           style: TextStyle(
             fontSize: 12,
-            color: Theme.of(
-              context,
-            )
+            color: Theme.of(context)
                 .colorScheme
                 .onSurface
-                .withValues(
-              alpha: 0.6,
-            ),
+                .withValues(alpha: 0.6),
           ),
         ),
 
-        trailing:
-            Row(
-          mainAxisSize:
-              MainAxisSize.min,
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // EDIT
             IconButton(
-              icon:
-                  const Icon(
-                Icons
-                    .tune_rounded,
+              icon: const Icon(
+                Icons.tune_rounded,
                 size: 20,
               ),
               tooltip:
@@ -1561,15 +1244,11 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ),
             ),
 
-            // DELETE
             IconButton(
-              icon:
-                  const Icon(
-                Icons
-                    .delete_outline_rounded,
+              icon: const Icon(
+                Icons.delete_outline_rounded,
                 size: 20,
-                color: AppTheme
-                    .errorColor,
+                color: AppTheme.errorColor,
               ),
               tooltip:
                   'Delete $_itemLabelSingular',
@@ -1579,21 +1258,16 @@ class _ReviewScreenState extends State<ReviewScreen> {
               ),
             ),
 
-            // DRAG HANDLE
             ReorderableDragStartListener(
               index: index,
-              child:
-                  const Padding(
+              child: const Padding(
                 padding:
                     EdgeInsets.symmetric(
                   horizontal: 8,
                 ),
-                child:
-                    Icon(
-                  Icons
-                      .drag_handle_rounded,
-                  color:
-                      Colors.grey,
+                child: Icon(
+                  Icons.drag_handle_rounded,
+                  color: Colors.grey,
                 ),
               ),
             ),
