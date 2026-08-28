@@ -576,8 +576,7 @@ class _ReviewScreenState extends State<ReviewScreen> {
                               ),
                               itemCount: imageProvider
                                   .selectedImages.length,
-                                onReorderItem:
-                                  _reorderImages,
+                              onReorder: _reorderImages,
                               itemBuilder: (
                                 context,
                                 index,
