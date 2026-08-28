@@ -153,23 +153,23 @@ class HomeScreen extends StatelessWidget {
                 // =================================================================
 
                 Text(
-                  'Transform',
+                  'Choose',
                   style: TextStyle(
                     fontSize: isMobile ? 38 : 48,
                     fontWeight: FontWeight.w900,
                     height: 1.05,
-                    letterSpacing: -1.8,
+                    // letterSpacing: -1.8,
                     color: primaryText,
                   ),
                 ),
 
                 Text(
-                  'Generate',
+                  'Transform &',
                   style: TextStyle(
                     fontSize: isMobile ? 38 : 48,
                     fontWeight: FontWeight.w900,
                     height: 1.05,
-                    letterSpacing: -1.8,
+                    // letterSpacing: 0.2,
                     color: primaryText,
                   ),
                 ),
@@ -185,12 +185,12 @@ class HomeScreen extends StatelessWidget {
                     ).createShader(bounds);
                   },
                   child: Text(
-                    'Export.',
+                    'Share.',
                     style: TextStyle(
                       fontSize: isMobile ? 38 : 48,
                       fontWeight: FontWeight.w900,
                       height: 1.05,
-                      letterSpacing: -1.8,
+                      // letterSpacing: -1.8,
                       color: Colors.white,
                     ),
                   ),
@@ -336,15 +336,15 @@ class HomeScreen extends StatelessWidget {
                 // ALL FILES
                 // =================================================================
 
-                _buildAllFilesCard(
-                  context,
-                  isDark: isDark,
-                  isMobile: isMobile,
-                  primaryText: primaryText,
-                  secondaryText: secondaryText,
-                ),
+                // _buildAllFilesCard(
+                //   context,
+                //   isDark: isDark,
+                //   isMobile: isMobile,
+                //   primaryText: primaryText,
+                //   secondaryText: secondaryText,
+                // ),
 
-                const SizedBox(height: 20),
+                // const SizedBox(height: 20),
               ],
             ),
           ),

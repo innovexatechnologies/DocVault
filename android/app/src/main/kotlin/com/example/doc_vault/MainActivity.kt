@@ -12,8 +12,8 @@ import java.io.IOException
 class MainActivity : FlutterActivity() {
 
     companion object {
-        private const val PDF_CHANNEL = "docvault/pdf_intent"
-        private const val OFFICE_CHANNEL = "docvault/office_renderer"
+        private const val DOCUMENT_CHANNEL =
+            "docvault/pdf_intent"
     }
 
     // =========================================================================
@@ -25,26 +25,25 @@ class MainActivity : FlutterActivity() {
     ) {
         super.configureFlutterEngine(flutterEngine)
 
-        setupPdfIntentChannel(flutterEngine)
-        setupOfficeRendererChannel(flutterEngine)
+        setupDocumentChannel(flutterEngine)
     }
 
     // =========================================================================
-    // PDF / EXTERNAL DOCUMENT CHANNEL
+    // DOCUMENT CHANNEL
     // =========================================================================
 
-    private fun setupPdfIntentChannel(
+    private fun setupDocumentChannel(
         flutterEngine: FlutterEngine
     ) {
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-            PDF_CHANNEL
+            DOCUMENT_CHANNEL
         ).setMethodCallHandler { call, result ->
 
             when (call.method) {
 
                 // =============================================================
-                // INITIAL EXTERNAL DOCUMENT
+                // GET INITIAL EXTERNAL DOCUMENT
                 // =============================================================
 
                 "getInitialDocument",
@@ -58,15 +57,8 @@ class MainActivity : FlutterActivity() {
                             return@setMethodCallHandler
                         }
 
-                        val fileName = getFileName(uri)
-                        val mimeType = getMimeType(uri, fileName)
-
                         result.success(
-                            mapOf(
-                                "uri" to uri.toString(),
-                                "fileName" to fileName,
-                                "mimeType" to mimeType
-                            )
+                            createDocumentMap(uri)
                         )
 
                     } catch (e: Exception) {
@@ -74,73 +66,61 @@ class MainActivity : FlutterActivity() {
                         result.error(
                             "INITIAL_DOCUMENT_ERROR",
                             e.message
-                                ?: "Failed to get initial document.",
+                                ?: "Unable to open document.",
                             null
                         )
                     }
                 }
 
                 // =============================================================
-                // READ EXTERNAL DOCUMENT
+                // READ DOCUMENT BYTES
                 // =============================================================
 
                 "readDocument",
                 "readPdf" -> {
 
                     try {
-
                         val uriString =
                             call.argument<String>("uri")
 
                         if (uriString.isNullOrBlank()) {
+
                             result.error(
                                 "INVALID_URI",
                                 "Document URI is missing.",
                                 null
                             )
+
                             return@setMethodCallHandler
                         }
 
-                        val uri = Uri.parse(uriString)
+                        val uri =
+                            Uri.parse(uriString)
 
-                        // -----------------------------------------------------
-                        // Verify URI
-                        // -----------------------------------------------------
+                        val bytes =
+                            readDocumentBytes(uri)
 
-                        if (!isReadableUri(uri)) {
-                            result.error(
-                                "INVALID_URI",
-                                "The document URI cannot be accessed.",
-                                null
-                            )
-                            return@setMethodCallHandler
-                        }
+                        if (bytes == null ||
+                            bytes.isEmpty()
+                        ) {
 
-                        // -----------------------------------------------------
-                        // Read bytes
-                        // -----------------------------------------------------
-
-                        val bytes = readDocumentBytes(uri)
-
-                        if (bytes == null || bytes.isEmpty()) {
                             result.error(
                                 "READ_ERROR",
-                                "Unable to read document or document is empty.",
+                                "Unable to read document.",
                                 null
                             )
+
                             return@setMethodCallHandler
                         }
 
-                        // -----------------------------------------------------
-                        // File information
-                        // -----------------------------------------------------
+                        val fileName =
+                            getFileName(uri)
 
-                        val fileName = getFileName(uri)
-                        val mimeType = getMimeType(uri, fileName)
-
-                        // -----------------------------------------------------
-                        // Return to Flutter
-                        // -----------------------------------------------------
+                        val mimeType =
+                            getMimeType(
+                                uri,
+                                fileName
+                            )
 
                         result.success(
                             mapOf(
@@ -163,7 +143,7 @@ class MainActivity : FlutterActivity() {
                         result.error(
                             "READ_ERROR",
                             e.message
-                                ?: "I/O error while reading document.",
+                                ?: "Unable to read document.",
                             null
                         )
 
@@ -172,69 +152,10 @@ class MainActivity : FlutterActivity() {
                         result.error(
                             "READ_ERROR",
                             e.message
-                                ?: "Failed to read external document.",
+                                ?: "Failed to open document.",
                             null
                         )
                     }
-                }
-
-                // =============================================================
-                // UNKNOWN METHOD
-                // =============================================================
-
-                else -> {
-                    result.notImplemented()
-                }
-            }
-        }
-    }
-
-    // =========================================================================
-    // OFFICE RENDERER CHANNEL
-    // =========================================================================
-
-    private fun setupOfficeRendererChannel(
-        flutterEngine: FlutterEngine
-    ) {
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            OFFICE_CHANNEL
-        ).setMethodCallHandler { call, result ->
-
-            when (call.method) {
-
-                "convertOfficeToPdf" -> {
-
-                    val inputPath =
-                        call.argument<String>("inputPath")
-
-                    val outputPath =
-                        call.argument<String>("outputPath")
-
-                    if (
-                        inputPath.isNullOrBlank() ||
-                        outputPath.isNullOrBlank()
-                    ) {
-                        result.error(
-                            "INVALID_ARGUMENT",
-                            "Input or output path is missing.",
-                            null
-                        )
-                        return@setMethodCallHandler
-                    }
-
-                    // ---------------------------------------------------------
-                    // No native Office engine currently installed.
-                    //
-                    // This does NOT affect external document importing.
-                    // File import is handled through PDF_CHANNEL above.
-                    // ---------------------------------------------------------
-
-                    result.error(
-                        "OFFICE_ENGINE_NOT_INSTALLED",
-                        "Android Office rendering engine is not installed.",
-                        null
-                    )
                 }
 
                 else -> {
@@ -253,10 +174,10 @@ class MainActivity : FlutterActivity() {
     ) {
         super.onNewIntent(intent)
 
-        // Update Activity's current intent.
         setIntent(intent)
 
-        val uri = getDocumentUri(intent)
+        val uri =
+            getDocumentUri(intent)
 
         if (uri != null) {
             sendDocumentToFlutter(uri)
@@ -264,28 +185,47 @@ class MainActivity : FlutterActivity() {
     }
 
     // =========================================================================
-    // SEND NEW DOCUMENT TO FLUTTER
+    // SEND DOCUMENT TO FLUTTER
     // =========================================================================
 
     private fun sendDocumentToFlutter(
         uri: Uri
     ) {
-        val engine = flutterEngine
-            ?: return
 
-        val fileName = getFileName(uri)
-        val mimeType = getMimeType(uri, fileName)
+        val engine =
+            flutterEngine
+                ?: return
 
         MethodChannel(
             engine.dartExecutor.binaryMessenger,
-            PDF_CHANNEL
+            DOCUMENT_CHANNEL
         ).invokeMethod(
             "newDocument",
-            mapOf(
-                "uri" to uri.toString(),
-                "fileName" to fileName,
-                "mimeType" to mimeType
+            createDocumentMap(uri)
+        )
+    }
+
+    // =========================================================================
+    // CREATE DOCUMENT MAP
+    // =========================================================================
+
+    private fun createDocumentMap(
+        uri: Uri
+    ): Map<String, String> {
+
+        val fileName =
+            getFileName(uri)
+
+        val mimeType =
+            getMimeType(
+                uri,
+                fileName
             )
+
+        return mapOf(
+            "uri" to uri.toString(),
+            "fileName" to fileName,
+            "mimeType" to mimeType
         )
     }
 
@@ -301,18 +241,43 @@ class MainActivity : FlutterActivity() {
             return null
         }
 
-        val action = currentIntent.action
+        val action =
+            currentIntent.action
 
-        // Support Android VIEW intent.
         if (action != Intent.ACTION_VIEW) {
             return null
         }
 
-        val uri = currentIntent.data
-            ?: return null
+        val uri =
+            currentIntent.data
+                ?: return null
 
-        if (!isSupportedDocument(currentIntent, uri)) {
+        if (!isSupportedDocument(uri)) {
             return null
+        }
+
+        // Try to persist permission for content URI.
+        if (uri.scheme.equals(
+                "content",
+                ignoreCase = true
+            )
+        ) {
+
+            try {
+
+                contentResolver.takePersistableUriPermission(
+                    uri,
+                    currentIntent.flags and
+                            (
+                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                            )
+                )
+
+            } catch (_: Exception) {
+                // Some providers don't support persistable permissions.
+                // Temporary permission is still used.
+            }
         }
 
         return uri
@@ -323,108 +288,48 @@ class MainActivity : FlutterActivity() {
     // =========================================================================
 
     private fun isSupportedDocument(
-        currentIntent: Intent,
         uri: Uri
     ): Boolean {
 
-        // ---------------------------------------------------------------------
-        // MIME TYPE
-        // ---------------------------------------------------------------------
+        val fileName =
+            getFileName(uri)
+                .lowercase()
 
-        val intentMimeType =
-            currentIntent.type
-                ?.lowercase()
-                ?.trim()
-
-        if (!intentMimeType.isNullOrEmpty()) {
-
-            if (
-                intentMimeType == "application/pdf" ||
-
-                intentMimeType ==
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-
-                intentMimeType ==
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-
-                intentMimeType ==
-                "application/msword" ||
-
-                intentMimeType ==
-                "application/vnd.ms-powerpoint"
-            ) {
-                return true
-            }
-
-            if (
-                intentMimeType.contains("pdf") ||
-                intentMimeType.contains("word") ||
-                intentMimeType.contains("document") ||
-                intentMimeType.contains("presentation") ||
-                intentMimeType.contains("powerpoint")
-            ) {
-                return true
-            }
+        if (
+            fileName.endsWith(".pdf") ||
+            fileName.endsWith(".docx") ||
+            fileName.endsWith(".pptx") ||
+            fileName.endsWith(".doc") ||
+            fileName.endsWith(".ppt")
+        ) {
+            return true
         }
 
-        // ---------------------------------------------------------------------
-        // CONTENT RESOLVER MIME TYPE
-        // ---------------------------------------------------------------------
-
-        try {
-
-            val resolverMimeType =
-                contentResolver.getType(uri)
+        val mimeType =
+            try {
+                contentResolver
+                    .getType(uri)
                     ?.lowercase()
                     ?.trim()
-
-            if (!resolverMimeType.isNullOrEmpty()) {
-
-                if (
-                    resolverMimeType == "application/pdf" ||
-
-                    resolverMimeType ==
-                    "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-
-                    resolverMimeType ==
-                    "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
-
-                    resolverMimeType ==
-                    "application/msword" ||
-
-                    resolverMimeType ==
-                    "application/vnd.ms-powerpoint"
-                ) {
-                    return true
-                }
-
-                if (
-                    resolverMimeType.contains("pdf") ||
-                    resolverMimeType.contains("word") ||
-                    resolverMimeType.contains("document") ||
-                    resolverMimeType.contains("presentation") ||
-                    resolverMimeType.contains("powerpoint")
-                ) {
-                    return true
-                }
+            } catch (_: Exception) {
+                null
             }
 
-        } catch (_: Exception) {
-            // Continue with extension check.
+        if (mimeType.isNullOrBlank()) {
+            return false
         }
 
-        // ---------------------------------------------------------------------
-        // FILE EXTENSION
-        // ---------------------------------------------------------------------
+        return mimeType == "application/pdf" ||
 
-        val fileName =
-            getFileName(uri).lowercase()
+                mimeType.contains("pdf") ||
 
-        return fileName.endsWith(".pdf") ||
-                fileName.endsWith(".docx") ||
-                fileName.endsWith(".pptx") ||
-                fileName.endsWith(".doc") ||
-                fileName.endsWith(".ppt")
+                mimeType.contains("word") ||
+
+                mimeType.contains("document") ||
+
+                mimeType.contains("presentation") ||
+
+                mimeType.contains("powerpoint")
     }
 
     // =========================================================================
@@ -437,9 +342,13 @@ class MainActivity : FlutterActivity() {
 
         return try {
 
-            when (uri.scheme?.lowercase()) {
+            when (
+                uri.scheme
+                    ?.lowercase()
+            ) {
 
                 "content" -> {
+
                     contentResolver
                         .openInputStream(uri)
                         ?.use { inputStream ->
@@ -448,17 +357,26 @@ class MainActivity : FlutterActivity() {
                 }
 
                 "file" -> {
+
                     val path =
                         uri.path
                             ?: return null
 
-                    java.io.File(path)
-                        .takeIf { it.exists() }
-                        ?.readBytes()
+                    val file =
+                        java.io.File(path)
+
+                    if (
+                        file.exists() &&
+                        file.canRead()
+                    ) {
+                        file.readBytes()
+                    } else {
+                        null
+                    }
                 }
 
                 else -> {
-                    // Try ContentResolver for unknown URI schemes.
+
                     contentResolver
                         .openInputStream(uri)
                         ?.use { inputStream ->
@@ -473,53 +391,6 @@ class MainActivity : FlutterActivity() {
     }
 
     // =========================================================================
-    // CHECK URI READABILITY
-    // =========================================================================
-
-    private fun isReadableUri(
-        uri: Uri
-    ): Boolean {
-
-        return try {
-
-            when (uri.scheme?.lowercase()) {
-
-                "content" -> {
-                    contentResolver
-                        .openAssetFileDescriptor(
-                            uri,
-                            "r"
-                        )
-                        ?.use {
-                            true
-                        }
-                        ?: false
-                }
-
-                "file" -> {
-                    val path =
-                        uri.path
-                            ?: return false
-
-                    java.io.File(path).canRead()
-                }
-
-                else -> {
-                    contentResolver
-                        .openInputStream(uri)
-                        ?.use {
-                            true
-                        }
-                        ?: false
-                }
-            }
-
-        } catch (_: Exception) {
-            false
-        }
-    }
-
-    // =========================================================================
     // GET FILE NAME
     // =========================================================================
 
@@ -527,20 +398,23 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ): String {
 
-        // ---------------------------------------------------------------------
+        // =============================================================
         // CONTENT URI
-        // ---------------------------------------------------------------------
+        // =============================================================
 
-        if (uri.scheme?.equals(
+        if (
+            uri.scheme.equals(
                 "content",
                 ignoreCase = true
-            ) == true
+            )
         ) {
 
             try {
 
                 val projection =
-                    arrayOf(OpenableColumns.DISPLAY_NAME)
+                    arrayOf(
+                        OpenableColumns.DISPLAY_NAME
+                    )
 
                 val cursor: Cursor? =
                     contentResolver.query(
@@ -573,19 +447,19 @@ class MainActivity : FlutterActivity() {
                 }
 
             } catch (_: Exception) {
-                // Continue with other methods.
+                // Continue to fallback.
             }
         }
 
-        // ---------------------------------------------------------------------
+        // =============================================================
         // FILE URI
-        // ---------------------------------------------------------------------
+        // =============================================================
 
         if (
-            uri.scheme?.equals(
+            uri.scheme.equals(
                 "file",
                 ignoreCase = true
-            ) == true
+            )
         ) {
 
             val path =
@@ -602,9 +476,9 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // ---------------------------------------------------------------------
+        // =============================================================
         // URI LAST SEGMENT
-        // ---------------------------------------------------------------------
+        // =============================================================
 
         val lastSegment =
             uri.lastPathSegment
@@ -618,17 +492,14 @@ class MainActivity : FlutterActivity() {
                     lastSegment
                 }
 
-            if (
-                decoded.contains(".") &&
-                decoded.length > 1
-            ) {
+            if (decoded.isNotBlank()) {
                 return decoded
             }
         }
 
-        // ---------------------------------------------------------------------
-        // MIME TYPE FALLBACK
-        // ---------------------------------------------------------------------
+        // =============================================================
+        // MIME FALLBACK
+        // =============================================================
 
         val mimeType =
             try {
@@ -641,30 +512,19 @@ class MainActivity : FlutterActivity() {
 
         return when {
 
-            mimeType == "application/pdf" ||
-                    mimeType?.contains("pdf") == true ->
+            mimeType?.contains("pdf") == true ->
                 "Imported_Document.pdf"
 
-            mimeType?.contains("wordprocessingml") == true ->
+            mimeType?.contains("word") == true ||
+                    mimeType?.contains("document") == true ->
                 "Imported_Document.docx"
 
-            mimeType?.contains("msword") == true ->
-                "Imported_Document.doc"
-
-            mimeType?.contains("presentationml") == true ->
-                "Imported_Presentation.pptx"
-
-            mimeType?.contains("ms-powerpoint") == true ->
-                "Imported_Presentation.ppt"
-
-            mimeType?.contains("powerpoint") == true ->
-                "Imported_Presentation.pptx"
-
-            mimeType?.contains("presentation") == true ->
+            mimeType?.contains("presentation") == true ||
+                    mimeType?.contains("powerpoint") == true ->
                 "Imported_Presentation.pptx"
 
             else ->
-                "Imported_Document.pdf"
+                "Imported_Document"
         }
     }
 
@@ -677,37 +537,39 @@ class MainActivity : FlutterActivity() {
         fileName: String
     ): String {
 
-        // First use Android ContentResolver.
         try {
 
             val mimeType =
-                contentResolver
-                    .getType(uri)
+                contentResolver.getType(uri)
 
             if (!mimeType.isNullOrBlank()) {
                 return mimeType
             }
 
         } catch (_: Exception) {
-            // Continue with extension detection.
+            // Use extension fallback.
         }
 
-        // Fallback based on file extension.
         return when {
 
-            fileName.lowercase().endsWith(".pdf") ->
+            fileName.lowercase()
+                .endsWith(".pdf") ->
                 "application/pdf"
 
-            fileName.lowercase().endsWith(".docx") ->
+            fileName.lowercase()
+                .endsWith(".docx") ->
                 "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
 
-            fileName.lowercase().endsWith(".pptx") ->
+            fileName.lowercase()
+                .endsWith(".pptx") ->
                 "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
-            fileName.lowercase().endsWith(".doc") ->
+            fileName.lowercase()
+                .endsWith(".doc") ->
                 "application/msword"
 
-            fileName.lowercase().endsWith(".ppt") ->
+            fileName.lowercase()
+                .endsWith(".ppt") ->
                 "application/vnd.ms-powerpoint"
 
             else ->
