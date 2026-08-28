@@ -39,23 +39,45 @@ class _PdfGenerationScreenState
   // GENERATE DOCUMENT
   // ============================================================
 
-  void _startGeneration() {
-    final imagePaths = context
-        .read<ImageSelectionProvider>()
-        .getImageFilePaths();
+void _startGeneration() {
+  final imageProvider =
+      context.read<ImageSelectionProvider>();
 
-    _generationFuture = _documentService
-        .generateDocument(
-          imagePaths: imagePaths,
-          conversionType: widget.conversionType,
-        )
-        .catchError((error) {
-      debugPrint(
-        'Document generation error: $error',
-      );
-      throw error;
-    });
-  }
+  final imagePaths =
+      imageProvider.getImageFilePaths();
+
+  _generationFuture = _documentService
+      .generateDocument(
+        imagePaths: imagePaths,
+        conversionType: widget.conversionType,
+      )
+      .then((result) {
+        // ============================================================
+        // IMPORTANT:
+        // PDF/PPT successfully generated.
+        // Current selection is now finished.
+        //
+        // Clear the provider so the next document starts with
+        // a completely fresh image selection.
+        // ============================================================
+
+        if (mounted) {
+          imageProvider.clearAllImages();
+        }
+
+        return result;
+      })
+      .catchError((error) {
+        debugPrint(
+          'Document generation error: $error',
+        );
+
+        // IMPORTANT:
+        // Do NOT clear images on error.
+        // This allows the user to retry generation.
+        throw error;
+      });
+}
 
   // ============================================================
   // RETRY
