@@ -38,6 +38,10 @@ class MyApp extends StatefulWidget {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
+    static final GlobalKey<ScaffoldMessengerState>
+      scaffoldMessengerKey =
+      GlobalKey<ScaffoldMessengerState>();
+
   @override
   State<MyApp> createState() => _MyAppState();
 }
@@ -284,26 +288,19 @@ class _MyAppState extends State<MyApp> {
         'DocVault: external document import failed: $e',
       );
 
-      if (!mounted) return;
-
-      final context =
-          MyApp.navigatorKey.currentContext;
-
-      if (context != null) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Unable to open document: $e',
-            ),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppTheme.errorColor,
-            shape: RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(12),
-            ),
+      MyApp.scaffoldMessengerKey.currentState?.showSnackBar(
+        SnackBar(
+          content: Text(
+            'Unable to open document: $e',
           ),
-        );
-      }
+          behavior: SnackBarBehavior.floating,
+          backgroundColor: AppTheme.errorColor,
+          shape: RoundedRectangleBorder(
+            borderRadius:
+                BorderRadius.circular(12),
+          ),
+        ),
+      );
     } finally {
       _isOpeningExternalDocument = false;
     }
@@ -338,6 +335,9 @@ class _MyAppState extends State<MyApp> {
         ) {
           return MaterialApp(
             navigatorKey: MyApp.navigatorKey,
+
+            scaffoldMessengerKey:
+              MyApp.scaffoldMessengerKey,
 
             title: 'DocVault',
 

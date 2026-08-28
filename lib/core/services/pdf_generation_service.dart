@@ -1,7 +1,5 @@
 import 'dart:io';
 import 'dart:isolate';
-import 'dart:typed_data';
-
 import 'package:flutter/foundation.dart';
 import 'package:image/image.dart' as img;
 import 'package:pdf/pdf.dart';

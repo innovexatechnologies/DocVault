@@ -982,7 +982,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           horizontal: 12,
         ),
         itemCount: _documentPages.length,
-        separatorBuilder: (_, __) =>
+        separatorBuilder: (_, _) =>
             const SizedBox(width: 8),
 
         itemBuilder: (context, index) {

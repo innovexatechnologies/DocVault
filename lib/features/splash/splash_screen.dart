@@ -3,7 +3,6 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../core/constants/app_constants.dart';
-import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 
 class SplashScreen extends StatefulWidget {
@@ -173,9 +172,6 @@ class _SplashScreenState extends State<SplashScreen>
 
     final purple =
         const Color(0xFF7C3AED);
-
-    final pink =
-        const Color(0xFFEC4899);
 
     final textColor = isDark
         ? Colors.white
