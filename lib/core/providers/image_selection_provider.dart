@@ -1,4 +1,4 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
 
 import '../../models/image_item.dart';
@@ -7,6 +7,8 @@ class ImageSelectionProvider extends ChangeNotifier {
   final List<ImageItem> _selectedImages = [];
 
   bool _hasUnsavedChanges = false;
+
+  static const Uuid _uuid = Uuid();
 
   // ==============================================================
   // GETTERS
@@ -26,22 +28,22 @@ class ImageSelectionProvider extends ChangeNotifier {
   // ==============================================================
 
   void setUnsavedChanges(bool value) {
-    if (_hasUnsavedChanges != value) {
-      _hasUnsavedChanges = value;
-      notifyListeners();
+    if (_hasUnsavedChanges == value) {
+      return;
     }
+
+    _hasUnsavedChanges = value;
+    notifyListeners();
   }
 
   // ==============================================================
-  // START NEW SELECTION
+  // START NEW FILE / NEW CONVERSION
   // ==============================================================
   //
   // IMPORTANT:
+  // Call this BEFORE selecting images for a NEW PDF/DOCX/PPTX.
   //
-  // Call this when the user starts a NEW PDF/DOCX/PPTX conversion.
-  //
-  // This removes images from the previous conversion so they cannot
-  // appear in the new conversion.
+  // This completely removes images from the previous file.
   //
 
   void startNewSelection() {
@@ -55,26 +57,27 @@ class ImageSelectionProvider extends ChangeNotifier {
   // ADD IMAGES
   // ==============================================================
   //
-  // This method adds images without creating duplicates.
+  // Adds images to the CURRENT selection.
   //
-  // If the same file path already exists, it will NOT be added again.
+  // Duplicate file paths are automatically ignored.
   //
+  
 
   void addImages(
     List<String> filePaths,
     String source, {
-    bool markUnsaved = false,
+    bool markUnsaved = true,
   }) {
     if (filePaths.isEmpty) {
       return;
     }
 
-    const uuid = Uuid();
-
     bool changed = false;
 
-    for (final filePath in filePaths) {
-      if (filePath.trim().isEmpty) {
+    for (final rawPath in filePaths) {
+      final filePath = rawPath.trim();
+
+      if (filePath.isEmpty) {
         continue;
       }
 
@@ -90,42 +93,64 @@ class ImageSelectionProvider extends ChangeNotifier {
         continue;
       }
 
-      final imageItem = ImageItem(
-        id: uuid.v4(),
-        filePath: filePath,
-        capturedAt: DateTime.now(),
-        source: source,
+      _selectedImages.add(
+        ImageItem(
+          id: _uuid.v4(),
+          filePath: filePath,
+          capturedAt: DateTime.now(),
+          source: source,
+        ),
       );
-
-      _selectedImages.add(imageItem);
 
       changed = true;
     }
 
-    if (markUnsaved && changed) {
+    if (!changed) {
+      return;
+    }
+
+    if (markUnsaved) {
       _hasUnsavedChanges = true;
     }
 
-    if (changed) {
-      notifyListeners();
-    }
+    notifyListeners();
   }
 
   // ==============================================================
-  // REPLACE IMAGES
+  // REPLACE CURRENT SELECTION
   // ==============================================================
   //
-  // Completely replaces current selection.
+  // Use this when the picker returns the COMPLETE selection.
   //
-  // Useful when image picker returns the complete current selection.
+  // Old images are removed.
   //
 
-  void replaceImages(List<ImageItem> items) {
+  void replaceImages(
+    List<ImageItem> items, {
+    bool markUnsaved = true,
+  }) {
+    final uniquePaths = <String>{};
+    final newImages = <ImageItem>[];
+
+    for (final image in items) {
+      final path = image.filePath.trim();
+
+      if (path.isEmpty) {
+        continue;
+      }
+
+      if (!uniquePaths.add(path)) {
+        continue;
+      }
+
+      newImages.add(image);
+    }
+
     _selectedImages
       ..clear()
-      ..addAll(items);
+      ..addAll(newImages);
 
-    _hasUnsavedChanges = true;
+    _hasUnsavedChanges = markUnsaved;
 
     notifyListeners();
   }
@@ -134,9 +159,10 @@ class ImageSelectionProvider extends ChangeNotifier {
   // REPLACE IMAGES FROM FILE PATHS
   // ==============================================================
   //
-  // Use this when starting a new selection from the image picker.
+  // IMPORTANT:
+  // Use this when selecting images for a NEW/COMPLETE file.
   //
-  // Existing images are removed first.
+  // It ALWAYS replaces the old selection.
   //
 
   void replaceImagesFromPaths(
@@ -144,25 +170,24 @@ class ImageSelectionProvider extends ChangeNotifier {
     String source, {
     bool markUnsaved = true,
   }) {
-    const uuid = Uuid();
-
+    final uniquePaths = <String>{};
     final newImages = <ImageItem>[];
 
-    final uniquePaths = <String>{};
+    for (final rawPath in filePaths) {
+      final filePath = rawPath.trim();
 
-    for (final filePath in filePaths) {
-      if (filePath.trim().isEmpty) {
+      if (filePath.isEmpty) {
         continue;
       }
 
-      // Prevent duplicate paths in the same selection.
+      // Prevent duplicates inside the new selection.
       if (!uniquePaths.add(filePath)) {
         continue;
       }
 
       newImages.add(
         ImageItem(
-          id: uuid.v4(),
+          id: _uuid.v4(),
           filePath: filePath,
           capturedAt: DateTime.now(),
           source: source,
@@ -187,6 +212,12 @@ class ImageSelectionProvider extends ChangeNotifier {
     String imageId,
     String newFilePath,
   ) {
+    final path = newFilePath.trim();
+
+    if (path.isEmpty) {
+      return;
+    }
+
     final index = _selectedImages.indexWhere(
       (image) => image.id == imageId,
     );
@@ -195,27 +226,24 @@ class ImageSelectionProvider extends ChangeNotifier {
       return;
     }
 
-    // ------------------------------------------------------------
-    // Prevent changing to a path that already exists.
-    // ------------------------------------------------------------
-
+    // Prevent duplicate paths.
     final duplicateExists = _selectedImages.any(
       (image) =>
           image.id != imageId &&
-          image.filePath == newFilePath,
+          image.filePath == path,
     );
 
     if (duplicateExists) {
       return;
     }
 
-    final old = _selectedImages[index];
+    final oldImage = _selectedImages[index];
 
     _selectedImages[index] = ImageItem(
-      id: old.id,
-      filePath: newFilePath,
-      capturedAt: old.capturedAt,
-      source: old.source,
+      id: oldImage.id,
+      filePath: path,
+      capturedAt: oldImage.capturedAt,
+      source: oldImage.source,
     );
 
     _hasUnsavedChanges = true;
@@ -234,10 +262,33 @@ class ImageSelectionProvider extends ChangeNotifier {
       (image) => image.id == imageId,
     );
 
-    if (_selectedImages.length != oldLength) {
-      _hasUnsavedChanges = true;
-      notifyListeners();
+    if (_selectedImages.length == oldLength) {
+      return;
     }
+
+    _hasUnsavedChanges = true;
+
+    notifyListeners();
+  }
+
+  // ==============================================================
+  // REMOVE IMAGE BY FILE PATH
+  // ==============================================================
+
+  void removeImageByPath(String filePath) {
+    final oldLength = _selectedImages.length;
+
+    _selectedImages.removeWhere(
+      (image) => image.filePath == filePath,
+    );
+
+    if (_selectedImages.length == oldLength) {
+      return;
+    }
+
+    _hasUnsavedChanges = true;
+
+    notifyListeners();
   }
 
   // ==============================================================
@@ -253,8 +304,8 @@ class ImageSelectionProvider extends ChangeNotifier {
     }
 
     if (oldIndex < 0 ||
-        newIndex < 0 ||
         oldIndex >= _selectedImages.length ||
+        newIndex < 0 ||
         newIndex > _selectedImages.length) {
       return;
     }
@@ -263,24 +314,16 @@ class ImageSelectionProvider extends ChangeNotifier {
       return;
     }
 
-    final reorderedItems =
-        List<ImageItem>.from(_selectedImages);
-
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
 
-    final item =
-        reorderedItems.removeAt(oldIndex);
+    final item = _selectedImages.removeAt(oldIndex);
 
-    reorderedItems.insert(
+    _selectedImages.insert(
       newIndex,
       item,
     );
-
-    _selectedImages
-      ..clear()
-      ..addAll(reorderedItems);
 
     _hasUnsavedChanges = true;
 
@@ -305,9 +348,7 @@ class ImageSelectionProvider extends ChangeNotifier {
 
     final temp = _selectedImages[indexA];
 
-    _selectedImages[indexA] =
-        _selectedImages[indexB];
-
+    _selectedImages[indexA] = _selectedImages[indexB];
     _selectedImages[indexB] = temp;
 
     _hasUnsavedChanges = true;
@@ -326,7 +367,6 @@ class ImageSelectionProvider extends ChangeNotifier {
     }
 
     _selectedImages.clear();
-
     _hasUnsavedChanges = false;
 
     notifyListeners();
@@ -337,8 +377,32 @@ class ImageSelectionProvider extends ChangeNotifier {
   // ==============================================================
 
   List<String> getImageFilePaths() {
-    return _selectedImages
-        .map((image) => image.filePath)
-        .toList();
+    return List<String>.from(
+      _selectedImages.map(
+        (image) => image.filePath,
+      ),
+    );
+  }
+
+  // ==============================================================
+  // CHECK IF IMAGE EXISTS
+  // ==============================================================
+
+  bool containsImage(String filePath) {
+    return _selectedImages.any(
+      (image) => image.filePath == filePath,
+    );
+  }
+
+  // ==============================================================
+  // RESET PROVIDER
+  // ==============================================================
+
+  void reset() {
+    _selectedImages.clear();
+    _hasUnsavedChanges = false;
+
+    notifyListeners();
   }
 }
+ 

@@ -1,4 +1,4 @@
-import 'package:doc_vault/features/pdf_result/pdf_viewer_screen.dart';
+ import 'package:doc_vault/features/pdf_result/pdf_viewer_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,7 +38,7 @@ class MyApp extends StatefulWidget {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-    static final GlobalKey<ScaffoldMessengerState>
+  static final GlobalKey<ScaffoldMessengerState>
       scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
@@ -265,9 +265,6 @@ class _MyAppState extends State<MyApp> {
 
       // ======================================================================
       // OPEN DOCUMENT VIEWER
-      //
-      // pushReplacement is intentional:
-      // Home/Splash will not remain underneath the external document.
       // ======================================================================
 
       navigator.pushReplacement(
@@ -296,8 +293,7 @@ class _MyAppState extends State<MyApp> {
           behavior: SnackBarBehavior.floating,
           backgroundColor: AppTheme.errorColor,
           shape: RoundedRectangleBorder(
-            borderRadius:
-                BorderRadius.circular(12),
+            borderRadius: BorderRadius.circular(12),
           ),
         ),
       );
@@ -337,7 +333,7 @@ class _MyAppState extends State<MyApp> {
             navigatorKey: MyApp.navigatorKey,
 
             scaffoldMessengerKey:
-              MyApp.scaffoldMessengerKey,
+                MyApp.scaffoldMessengerKey,
 
             title: 'DocVault',
 
@@ -368,8 +364,26 @@ class _MyAppState extends State<MyApp> {
               '/splash': (context) =>
                   const SplashScreen(),
 
-              '/source-selection': (context) =>
-                  const SourceSelectionScreen(),
+              // ===============================================================
+              // IMPORTANT FIX
+              // ===============================================================
+              //
+              // Every time SourceSelectionScreen is opened, start a
+              // completely NEW conversion.
+              //
+              // This clears images from the previous PDF/DOCX/PPTX.
+              //
+              '/source-selection': (context) {
+                debugPrint(
+                  'DocVault: starting NEW conversion - clearing old images.',
+                );
+
+                context
+                    .read<ImageSelectionProvider>()
+                    .startNewSelection();
+
+                return const SourceSelectionScreen();
+              },
 
               '/camera': (context) =>
                   const CameraScreen(),
@@ -393,15 +407,15 @@ class _MyAppState extends State<MyApp> {
 
             onGenerateRoute: _generateRoute,
 
-onUnknownRoute: (settings) {
-  debugPrint(
-    'DocVault: ignored unknown route: ${settings.name}',
-  );
+            onUnknownRoute: (settings) {
+              debugPrint(
+                'DocVault: ignored unknown route: ${settings.name}',
+              );
 
-  return MaterialPageRoute(
-    builder: (_) => const SplashScreen(),
-  );
-},
+              return MaterialPageRoute(
+                builder: (_) => const SplashScreen(),
+              );
+            },
           );
         },
       ),
@@ -434,9 +448,9 @@ onUnknownRoute: (settings) {
   Route<dynamic>? _generateRoute(
     RouteSettings settings,
   ) {
-    // ========================================================================
+    // =========================================================================
     // HOME
-    // ========================================================================
+    // =========================================================================
 
     if (settings.name == '/home') {
       int initialIndex = 0;
@@ -458,9 +472,9 @@ onUnknownRoute: (settings) {
       );
     }
 
-    // ========================================================================
+    // =========================================================================
     // ALL FILES
-    // ========================================================================
+    // =========================================================================
 
     if (settings.name == '/all-files') {
       return MaterialPageRoute(
@@ -470,16 +484,15 @@ onUnknownRoute: (settings) {
       );
     }
 
-    // ========================================================================
+    // =========================================================================
     // RESULT
-    // ========================================================================
+    // =========================================================================
 
     if (settings.name == '/result') {
       if (settings.arguments is! PdfResult) {
         return MaterialPageRoute(
           builder: (_) => const _RouteErrorScreen(
-            message:
-                'Invalid document result.',
+            message: 'Invalid document result.',
           ),
         );
       }
@@ -751,3 +764,4 @@ class _RouteErrorScreen
     );
   }
 }
+ 
