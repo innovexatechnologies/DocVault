@@ -374,19 +374,15 @@ class FileUtils {
   /// Fast filesystem-safe hash.
   ///
   /// No extra crypto dependency required.
-  static String _fastHash(String input) {
-    int hash = 0xcbf29ce484222325;
+ static String _fastHash(String input) {
+  int hash = 0;
 
-    for (final unit in utf8.encode(input)) {
-      hash ^= unit;
-      hash = hash * 0x100000001b3;
-
-      // Keep the number within 64-bit range.
-      hash &= 0xFFFFFFFFFFFFFFFF;
-    }
-
-    return hash.toRadixString(16).padLeft(16, '0');
+  for (final unit in utf8.encode(input)) {
+    hash = ((hash << 5) - hash + unit) & 0x7FFFFFFF;
   }
+
+  return hash.toRadixString(16).padLeft(8, '0');
+}
 
   /// Returns cached Office preview pages if all cached files are valid.
   static Future<List<String>?> _getCachedOfficePages(

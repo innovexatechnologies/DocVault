@@ -154,7 +154,7 @@ class HomeScreen extends StatelessWidget {
                 // =================================================================
 
                 Text(
-                  'Transform.',
+                  'Transform',
                   style: TextStyle(
                     fontSize: isMobile ? 38 : 48,
                     fontWeight: FontWeight.w900,
@@ -165,7 +165,7 @@ class HomeScreen extends StatelessWidget {
                 ),
 
                 Text(
-                  'Generate.',
+                  'Generate',
                   style: TextStyle(
                     fontSize: isMobile ? 38 : 48,
                     fontWeight: FontWeight.w900,
