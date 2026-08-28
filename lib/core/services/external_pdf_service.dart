@@ -1,6 +1,4 @@
 import 'dart:io';
-import 'dart:typed_data';
-
 import 'package:flutter/services.dart';
 
 import '../../models/conversion_type.dart';

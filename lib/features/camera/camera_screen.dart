@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
@@ -9,6 +11,7 @@ import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../models/conversion_type.dart';
+import 'filter_screen.dart';
 import '../pdf_generation/review_screen.dart';
 
 class CameraScreen extends StatefulWidget {
@@ -77,7 +80,35 @@ class _CameraScreenState extends State<CameraScreen> {
 
       final image = await _cameraService.capturePhoto();
 
-      if (mounted && image != null) {
+      if (image != null && mounted) {
+        final scannedBytes = await image.readAsBytes();
+
+        if (!mounted) return;
+
+        final filteredBytes = await Navigator.of(context).push<Uint8List>(
+          MaterialPageRoute(
+            builder: (_) => FilterScreen(
+              scannedImageBytes: scannedBytes,
+            ),
+          ),
+        );
+
+        if (!mounted) return;
+
+        if (filteredBytes == null) {
+          setState(() {
+            _isCapturing = false;
+          });
+          return;
+        }
+
+        await XFile.fromData(
+          filteredBytes,
+          name: image.name,
+        ).saveTo(image.path);
+
+        if (!mounted) return;
+
         context.read<ImageSelectionProvider>().addImages(
           [
             image.path,
