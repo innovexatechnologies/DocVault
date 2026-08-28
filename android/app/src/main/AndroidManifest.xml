@@ -1,130 +1,138 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    <uses-permission android:name="android.permission.CAMERA" />
-    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
-    <uses-permission
-        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
-        android:maxSdkVersion="32" />
-    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
-    <uses-permission android:name="android.permission.INTERNET" />
+```
+<!-- Permissions -->
+<uses-permission android:name="android.permission.CAMERA" />
+<uses-permission android:name="android.permission.INTERNET" />
 
-    <application
-        android:label="DocVault"
-        android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+<!-- Storage permissions for older Android versions -->
+<uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" />
 
-        <activity
-            android:name=".MainActivity"
-            android:exported="true"
-            android:launchMode="singleTask"
-            android:theme="@style/LaunchTheme"
-            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
-            android:hardwareAccelerated="true"
-            android:windowSoftInputMode="adjustResize">
+<uses-permission
+    android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+    android:maxSdkVersion="32" />
 
-            <meta-data
-                android:name="io.flutter.embedding.android.NormalTheme"
-                android:resource="@style/NormalTheme" />
-
-            <!-- App launcher -->
-            <intent-filter>
-                <action android:name="android.intent.action.MAIN" />
-                <category android:name="android.intent.category.LAUNCHER" />
-            </intent-filter>
+<!-- Android 13+ -->
+<uses-permission android:name="android.permission.READ_MEDIA_IMAGES" />
 
 
-            <!-- ============================= -->
-            <!-- OPEN PDF -->
-            <!-- ============================= -->
+<application
+    android:label="DocVault"
+    android:name="${applicationName}"
+    android:icon="@mipmap/ic_launcher">
 
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
+    <activity
+        android:name=".MainActivity"
+        android:exported="true"
+        android:launchMode="singleTask"
+        android:theme="@style/LaunchTheme"
+        android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+        android:hardwareAccelerated="true"
+        android:windowSoftInputMode="adjustResize"
+        android:grantUriPermissions="true">
 
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data android:mimeType="application/pdf" />
-            </intent-filter>
-
-
-            <!-- ============================= -->
-            <!-- OPEN DOCX -->
-            <!-- ============================= -->
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
-            </intent-filter>
-
-
-            <!-- ============================= -->
-            <!-- OPEN DOC -->
-            <!-- ============================= -->
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:mimeType="application/msword" />
-            </intent-filter>
-
-
-            <!-- ============================= -->
-            <!-- OPEN PPTX -->
-            <!-- ============================= -->
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
-            </intent-filter>
-
-
-            <!-- ============================= -->
-            <!-- OPEN PPT -->
-            <!-- ============================= -->
-
-            <intent-filter>
-                <action android:name="android.intent.action.VIEW" />
-
-                <category android:name="android.intent.category.DEFAULT" />
-                <category android:name="android.intent.category.BROWSABLE" />
-
-                <data
-                    android:mimeType="application/vnd.ms-powerpoint" />
-            </intent-filter>
-
-
-        </activity>
-
-
+        <!-- Flutter Theme -->
         <meta-data
-            android:name="flutterEmbedding"
-            android:value="2" />
-
-    </application>
+            android:name="io.flutter.embedding.android.NormalTheme"
+            android:resource="@style/NormalTheme" />
 
 
-    <queries>
+        <!-- ================================ -->
+        <!-- APP LAUNCHER -->
+        <!-- ================================ -->
 
-        <intent>
-            <action android:name="android.intent.action.PROCESS_TEXT" />
+        <intent-filter>
+            <action android:name="android.intent.action.MAIN" />
 
-            <data android:mimeType="text/plain" />
-        </intent>
+            <category android:name="android.intent.category.LAUNCHER" />
+        </intent-filter>
 
-    </queries>
+
+        <!-- ================================ -->
+        <!-- OPEN PDF / DOC / DOCX / PPT / PPTX -->
+        <!-- ================================ -->
+
+        <intent-filter>
+
+            <action android:name="android.intent.action.VIEW" />
+
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+
+
+            <!-- PDF -->
+            <data
+                android:scheme="content"
+                android:mimeType="application/pdf" />
+
+            <data
+                android:scheme="file"
+                android:mimeType="application/pdf" />
+
+
+            <!-- DOC -->
+            <data
+                android:scheme="content"
+                android:mimeType="application/msword" />
+
+            <data
+                android:scheme="file"
+                android:mimeType="application/msword" />
+
+
+            <!-- DOCX -->
+            <data
+                android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+
+            <data
+                android:scheme="file"
+                android:mimeType="application/vnd.openxmlformats-officedocument.wordprocessingml.document" />
+
+
+            <!-- PPT -->
+            <data
+                android:scheme="content"
+                android:mimeType="application/vnd.ms-powerpoint" />
+
+            <data
+                android:scheme="file"
+                android:mimeType="application/vnd.ms-powerpoint" />
+
+
+            <!-- PPTX -->
+            <data
+                android:scheme="content"
+                android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+
+            <data
+                android:scheme="file"
+                android:mimeType="application/vnd.openxmlformats-officedocument.presentationml.presentation" />
+
+        </intent-filter>
+
+
+    </activity>
+
+
+    <!-- Flutter embedding -->
+    <meta-data
+        android:name="flutterEmbedding"
+        android:value="2" />
+
+</application>
+
+
+<!-- Android package visibility -->
+<queries>
+
+    <intent>
+        <action android:name="android.intent.action.PROCESS_TEXT" />
+
+        <data android:mimeType="text/plain" />
+    </intent>
+
+</queries>
+```
 
 </manifest>

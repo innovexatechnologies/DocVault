@@ -392,6 +392,16 @@ class _MyAppState extends State<MyApp> {
             // =================================================================
 
             onGenerateRoute: _generateRoute,
+
+onUnknownRoute: (settings) {
+  debugPrint(
+    'DocVault: ignored unknown route: ${settings.name}',
+  );
+
+  return MaterialPageRoute(
+    builder: (_) => const SplashScreen(),
+  );
+},
           );
         },
       ),

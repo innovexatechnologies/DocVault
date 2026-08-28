@@ -7,14 +7,17 @@ import android.provider.OpenableColumns
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
+import java.io.File
 import java.io.IOException
 
 class MainActivity : FlutterActivity() {
 
     companion object {
-        private const val DOCUMENT_CHANNEL =
-            "docvault/pdf_intent"
+        private const val DOCUMENT_CHANNEL = "docvault/pdf_intent"
     }
+
+    private var methodChannel: MethodChannel? = null
+    private var pendingDocumentUri: Uri? = null
 
     // =========================================================================
     // FLUTTER ENGINE
@@ -25,20 +28,24 @@ class MainActivity : FlutterActivity() {
     ) {
         super.configureFlutterEngine(flutterEngine)
 
-        setupDocumentChannel(flutterEngine)
+        methodChannel = MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            DOCUMENT_CHANNEL
+        )
+
+        setupDocumentChannel()
+
+        // Save initial incoming document.
+        pendingDocumentUri = getDocumentUri(intent)
     }
 
     // =========================================================================
     // DOCUMENT CHANNEL
     // =========================================================================
 
-    private fun setupDocumentChannel(
-        flutterEngine: FlutterEngine
-    ) {
-        MethodChannel(
-            flutterEngine.dartExecutor.binaryMessenger,
-            DOCUMENT_CHANNEL
-        ).setMethodCallHandler { call, result ->
+    private fun setupDocumentChannel() {
+
+        methodChannel?.setMethodCallHandler { call, result ->
 
             when (call.method) {
 
@@ -50,7 +57,9 @@ class MainActivity : FlutterActivity() {
                 "getInitialPdf" -> {
 
                     try {
-                        val uri = getDocumentUri(intent)
+
+                        val uri = pendingDocumentUri
+                            ?: getDocumentUri(intent)
 
                         if (uri == null) {
                             result.success(null)
@@ -73,13 +82,14 @@ class MainActivity : FlutterActivity() {
                 }
 
                 // =============================================================
-                // READ DOCUMENT BYTES
+                // READ DOCUMENT
                 // =============================================================
 
                 "readDocument",
                 "readPdf" -> {
 
                     try {
+
                         val uriString =
                             call.argument<String>("uri")
 
@@ -100,7 +110,8 @@ class MainActivity : FlutterActivity() {
                         val bytes =
                             readDocumentBytes(uri)
 
-                        if (bytes == null ||
+                        if (
+                            bytes == null ||
                             bytes.isEmpty()
                         ) {
 
@@ -166,7 +177,7 @@ class MainActivity : FlutterActivity() {
     }
 
     // =========================================================================
-    // NEW EXTERNAL DOCUMENT
+    // NEW INTENT
     // =========================================================================
 
     override fun onNewIntent(
@@ -180,6 +191,9 @@ class MainActivity : FlutterActivity() {
             getDocumentUri(intent)
 
         if (uri != null) {
+
+            pendingDocumentUri = uri
+
             sendDocumentToFlutter(uri)
         }
     }
@@ -192,14 +206,7 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ) {
 
-        val engine =
-            flutterEngine
-                ?: return
-
-        MethodChannel(
-            engine.dartExecutor.binaryMessenger,
-            DOCUMENT_CHANNEL
-        ).invokeMethod(
+        methodChannel?.invokeMethod(
             "newDocument",
             createDocumentMap(uri)
         )
@@ -241,23 +248,55 @@ class MainActivity : FlutterActivity() {
             return null
         }
 
-        val action =
-            currentIntent.action
+        var uri: Uri? = null
 
-        if (action != Intent.ACTION_VIEW) {
-            return null
+        when (currentIntent.action) {
+
+            // =============================================================
+            // OPEN WITH
+            // =============================================================
+
+            Intent.ACTION_VIEW -> {
+                uri = currentIntent.data
+            }
+
+            // =============================================================
+            // SHARE DOCUMENT
+            // =============================================================
+
+            Intent.ACTION_SEND -> {
+
+                uri =
+                    if (android.os.Build.VERSION.SDK_INT >=
+                        android.os.Build.VERSION_CODES.TIRAMISU
+                    ) {
+
+                        currentIntent.getParcelableExtra(
+                            Intent.EXTRA_STREAM,
+                            Uri::class.java
+                        )
+
+                    } else {
+
+                        @Suppress("DEPRECATION")
+                        currentIntent.getParcelableExtra(
+                            Intent.EXTRA_STREAM
+                        )
+                    }
+            }
         }
 
-        val uri =
-            currentIntent.data
-                ?: return null
+        if (uri == null) {
+            return null
+        }
 
         if (!isSupportedDocument(uri)) {
             return null
         }
 
-        // Try to persist permission for content URI.
-        if (uri.scheme.equals(
+        // Try to persist permission.
+        if (
+            uri.scheme.equals(
                 "content",
                 ignoreCase = true
             )
@@ -265,18 +304,24 @@ class MainActivity : FlutterActivity() {
 
             try {
 
-                contentResolver.takePersistableUriPermission(
-                    uri,
+                val takeFlags =
                     currentIntent.flags and
-                            (
-                                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
-                            )
-                )
+                        (
+                            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                            Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                        )
+
+                if (takeFlags != 0) {
+
+                    contentResolver
+                        .takePersistableUriPermission(
+                            uri,
+                            takeFlags
+                        )
+                }
 
             } catch (_: Exception) {
-                // Some providers don't support persistable permissions.
-                // Temporary permission is still used.
+                // Temporary permission is usually enough.
             }
         }
 
@@ -297,10 +342,10 @@ class MainActivity : FlutterActivity() {
 
         if (
             fileName.endsWith(".pdf") ||
-            fileName.endsWith(".docx") ||
-            fileName.endsWith(".pptx") ||
             fileName.endsWith(".doc") ||
-            fileName.endsWith(".ppt")
+            fileName.endsWith(".docx") ||
+            fileName.endsWith(".ppt") ||
+            fileName.endsWith(".pptx")
         ) {
             return true
         }
@@ -315,21 +360,11 @@ class MainActivity : FlutterActivity() {
                 null
             }
 
-        if (mimeType.isNullOrBlank()) {
-            return false
-        }
-
         return mimeType == "application/pdf" ||
-
-                mimeType.contains("pdf") ||
-
-                mimeType.contains("word") ||
-
-                mimeType.contains("document") ||
-
-                mimeType.contains("presentation") ||
-
-                mimeType.contains("powerpoint")
+                mimeType == "application/msword" ||
+                mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                mimeType == "application/vnd.ms-powerpoint" ||
+                mimeType == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
     }
 
     // =========================================================================
@@ -343,8 +378,7 @@ class MainActivity : FlutterActivity() {
         return try {
 
             when (
-                uri.scheme
-                    ?.lowercase()
+                uri.scheme?.lowercase()
             ) {
 
                 "content" -> {
@@ -363,7 +397,7 @@ class MainActivity : FlutterActivity() {
                             ?: return null
 
                     val file =
-                        java.io.File(path)
+                        File(path)
 
                     if (
                         file.exists() &&
@@ -397,10 +431,6 @@ class MainActivity : FlutterActivity() {
     private fun getFileName(
         uri: Uri
     ): String {
-
-        // =============================================================
-        // CONTENT URI
-        // =============================================================
 
         if (
             uri.scheme.equals(
@@ -447,13 +477,9 @@ class MainActivity : FlutterActivity() {
                 }
 
             } catch (_: Exception) {
-                // Continue to fallback.
+                // Continue.
             }
         }
-
-        // =============================================================
-        // FILE URI
-        // =============================================================
 
         if (
             uri.scheme.equals(
@@ -462,13 +488,12 @@ class MainActivity : FlutterActivity() {
             )
         ) {
 
-            val path =
-                uri.path
+            val path = uri.path
 
             if (!path.isNullOrBlank()) {
 
                 val fileName =
-                    java.io.File(path).name
+                    File(path).name
 
                 if (fileName.isNotBlank()) {
                     return fileName
@@ -476,30 +501,24 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        // =============================================================
-        // URI LAST SEGMENT
-        // =============================================================
-
         val lastSegment =
             uri.lastPathSegment
 
         if (!lastSegment.isNullOrBlank()) {
 
-            val decoded =
-                try {
+            try {
+
+                val decoded =
                     Uri.decode(lastSegment)
-                } catch (_: Exception) {
-                    lastSegment
+
+                if (decoded.isNotBlank()) {
+                    return decoded
                 }
 
-            if (decoded.isNotBlank()) {
-                return decoded
+            } catch (_: Exception) {
+                // Continue.
             }
         }
-
-        // =============================================================
-        // MIME FALLBACK
-        // =============================================================
 
         val mimeType =
             try {
@@ -547,30 +566,28 @@ class MainActivity : FlutterActivity() {
             }
 
         } catch (_: Exception) {
-            // Use extension fallback.
+            // Extension fallback.
         }
+
+        val lowerName =
+            fileName.lowercase()
 
         return when {
 
-            fileName.lowercase()
-                .endsWith(".pdf") ->
+            lowerName.endsWith(".pdf") ->
                 "application/pdf"
 
-            fileName.lowercase()
-                .endsWith(".docx") ->
-                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-
-            fileName.lowercase()
-                .endsWith(".pptx") ->
-                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
-
-            fileName.lowercase()
-                .endsWith(".doc") ->
+            lowerName.endsWith(".doc") ->
                 "application/msword"
 
-            fileName.lowercase()
-                .endsWith(".ppt") ->
+            lowerName.endsWith(".docx") ->
+                "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+
+            lowerName.endsWith(".ppt") ->
                 "application/vnd.ms-powerpoint"
+
+            lowerName.endsWith(".pptx") ->
+                "application/vnd.openxmlformats-officedocument.presentationml.presentation"
 
             else ->
                 "application/octet-stream"

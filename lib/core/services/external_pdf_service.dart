@@ -10,10 +10,6 @@ class ExternalPdfService {
   static const MethodChannel _channel =
       MethodChannel('docvault/pdf_intent');
 
-  // ===========================================================================
-  // IMPORT EXTERNAL PDF / DOCX / PPTX
-  // ===========================================================================
-
   static Future<Map<String, dynamic>> importDocumentFromUri(
     String uri,
   ) async {
@@ -23,28 +19,16 @@ class ExternalPdfService {
       throw Exception('Document URI is empty.');
     }
 
-    // -------------------------------------------------------------------------
-    // READ FILE FROM ANDROID CONTENT URI
-    // -------------------------------------------------------------------------
-
     final result = await _invokeDocumentRead(cleanUri);
 
-    if (result == null || result.isEmpty) {
-      throw Exception(
-        'Android did not return document data.',
-      );
+    if (result.isEmpty) {
+      throw Exception('Android did not return document data.');
     }
-
-    // -------------------------------------------------------------------------
-    // BYTES
-    // -------------------------------------------------------------------------
 
     final rawBytes = result['bytes'];
 
     if (rawBytes == null) {
-      throw Exception(
-        'Android did not return document bytes.',
-      );
+      throw Exception('Android did not return document bytes.');
     }
 
     late final Uint8List bytes;
@@ -63,19 +47,13 @@ class ExternalPdfService {
       }
     } catch (e) {
       throw Exception(
-        'Failed to read external document bytes: $e',
+        'Failed to convert external document bytes: $e',
       );
     }
 
     if (bytes.isEmpty) {
-      throw Exception(
-        'The external document is empty.',
-      );
+      throw Exception('The external document is empty.');
     }
-
-    // -------------------------------------------------------------------------
-    // FILE NAME
-    // -------------------------------------------------------------------------
 
     final androidFileName =
         result['fileName']?.toString().trim();
@@ -83,64 +61,44 @@ class ExternalPdfService {
     final mimeType =
         result['mimeType']?.toString().trim().toLowerCase();
 
-    // First preference = Android returned file name.
-    String originalFileName =
-        androidFileName != null &&
-                androidFileName.isNotEmpty
-            ? androidFileName
-            : _fileNameFromUri(cleanUri);
+    String originalFileName;
 
-    // If Android did not give a usable extension, use MIME type.
+    if (androidFileName != null &&
+        androidFileName.isNotEmpty) {
+      originalFileName = androidFileName;
+    } else {
+      originalFileName = _fileNameFromUri(cleanUri);
+    }
+
     if (!_hasSupportedExtension(originalFileName)) {
       final extension = _extensionFromMimeType(mimeType);
 
       if (extension != null) {
-        final baseName = _removeExtension(
-          originalFileName,
-        );
-
-        originalFileName =
-            '$baseName.$extension';
+        final baseName = _removeExtension(originalFileName);
+        originalFileName = '$baseName.$extension';
       }
     }
 
-    // Final fallback.
     if (!_hasSupportedExtension(originalFileName)) {
       throw Exception(
-        'Unable to determine whether the external file is PDF, DOCX, or PPTX.',
+        'Unsupported external document format: $originalFileName',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // DETERMINE DOCUMENT TYPE
-    // -------------------------------------------------------------------------
-
-    final type =
-        ConversionType.fromFileName(
+    final type = ConversionType.fromFileName(
       originalFileName,
     );
 
-    // Only supported formats.
     if (!_isSupportedConversionType(type)) {
       throw Exception(
-        'Unsupported external document type:\n'
-        '$originalFileName',
+        'Unsupported external document type: $originalFileName',
       );
     }
 
-    // -------------------------------------------------------------------------
-    // NORMALIZE FILE NAME
-    // -------------------------------------------------------------------------
-
-    final fileName =
-        FileUtils.normalizeFileName(
+    final fileName = FileUtils.normalizeFileName(
       originalFileName,
       type,
     );
-
-    // -------------------------------------------------------------------------
-    // UNIQUE CACHE FILE
-    // -------------------------------------------------------------------------
 
     final cacheDir =
         await FileUtils.getCacheDirectory();
@@ -154,25 +112,16 @@ class ExternalPdfService {
     final tempFilePath =
         '${cacheDir.path}/$uniqueFileName';
 
-    final file =
-        File(tempFilePath);
+    final file = File(tempFilePath);
 
     await file.parent.create(
       recursive: true,
     );
 
-    // -------------------------------------------------------------------------
-    // WRITE FILE
-    // -------------------------------------------------------------------------
-
     await file.writeAsBytes(
       bytes,
       flush: true,
     );
-
-    // -------------------------------------------------------------------------
-    // VERIFY FILE
-    // -------------------------------------------------------------------------
 
     if (!await file.exists()) {
       throw Exception(
@@ -180,18 +129,13 @@ class ExternalPdfService {
       );
     }
 
-    final savedLength =
-        await file.length();
+    final savedLength = await file.length();
 
     if (savedLength <= 0) {
       throw Exception(
         'Saved external document is empty.',
       );
     }
-
-    // -------------------------------------------------------------------------
-    // VERIFY EXTENSION
-    // -------------------------------------------------------------------------
 
     final savedType =
         ConversionType.fromFileName(
@@ -214,27 +158,15 @@ class ExternalPdfService {
     };
   }
 
-  // ===========================================================================
-  // PDF COMPATIBILITY METHOD
-  // ===========================================================================
-
   static Future<Map<String, dynamic>> importPdfFromUri(
     String uri,
   ) async {
     return importDocumentFromUri(uri);
   }
 
-  // ===========================================================================
-  // ANDROID METHOD CHANNEL
-  // ===========================================================================
-
-  static Future<Map<String, dynamic>?> _invokeDocumentRead(
+  static Future<Map<String, dynamic>> _invokeDocumentRead(
     String uri,
   ) async {
-    // -------------------------------------------------------------------------
-    // NEW METHOD
-    // -------------------------------------------------------------------------
-
     try {
       final result = await _channel.invokeMethod(
         'readDocument',
@@ -243,7 +175,7 @@ class ExternalPdfService {
         },
       );
 
-      if (result != null && result is Map) {
+      if (result is Map) {
         return Map<String, dynamic>.from(
           result.map(
             (key, value) => MapEntry(
@@ -253,13 +185,7 @@ class ExternalPdfService {
           ),
         );
       }
-    } catch (e) {
-      // Continue to legacy method.
-    }
-
-    // -------------------------------------------------------------------------
-    // LEGACY METHOD
-    // -------------------------------------------------------------------------
+    } catch (_) {}
 
     try {
       final result = await _channel.invokeMethod(
@@ -269,7 +195,7 @@ class ExternalPdfService {
         },
       );
 
-      if (result != null && result is Map) {
+      if (result is Map) {
         return Map<String, dynamic>.from(
           result.map(
             (key, value) => MapEntry(
@@ -279,41 +205,31 @@ class ExternalPdfService {
           ),
         );
       }
-    } catch (e) {
-      // Continue to final error.
-    }
+    } catch (_) {}
 
     throw Exception(
-      'Failed to read external document from Android.',
+      'Unable to read external document from Android.',
     );
   }
 
-  // ===========================================================================
-  // FILE NAME FROM URI
-  // ===========================================================================
-
   static String _fileNameFromUri(
-    String uri,
+    String uriString,
   ) {
     try {
-      final decoded =
-          Uri.decodeComponent(uri);
+      final uri = Uri.parse(uriString);
 
-      final lastPart =
-          decoded.split('/').last;
+      if (uri.pathSegments.isNotEmpty) {
+        final lastSegment =
+            uri.pathSegments.last;
 
-      if (lastPart.isNotEmpty &&
-          lastPart.contains('.')) {
-        return lastPart;
+        if (lastSegment.isNotEmpty) {
+          return Uri.decodeComponent(lastSegment);
+        }
       }
     } catch (_) {}
 
     return 'External_Document';
   }
-
-  // ===========================================================================
-  // SUPPORTED EXTENSIONS
-  // ===========================================================================
 
   static bool _hasSupportedExtension(
     String fileName,
@@ -322,7 +238,9 @@ class ExternalPdfService {
         fileName.toLowerCase().trim();
 
     return lower.endsWith('.pdf') ||
+        lower.endsWith('.doc') ||
         lower.endsWith('.docx') ||
+        lower.endsWith('.ppt') ||
         lower.endsWith('.pptx');
   }
 
@@ -334,10 +252,6 @@ class ExternalPdfService {
         type == ConversionType.ppt;
   }
 
-  // ===========================================================================
-  // MIME TYPE → EXTENSION
-  // ===========================================================================
-
   static String? _extensionFromMimeType(
     String? mimeType,
   ) {
@@ -346,35 +260,26 @@ class ExternalPdfService {
       return null;
     }
 
-    switch (mimeType) {
-      // PDF
+    switch (mimeType.toLowerCase()) {
       case 'application/pdf':
         return 'pdf';
 
-      // DOCX
-      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-        return 'docx';
-
-      // PPTX
-      case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
-        return 'pptx';
-
-      // Older Word
       case 'application/msword':
         return 'doc';
 
-      // Older PowerPoint
+      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
+        return 'docx';
+
       case 'application/vnd.ms-powerpoint':
         return 'ppt';
+
+      case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
+        return 'pptx';
 
       default:
         return null;
     }
   }
-
-  // ===========================================================================
-  // REMOVE EXTENSION
-  // ===========================================================================
 
   static String _removeExtension(
     String fileName,
@@ -391,10 +296,6 @@ class ExternalPdfService {
       index,
     );
   }
-
-  // ===========================================================================
-  // SAFE DELETE
-  // ===========================================================================
 
   static Future<void> _safeDelete(
     File file,
