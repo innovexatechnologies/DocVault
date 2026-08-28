@@ -1097,87 +1097,87 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // ============================================================
   // DOCUMENT CARD
   // ============================================================
+Widget _buildDocumentCard(
+  String path,
+  int index,
+  bool isDark,
+) {
+  final screenWidth = MediaQuery.of(context).size.width;
+  final screenHeight = MediaQuery.of(context).size.height;
 
-  Widget _buildDocumentCard(
-    String path,
-    int index,
-    bool isDark,
-  ) {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius:
-            BorderRadius.circular(
-          _isPpt ? 16 : 12,
+  return Container(
+    decoration: BoxDecoration(
+      color: Colors.white,
+      borderRadius: BorderRadius.circular(
+        _isPpt ? 16 : 12,
+      ),
+      boxShadow: [
+        BoxShadow(
+          color: Colors.black.withValues(
+            alpha: isDark ? 0.30 : 0.12,
+          ),
+          blurRadius: 24,
+          offset: const Offset(0, 8),
         ),
-        boxShadow: [
-          BoxShadow(
-            color:
-                Colors.black.withValues(
-              alpha:
-                  isDark ? 0.30 : 0.12,
-            ),
-            blurRadius: 24,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      clipBehavior: Clip.antiAlias,
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          Image.file(
-            File(path),
-            fit: BoxFit.contain,
-            errorBuilder: (
-              context,
-              error,
-              stackTrace,
-            ) {
-              return const Center(
-                child: Icon(
-                  Icons
-                      .broken_image_outlined,
-                  size: 48,
-                  color: Colors.grey,
-                ),
-              );
-            },
-          ),
+      ],
+    ),
+    clipBehavior: Clip.antiAlias,
+    child: Stack(
+      fit: StackFit.expand,
+      children: [
+        Image.file(
+          File(path),
+          fit: BoxFit.contain,
 
-          Positioned(
-            right: 10,
-            bottom: 10,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(
-                horizontal: 9,
-                vertical: 5,
+          // Important: avoid decoding huge original images.
+          cacheWidth: screenWidth.toInt() * 2,
+          cacheHeight: screenHeight.toInt() * 2,
+
+          filterQuality: FilterQuality.medium,
+
+          errorBuilder: (
+            context,
+            error,
+            stackTrace,
+          ) {
+            return const Center(
+              child: Icon(
+                Icons.broken_image_outlined,
+                size: 48,
+                color: Colors.grey,
               ),
-              decoration: BoxDecoration(
-                color:
-                    Colors.black.withValues(
-                  alpha: 0.65,
-                ),
-                borderRadius:
-                    BorderRadius.circular(8),
+            );
+          },
+        ),
+
+        Positioned(
+          right: 10,
+          bottom: 10,
+          child: Container(
+            padding: const EdgeInsets.symmetric(
+              horizontal: 9,
+              vertical: 5,
+            ),
+            decoration: BoxDecoration(
+              color: Colors.black.withValues(
+                alpha: 0.65,
               ),
-              child: Text(
-                '${index + 1}',
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 11,
-                  fontWeight:
-                      FontWeight.w800,
-                ),
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: Text(
+              '${index + 1}',
+              style: const TextStyle(
+                color: Colors.white,
+                fontSize: 11,
+                fontWeight: FontWeight.w800,
               ),
             ),
           ),
-        ],
-      ),
-    );
-  }
-
+        ),
+      ],
+    ),
+  );
+}
   // ============================================================
   // THUMBNAILS
   // ============================================================
@@ -1278,23 +1278,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 fit: StackFit.expand,
                 children: [
                   Image.file(
-                    File(
-                      _documentPages[index],
-                    ),
-                    fit: BoxFit.cover,
-                    errorBuilder: (
-                      context,
-                      error,
-                      stackTrace,
-                    ) {
-                      return const Icon(
-                        Icons
-                            .broken_image_outlined,
-                        color: Colors.grey,
-                      );
-                    },
-                  ),
-
+  File(
+    _documentPages[index],
+  ),
+  fit: BoxFit.cover,
+  cacheWidth: _isPpt ? 184 : 116,
+  cacheHeight: 160,
+  filterQuality: FilterQuality.low,
+  errorBuilder: (
+    context,
+    error,
+    stackTrace,
+  ) {
+    return const Icon(
+      Icons.broken_image_outlined,
+      color: Colors.grey,
+    );
+  },
+),
                   Positioned(
                     left: 4,
                     top: 4,

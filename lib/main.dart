@@ -1,4 +1,4 @@
- import 'package:doc_vault/features/pdf_result/pdf_viewer_screen.dart';
+import 'package:doc_vault/features/pdf_result/pdf_viewer_screen.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -38,8 +38,7 @@ class MyApp extends StatefulWidget {
   static final GlobalKey<NavigatorState> navigatorKey =
       GlobalKey<NavigatorState>();
 
-  static final GlobalKey<ScaffoldMessengerState>
-      scaffoldMessengerKey =
+  static final GlobalKey<ScaffoldMessengerState> scaffoldMessengerKey =
       GlobalKey<ScaffoldMessengerState>();
 
   @override
@@ -313,16 +312,13 @@ class _MyAppState extends State<MyApp> {
         ChangeNotifierProvider(
           create: (_) => ImageSelectionProvider(),
         ),
-
         ChangeNotifierProvider(
           create: (_) => PdfManagerProvider(),
         ),
-
         ChangeNotifierProvider(
           create: (_) => ThemeProvider(),
         ),
       ],
-
       child: Consumer<ThemeProvider>(
         builder: (
           context,
@@ -331,7 +327,6 @@ class _MyAppState extends State<MyApp> {
         ) {
           return MaterialApp(
             navigatorKey: MyApp.navigatorKey,
-
             scaffoldMessengerKey:
                 MyApp.scaffoldMessengerKey,
 
@@ -339,9 +334,9 @@ class _MyAppState extends State<MyApp> {
 
             debugShowCheckedModeBanner: false,
 
-            // =================================================================
+            // ===============================================================
             // THEMES
-            // =================================================================
+            // ===============================================================
 
             theme: AppTheme.lightTheme(),
 
@@ -350,29 +345,20 @@ class _MyAppState extends State<MyApp> {
             themeMode:
                 themeProvider.themeMode,
 
-            // =================================================================
+            // ===============================================================
             // STARTUP
-            // =================================================================
+            // ===============================================================
 
             home: _buildStartupScreen(),
 
-            // =================================================================
+            // ===============================================================
             // STATIC ROUTES
-            // =================================================================
+            // ===============================================================
 
             routes: {
               '/splash': (context) =>
                   const SplashScreen(),
 
-              // ===============================================================
-              // IMPORTANT FIX
-              // ===============================================================
-              //
-              // Every time SourceSelectionScreen is opened, start a
-              // completely NEW conversion.
-              //
-              // This clears images from the previous PDF/DOCX/PPTX.
-              //
               '/source-selection': (context) {
                 debugPrint(
                   'DocVault: starting NEW conversion - clearing old images.',
@@ -401,11 +387,15 @@ class _MyAppState extends State<MyApp> {
                   const PdfGenerationScreen(),
             },
 
-            // =================================================================
+            // ===============================================================
             // DYNAMIC ROUTES
-            // =================================================================
+            // ===============================================================
 
             onGenerateRoute: _generateRoute,
+
+            // ===============================================================
+            // UNKNOWN ROUTES
+            // ===============================================================
 
             onUnknownRoute: (settings) {
               debugPrint(
@@ -413,7 +403,8 @@ class _MyAppState extends State<MyApp> {
               );
 
               return MaterialPageRoute(
-                builder: (_) => const SplashScreen(),
+                builder: (_) =>
+                    _buildStartupScreen(),
               );
             },
           );
@@ -448,9 +439,9 @@ class _MyAppState extends State<MyApp> {
   Route<dynamic>? _generateRoute(
     RouteSettings settings,
   ) {
-    // =========================================================================
+    // ========================================================================
     // HOME
-    // =========================================================================
+    // ========================================================================
 
     if (settings.name == '/home') {
       int initialIndex = 0;
@@ -472,28 +463,28 @@ class _MyAppState extends State<MyApp> {
       );
     }
 
-    // =========================================================================
+    // ========================================================================
     // ALL FILES
-    // =========================================================================
+    // ========================================================================
 
     if (settings.name == '/all-files') {
       return MaterialPageRoute(
-        builder: (_) => const MainNavigationScreen(
+        builder: (_) =>
+            const MainNavigationScreen(
           initialIndex: 1,
         ),
       );
     }
 
-    // =========================================================================
+    // ========================================================================
     // RESULT
-    // =========================================================================
+    // ========================================================================
 
     if (settings.name == '/result') {
       if (settings.arguments is! PdfResult) {
         return MaterialPageRoute(
-          builder: (_) => const _RouteErrorScreen(
-            message: 'Invalid document result.',
-          ),
+          builder: (_) =>
+              const SplashScreen(),
         );
       }
 
@@ -507,10 +498,17 @@ class _MyAppState extends State<MyApp> {
       );
     }
 
+    // ========================================================================
+    // UNKNOWN ROUTE
+    // ========================================================================
+
+    debugPrint(
+      'DocVault: unknown route ignored: ${settings.name}',
+    );
+
     return MaterialPageRoute(
-      builder: (_) => const _RouteErrorScreen(
-        message: 'Page not found.',
-      ),
+      builder: (_) =>
+          _buildStartupScreen(),
     );
   }
 
@@ -546,34 +544,31 @@ class _ExternalDocumentCheckingScreen
       backgroundColor: isDark
           ? AppTheme.bgDark
           : AppTheme.bgWhite,
-
       body: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             Container(
               width: 76,
               height: 76,
-
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor,
                 borderRadius:
                     BorderRadius.circular(22),
               ),
-
               child: const Icon(
                 Icons.description_rounded,
                 color: Colors.white,
                 size: 42,
               ),
             ),
-
             const SizedBox(height: 20),
-
             const SizedBox(
               width: 26,
               height: 26,
-              child: CircularProgressIndicator(
+              child:
+                  CircularProgressIndicator(
                 strokeWidth: 3,
                 color: AppTheme.primaryColor,
               ),
@@ -603,8 +598,9 @@ class _InitialExternalDocumentScreen
   ) onOpen;
 
   @override
-  State<_InitialExternalDocumentScreen> createState() =>
-      _InitialExternalDocumentScreenState();
+  State<_InitialExternalDocumentScreen>
+      createState() =>
+          _InitialExternalDocumentScreenState();
 }
 
 class _InitialExternalDocumentScreenState
@@ -615,7 +611,8 @@ class _InitialExternalDocumentScreenState
   void initState() {
     super.initState();
 
-    WidgetsBinding.instance.addPostFrameCallback(
+    WidgetsBinding.instance
+        .addPostFrameCallback(
       (_) {
         _startOpening();
       },
@@ -642,47 +639,43 @@ class _InitialExternalDocumentScreenState
       backgroundColor: isDark
           ? AppTheme.bgDark
           : AppTheme.bgWhite,
-
       body: Center(
         child: Column(
-          mainAxisSize: MainAxisSize.min,
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             Container(
               width: 76,
               height: 76,
-
               decoration: BoxDecoration(
                 color: AppTheme.primaryColor,
                 borderRadius:
                     BorderRadius.circular(22),
               ),
-
               child: const Icon(
                 Icons.description_rounded,
                 color: Colors.white,
                 size: 42,
               ),
             ),
-
             const SizedBox(height: 20),
-
             Text(
               'Opening document...',
               style: TextStyle(
                 fontSize: 16,
-                fontWeight: FontWeight.w700,
+                fontWeight:
+                    FontWeight.w700,
                 color: Theme.of(context)
                     .colorScheme
                     .onSurface,
               ),
             ),
-
             const SizedBox(height: 14),
-
             const SizedBox(
               width: 26,
               height: 26,
-              child: CircularProgressIndicator(
+              child:
+                  CircularProgressIndicator(
                 strokeWidth: 3,
                 color: AppTheme.primaryColor,
               ),
@@ -693,75 +686,3 @@ class _InitialExternalDocumentScreenState
     );
   }
 }
-
-// ============================================================================
-// ROUTE ERROR
-// ============================================================================
-
-class _RouteErrorScreen
-    extends StatelessWidget {
-  const _RouteErrorScreen({
-    required this.message,
-  });
-
-  final String message;
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('DocVault'),
-      ),
-
-      body: Center(
-        child: Padding(
-          padding:
-              const EdgeInsets.all(24),
-
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Icon(
-                Icons.error_outline_rounded,
-                size: 56,
-                color: AppTheme.errorColor,
-              ),
-
-              const SizedBox(height: 16),
-
-              Text(
-                message,
-                textAlign: TextAlign.center,
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-
-              const SizedBox(height: 20),
-
-              ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context)
-                      .pushNamedAndRemoveUntil(
-                    '/home',
-                    (route) => false,
-                  );
-                },
-
-                icon: const Icon(
-                  Icons.home_rounded,
-                ),
-
-                label: const Text(
-                  'Go Home',
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-}
- 
