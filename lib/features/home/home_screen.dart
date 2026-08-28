@@ -356,219 +356,240 @@ class HomeScreen extends StatelessWidget {
   // ===========================================================================
   // COMPACT CONVERSION CARD
   // ===========================================================================
+Widget _buildConversionCard(
+  BuildContext context, {
+  required bool isDark,
+  required bool isMobile,
+  required String title,
+  required String description,
+  required String buttonText,
+  required IconData icon,
+  required String iconLetter,
+  required List<Color> gradient,
+  required VoidCallback onTap,
+}) {
+  final primaryText = isDark
+      ? Colors.white
+      : const Color(0xFF111827);
 
-  Widget _buildConversionCard(
-    BuildContext context, {
-    required bool isDark,
-    required bool isMobile,
-    required String title,
-    required String description,
-    required String buttonText,
-    required IconData icon,
-    required String iconLetter,
-    required List<Color> gradient,
-    required VoidCallback onTap,
-  }) {
-    final primaryText = isDark
-        ? Colors.white
-        : const Color(0xFF111827);
+  final secondaryText = isDark
+      ? const Color(0xFFAAB3C5)
+      : const Color(0xFF64748B);
 
-    final secondaryText = isDark
-        ? const Color(0xFFAAB3C5)
-        : const Color(0xFF64748B);
+  return Material(
+    color: Colors.transparent,
+    child: InkWell(
+      // ✅ NOW WHOLE CARD IS CLICKABLE
+      onTap: onTap,
 
-    return Container(
-      width: double.infinity,
-      padding: EdgeInsets.all(
-        isMobile ? 13 : 16,
-      ),
-      decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF0B1020)
-            : Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(
-          color: gradient.first.withValues(
-            alpha: isDark ? 0.28 : 0.14,
-          ),
-          width: 1.2,
+      borderRadius: BorderRadius.circular(20),
+
+      child: Container(
+        width: double.infinity,
+        padding: EdgeInsets.all(
+          isMobile ? 13 : 16,
         ),
-        boxShadow: [
-          BoxShadow(
+        decoration: BoxDecoration(
+          color: isDark
+              ? const Color(0xFF0B1020)
+              : Colors.white,
+
+          borderRadius: BorderRadius.circular(20),
+
+          border: Border.all(
             color: gradient.first.withValues(
-              alpha: isDark ? 0.08 : 0.06,
+              alpha: isDark ? 0.28 : 0.14,
             ),
-            blurRadius: 18,
-            offset: const Offset(0, 7),
+            width: 1.2,
           ),
-        ],
-      ),
-      child: Row(
-        children: [
-          // ===================================================================
-          // COMPACT ICON
-          // ===================================================================
 
-          Container(
-            width: isMobile ? 64 : 72,
-            height: isMobile ? 64 : 72,
-            decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: gradient,
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
+          boxShadow: [
+            BoxShadow(
+              color: gradient.first.withValues(
+                alpha: isDark ? 0.08 : 0.06,
               ),
-              borderRadius: BorderRadius.circular(17),
-              boxShadow: [
-                BoxShadow(
-                  color: gradient.first.withValues(
-                    alpha: 0.22,
-                  ),
-                  blurRadius: 14,
-                  offset: const Offset(0, 6),
-                ),
-              ],
+              blurRadius: 18,
+              offset: const Offset(0, 7),
             ),
-            child: Stack(
-              children: [
-                Center(
-                  child: Icon(
-                    icon,
-                    color: Colors.white,
-                    size: isMobile ? 32 : 36,
-                  ),
+          ],
+        ),
+
+        child: Row(
+          children: [
+            // ===============================================================
+            // ICON
+            // ===============================================================
+
+            Container(
+              width: isMobile ? 64 : 72,
+              height: isMobile ? 64 : 72,
+
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradient,
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
                 ),
 
-                Positioned(
-                  top: 5,
-                  right: 5,
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 5,
-                      vertical: 3,
+                borderRadius: BorderRadius.circular(17),
+
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient.first.withValues(
+                      alpha: 0.22,
                     ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withValues(
-                        alpha: 0.96,
-                      ),
-                      borderRadius: BorderRadius.circular(5),
-                    ),
-                    child: Text(
-                      iconLetter,
-                      style: TextStyle(
-                        fontSize: iconLetter == 'PDF' ? 7 : 9,
-                        fontWeight: FontWeight.w900,
-                        color: gradient.first,
-                      ),
-                    ),
+                    blurRadius: 14,
+                    offset: const Offset(0, 6),
                   ),
-                ),
-              ],
-            ),
-          ),
+                ],
+              ),
 
-          const SizedBox(width: 13),
-
-          // ===================================================================
-          // TITLE + DESCRIPTION
-          // ===================================================================
-
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                Text(
-                  title,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: isMobile ? 17 : 19,
-                    fontWeight: FontWeight.w800,
-                    color: primaryText,
-                    letterSpacing: -0.3,
-                  ),
-                ),
-
-                const SizedBox(height: 4),
-
-                Text(
-                  description,
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: isMobile ? 11 : 12,
-                    height: 1.3,
-                    color: secondaryText,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-          ),
-
-          const SizedBox(width: 10),
-
-          // ===================================================================
-          // CREATE BUTTON
-          // ===================================================================
-
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: onTap,
-              borderRadius: BorderRadius.circular(14),
-              child: Container(
-                height: isMobile ? 42 : 46,
-                padding: EdgeInsets.symmetric(
-                  horizontal: isMobile ? 11 : 14,
-                ),
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    colors: gradient,
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                  ),
-                  borderRadius: BorderRadius.circular(14),
-                  boxShadow: [
-                    BoxShadow(
-                      color: gradient.first.withValues(
-                        alpha: 0.18,
-                      ),
-                      blurRadius: 10,
-                      offset: const Offset(0, 4),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    const Icon(
-                      Icons.add_rounded,
+              child: Stack(
+                children: [
+                  Center(
+                    child: Icon(
+                      icon,
                       color: Colors.white,
-                      size: 19,
+                      size: isMobile ? 32 : 36,
                     ),
-                    if (!isMobile) ...[
-                      const SizedBox(width: 5),
-                      Text(
-                        buttonText,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w800,
+                  ),
+
+                  Positioned(
+                    top: 5,
+                    right: 5,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 5,
+                        vertical: 3,
+                      ),
+
+                      decoration: BoxDecoration(
+                        color: Colors.white.withValues(
+                          alpha: 0.96,
+                        ),
+                        borderRadius: BorderRadius.circular(5),
+                      ),
+
+                      child: Text(
+                        iconLetter,
+                        style: TextStyle(
+                          fontSize:
+                              iconLetter == 'PDF' ? 7 : 9,
+                          fontWeight: FontWeight.w900,
+                          color: gradient.first,
                         ),
                       ),
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+                ],
               ),
             ),
-          ),
-        ],
-      ),
-    );
-  }
 
+            const SizedBox(width: 13),
+
+            // ===============================================================
+            // TITLE + DESCRIPTION
+            // ===============================================================
+
+            Expanded(
+              child: Column(
+                crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
+                children: [
+                  Text(
+                    title,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: isMobile ? 17 : 19,
+                      fontWeight: FontWeight.w800,
+                      color: primaryText,
+                      letterSpacing: -0.3,
+                    ),
+                  ),
+
+                  const SizedBox(height: 4),
+
+                  Text(
+                    description,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: isMobile ? 11 : 12,
+                      height: 1.3,
+                      color: secondaryText,
+                      fontWeight: FontWeight.w500,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
+            const SizedBox(width: 10),
+
+            // ===============================================================
+            // PLUS BUTTON
+            // ===============================================================
+
+            Container(
+              height: isMobile ? 42 : 46,
+
+              padding: EdgeInsets.symmetric(
+                horizontal: isMobile ? 11 : 14,
+              ),
+
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  colors: gradient,
+                  begin: Alignment.centerLeft,
+                  end: Alignment.centerRight,
+                ),
+
+                borderRadius: BorderRadius.circular(14),
+
+                boxShadow: [
+                  BoxShadow(
+                    color: gradient.first.withValues(
+                      alpha: 0.18,
+                    ),
+                    blurRadius: 10,
+                    offset: const Offset(0, 4),
+                  ),
+                ],
+              ),
+
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(
+                    Icons.add_rounded,
+                    color: Colors.white,
+                    size: 19,
+                  ),
+
+                  if (!isMobile) ...[
+                    const SizedBox(width: 5),
+
+                    Text(
+                      buttonText,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    ),
+  );
+}
   // ===========================================================================
   // ALL FILES CARD
   // ===========================================================================
