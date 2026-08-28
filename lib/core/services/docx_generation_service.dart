@@ -15,15 +15,17 @@ class DocxGenerationService {
 
   /// Generates a DOCX file from selected images.
   ///
-  /// Performance optimized:
-  /// - Heavy image processing runs in a background isolate.
-  /// - Large images are resized before being added to DOCX.
-  /// - JPEG quality is reduced slightly for faster generation.
-  /// - JPEG files are stored without ZIP compression because JPEG
-  ///   is already compressed.
-  /// - ZIP uses bestSpeed compression.
+  /// Every image becomes one Word page.
   ///
-  /// Each image becomes one Word page.
+  /// IMPORTANT:
+  /// Each Word section gets its own page size based on the
+  /// image aspect ratio.
+  ///
+  /// Therefore:
+  ///
+  ///     image ratio == Word page ratio
+  ///
+  /// No fixed Letter/A4 page is used.
   Future<DocumentResult> generateDocxFromImages(
     List<String> imagePaths,
   ) async {
@@ -35,16 +37,12 @@ class DocxGenerationService {
 
     final startTimestamp = DateTime.now();
 
-    // Make a separate list for the background isolate.
     final paths = List<String>.from(imagePaths);
 
     // ============================================================
-    // HEAVY WORK
+    // BACKGROUND GENERATION
     // ============================================================
-    //
-    // Image decoding, resizing, JPEG encoding and DOCX creation
-    // happen outside the Flutter UI isolate.
-    //
+
     final Uint8List docxBytes = await Isolate.run(
       () => _generateDocxInBackground(paths),
     );
@@ -128,42 +126,13 @@ Uint8List _generateDocxInBackground(
   final imageCount = imagePaths.length;
 
   // ==========================================================================
-  // PERFORMANCE SETTINGS
+  // IMAGE PROCESSING SETTINGS
   // ==========================================================================
 
-  // Large camera images such as:
-  //
-  // 4000 x 3000
-  // 4032 x 3024
-  // 6000 x 4000
-  //
-  // are unnecessarily large for a Word page.
-  //
-  // Keeping images around 1600-1800px is enough for normal document use.
-  //
   const int maxImageWidth = 1800;
   const int maxImageHeight = 2400;
 
-  // JPEG quality.
-  //
-  // 80 provides a good balance between:
-  // - image quality
-  // - generation speed
-  // - DOCX size
-  //
   const int jpegQuality = 80;
-
-  // Word Letter page usable area.
-  //
-  // Letter:
-  // 8.5 x 11 inches
-  //
-  // 1 inch margins:
-  // usable width  = 6.5 inches
-  // usable height = 9 inches
-  //
-  const int maxUsableWidthEmu = 5943600;
-  const int maxUsableHeightEmu = 8229600;
 
   // ==========================================================================
   // DOCX BASIC FILES
@@ -200,7 +169,7 @@ Uint8List _generateDocxInBackground(
   );
 
   // ==========================================================================
-  // IMAGE DIMENSIONS
+  // IMAGE INFORMATION
   // ==========================================================================
 
   final dimensions = <_ImageDimension>[];
@@ -221,10 +190,11 @@ Uint8List _generateDocxInBackground(
     }
 
     // ------------------------------------------------------------------------
-    // READ
+    // READ IMAGE
     // ------------------------------------------------------------------------
 
-    final originalBytes = imageFile.readAsBytesSync();
+    final originalBytes =
+        imageFile.readAsBytesSync();
 
     if (originalBytes.isEmpty) {
       throw Exception(
@@ -233,12 +203,11 @@ Uint8List _generateDocxInBackground(
     }
 
     // ------------------------------------------------------------------------
-    // DECODE
+    // DECODE IMAGE
     // ------------------------------------------------------------------------
 
-    final decodedImage = img.decodeImage(
-      originalBytes,
-    );
+    final decodedImage =
+        img.decodeImage(originalBytes);
 
     if (decodedImage == null) {
       throw Exception(
@@ -254,10 +223,11 @@ Uint8List _generateDocxInBackground(
     }
 
     // ------------------------------------------------------------------------
-    // RESIZE ONLY IF NECESSARY
+    // RESIZE
     // ------------------------------------------------------------------------
 
-    img.Image processedImage = decodedImage;
+    img.Image processedImage =
+        decodedImage;
 
     final bool needsResize =
         decodedImage.width > maxImageWidth ||
@@ -290,10 +260,11 @@ Uint8List _generateDocxInBackground(
     }
 
     // ------------------------------------------------------------------------
-    // JPEG ENCODE
+    // JPEG
     // ------------------------------------------------------------------------
 
-    final List<int> jpegBytes = img.encodeJpg(
+    final List<int> jpegBytes =
+        img.encodeJpg(
       processedImage,
       quality: jpegQuality,
     );
@@ -304,64 +275,84 @@ Uint8List _generateDocxInBackground(
       );
     }
 
+    // ==========================================================================
+    // IMAGE → WORD PAGE DIMENSIONS
+    // ==========================================================================
+    //
+    // Word uses:
+    //
+    //   twips = 1/1440 inch
+    //
+    //   EMU   = 914400 per inch
+    //
+    // We use a fixed physical width of 8.5 inches.
+    //
+    // The height is calculated from the EXACT image aspect ratio.
+    //
+    // Example:
+    //
+    // image = 1080 x 1920
+    //
+    // page width  = 8.5 inch
+    // page height = 8.5 * 1920 / 1080
+    //             = 15.111 inch
+    //
+    // Therefore:
+    //
+    // image ratio == page ratio
+    //
+    // --------------------------------------------------------------------------
+
+    const double pageWidthInches = 8.5;
+
+    final double imageWidth =
+        processedImage.width.toDouble();
+
+    final double imageHeight =
+        processedImage.height.toDouble();
+
+    final double pageHeightInches =
+        pageWidthInches *
+        imageHeight /
+        imageWidth;
+
     // ------------------------------------------------------------------------
-    // IMAGE DIMENSIONS
+    // Convert page size to TWIPS.
     // ------------------------------------------------------------------------
 
-    int widthEmu =
-        processedImage.width * 9525;
+    final int pageWidthTwips =
+        _inchesToTwips(pageWidthInches);
 
-    int heightEmu =
-        processedImage.height * 9525;
-
-    // ------------------------------------------------------------------------
-    // FIT WIDTH
-    // ------------------------------------------------------------------------
-
-    if (widthEmu > maxUsableWidthEmu) {
-      final double scale =
-          maxUsableWidthEmu / widthEmu;
-
-      widthEmu = maxUsableWidthEmu;
-
-      heightEmu =
-          (heightEmu * scale).round();
-    }
+    final int pageHeightTwips =
+        _inchesToTwips(pageHeightInches);
 
     // ------------------------------------------------------------------------
-    // FIT HEIGHT
+    // Convert page size to EMU.
     // ------------------------------------------------------------------------
 
-    if (heightEmu > maxUsableHeightEmu) {
-      final double scale =
-          maxUsableHeightEmu / heightEmu;
+    final int imageWidthEmu =
+        _inchesToEmu(pageWidthInches);
 
-      heightEmu = maxUsableHeightEmu;
-
-      widthEmu =
-          (widthEmu * scale).round();
-    }
+    final int imageHeightEmu =
+        _inchesToEmu(pageHeightInches);
 
     dimensions.add(
       _ImageDimension(
-        widthEmu: widthEmu,
-        heightEmu: heightEmu,
+        pageWidthTwips: pageWidthTwips,
+        pageHeightTwips: pageHeightTwips,
+        widthEmu: imageWidthEmu,
+        heightEmu: imageHeightEmu,
       ),
     );
 
     // ------------------------------------------------------------------------
-    // ADD JPEG TO DOCX
+    // ADD IMAGE TO DOCX
     // ------------------------------------------------------------------------
     //
-    // IMPORTANT:
-    //
     // JPEG is already compressed.
+    // Therefore no ZIP compression is applied to the JPEG.
     //
-    // Normal ArchiveFile would make ZIP compression work on JPEG again.
-    // That can take noticeable time for large images.
-    //
-    // noCompress() stores the JPEG directly in the ZIP.
-    //
+
     archive.addFile(
       ArchiveFile.noCompress(
         'word/media/image${i + 1}.jpeg',
@@ -382,14 +373,13 @@ Uint8List _generateDocxInBackground(
   );
 
   // ==========================================================================
-  // ZIP / DOCX
+  // ZIP
   // ==========================================================================
-  //
-  // bestSpeed is much faster than maximum compression.
-  //
+
   final zipEncoder = ZipEncoder();
 
-  final List<int> encoded = zipEncoder.encode(
+  final List<int> encoded =
+      zipEncoder.encode(
     archive,
     level: DeflateLevel.bestSpeed,
   );
@@ -400,7 +390,25 @@ Uint8List _generateDocxInBackground(
     );
   }
 
-  return Uint8List.fromList(encoded);
+  return Uint8List.fromList(
+    encoded,
+  );
+}
+
+// ============================================================================
+// UNIT CONVERSION
+// ============================================================================
+
+int _inchesToTwips(
+  double inches,
+) {
+  return (inches * 1440).round();
+}
+
+int _inchesToEmu(
+  double inches,
+) {
+  return (inches * 914400).round();
 }
 
 // ============================================================================
@@ -615,7 +623,7 @@ String _buildDocumentXml(
   );
 
   // ==========================================================================
-  // EACH IMAGE = ONE PAGE
+  // EACH IMAGE = ONE WORD SECTION / PAGE
   // ==========================================================================
 
   for (int i = 0; i < dimensions.length; i++) {
@@ -634,30 +642,48 @@ String _buildDocumentXml(
         i + 1;
 
     // ------------------------------------------------------------------------
-    // Paragraph
+    // IMAGE PARAGRAPH
     // ------------------------------------------------------------------------
 
-    sb.writeln('<w:p>');
+    sb.writeln(
+      '<w:p>',
+    );
 
-    sb.writeln('<w:pPr>');
+    // Remove paragraph spacing.
+    sb.writeln(
+      '<w:pPr>',
+    );
 
-    // Center image.
+    sb.writeln(
+      '<w:spacing '
+      'w:before="0" '
+      'w:after="0" '
+      'w:line="240" '
+      'w:lineRule="auto"/>',
+    );
+
     sb.writeln(
       '<w:jc w:val="center"/>',
     );
 
-    sb.writeln('</w:pPr>');
+    sb.writeln(
+      '</w:pPr>',
+    );
 
     // ------------------------------------------------------------------------
-    // Run
+    // RUN
     // ------------------------------------------------------------------------
 
-    sb.writeln('<w:r>');
+    sb.writeln(
+      '<w:r>',
+    );
 
-    sb.writeln('<w:drawing>');
+    sb.writeln(
+      '<w:drawing>',
+    );
 
     // ------------------------------------------------------------------------
-    // Inline picture
+    // INLINE IMAGE
     // ------------------------------------------------------------------------
 
     sb.writeln(
@@ -702,10 +728,12 @@ String _buildDocumentXml(
     );
 
     // ------------------------------------------------------------------------
-    // Graphic
+    // GRAPHIC
     // ------------------------------------------------------------------------
 
-    sb.writeln('<a:graphic>');
+    sb.writeln(
+      '<a:graphic>',
+    );
 
     sb.writeln(
       '<a:graphicData '
@@ -713,16 +741,20 @@ String _buildDocumentXml(
     );
 
     // ------------------------------------------------------------------------
-    // Picture
+    // PICTURE
     // ------------------------------------------------------------------------
 
-    sb.writeln('<pic:pic>');
+    sb.writeln(
+      '<pic:pic>',
+    );
 
     // ------------------------------------------------------------------------
-    // Non visual properties
+    // NON-VISUAL PROPERTIES
     // ------------------------------------------------------------------------
 
-    sb.writeln('<pic:nvPicPr>');
+    sb.writeln(
+      '<pic:nvPicPr>',
+    );
 
     sb.writeln(
       '<pic:cNvPr '
@@ -749,31 +781,45 @@ String _buildDocumentXml(
     );
 
     // ------------------------------------------------------------------------
-    // Image fill
+    // IMAGE FILL
     // ------------------------------------------------------------------------
 
-    sb.writeln('<pic:blipFill>');
+    sb.writeln(
+      '<pic:blipFill>',
+    );
 
     sb.writeln(
       '<a:blip '
       'r:embed="$relId"/>',
     );
 
-    sb.writeln('<a:stretch>');
+    sb.writeln(
+      '<a:stretch>',
+    );
 
-    sb.writeln('<a:fillRect/>');
+    sb.writeln(
+      '<a:fillRect/>',
+    );
 
-    sb.writeln('</a:stretch>');
+    sb.writeln(
+      '</a:stretch>',
+    );
 
-    sb.writeln('</pic:blipFill>');
+    sb.writeln(
+      '</pic:blipFill>',
+    );
 
     // ------------------------------------------------------------------------
-    // Shape
+    // SHAPE
     // ------------------------------------------------------------------------
 
-    sb.writeln('<pic:spPr>');
+    sb.writeln(
+      '<pic:spPr>',
+    );
 
-    sb.writeln('<a:xfrm>');
+    sb.writeln(
+      '<a:xfrm>',
+    );
 
     sb.writeln(
       '<a:off '
@@ -787,90 +833,175 @@ String _buildDocumentXml(
       'cy="$heightEmu"/>',
     );
 
-    sb.writeln('</a:xfrm>');
+    sb.writeln(
+      '</a:xfrm>',
+    );
 
     sb.writeln(
       '<a:prstGeom '
       'prst="rect">',
     );
 
-    sb.writeln('<a:avLst/>');
+    sb.writeln(
+      '<a:avLst/>',
+    );
 
-    sb.writeln('</a:prstGeom>');
+    sb.writeln(
+      '</a:prstGeom>',
+    );
 
-    sb.writeln('</pic:spPr>');
-
-    // ------------------------------------------------------------------------
-    // Close picture
-    // ------------------------------------------------------------------------
-
-    sb.writeln('</pic:pic>');
-
-    sb.writeln('</a:graphicData>');
-
-    sb.writeln('</a:graphic>');
-
-    sb.writeln('</wp:inline>');
-
-    sb.writeln('</w:drawing>');
-
-    sb.writeln('</w:r>');
-
-    sb.writeln('</w:p>');
+    sb.writeln(
+      '</pic:spPr>',
+    );
 
     // ------------------------------------------------------------------------
-    // Page break
+    // CLOSE IMAGE
     // ------------------------------------------------------------------------
 
-    if (i < dimensions.length - 1) {
-      sb.writeln('<w:p>');
+    sb.writeln(
+      '</pic:pic>',
+    );
 
-      sb.writeln('<w:r>');
+    sb.writeln(
+      '</a:graphicData>',
+    );
 
-      sb.writeln(
-        '<w:br w:type="page"/>',
-      );
+    sb.writeln(
+      '</a:graphic>',
+    );
 
-      sb.writeln('</w:r>');
+    sb.writeln(
+      '</wp:inline>',
+    );
 
-      sb.writeln('</w:p>');
-    }
+    sb.writeln(
+      '</w:drawing>',
+    );
+
+    sb.writeln(
+      '</w:r>',
+    );
+
+    sb.writeln(
+      '</w:p>',
+    );
+
+    // ==========================================================================
+    // SECTION BREAK
+    // ==========================================================================
+    //
+    // This is the important part.
+    //
+    // Every image gets its own Word section.
+    //
+    // The section has:
+    //
+    //     page width  = image ratio width
+    //     page height = image ratio height
+    //     margins     = 0
+    //
+    // "nextPage" makes the following image start on a new page.
+    //
+    // ==========================================================================
+
+    sb.writeln(
+      '<w:p>',
+    );
+
+    sb.writeln(
+      '<w:pPr>',
+    );
+
+    sb.writeln(
+      '<w:sectPr>',
+    );
+
+    sb.writeln(
+      '<w:type w:val="nextPage"/>',
+    );
+
+    sb.writeln(
+      '<w:pgSz '
+      'w:w="${dimension.pageWidthTwips}" '
+      'w:h="${dimension.pageHeightTwips}"/>',
+    );
+
+    // ------------------------------------------------------------------------
+    // ZERO MARGINS
+    // ------------------------------------------------------------------------
+
+    sb.writeln(
+      '<w:pgMar '
+      'w:top="0" '
+      'w:right="0" '
+      'w:bottom="0" '
+      'w:left="0" '
+      'w:header="0" '
+      'w:footer="0" '
+      'w:gutter="0"/>',
+    );
+
+    sb.writeln(
+      '</w:sectPr>',
+    );
+
+    sb.writeln(
+      '</w:pPr>',
+    );
+
+    sb.writeln(
+      '</w:p>',
+    );
   }
 
   // ==========================================================================
-  // SECTION PROPERTIES
+  // FINAL SECTION PROPERTIES
   // ==========================================================================
 
-  sb.writeln('<w:sectPr>');
+  //
+  // The last section must also have sectPr at body level.
+  //
+  // We repeat the dimensions of the last image here because Word requires
+  // the final section properties to exist at the end of <w:body>.
+  //
 
-  // Letter:
-  // 8.5 x 11 inches
-  // 12240 x 15840 twips
+  if (dimensions.isNotEmpty) {
+    final last =
+        dimensions.last;
+
+    sb.writeln(
+      '<w:sectPr>',
+    );
+
+    sb.writeln(
+      '<w:pgSz '
+      'w:w="${last.pageWidthTwips}" '
+      'w:h="${last.pageHeightTwips}"/>',
+    );
+
+    sb.writeln(
+      '<w:pgMar '
+      'w:top="0" '
+      'w:right="0" '
+      'w:bottom="0" '
+      'w:left="0" '
+      'w:header="0" '
+      'w:footer="0" '
+      'w:gutter="0"/>',
+    );
+
+    sb.writeln(
+      '</w:sectPr>',
+    );
+  }
 
   sb.writeln(
-    '<w:pgSz '
-    'w:w="12240" '
-    'w:h="15840"/>',
+    '</w:body>',
   );
-
-  // 1 inch margins.
 
   sb.writeln(
-    '<w:pgMar '
-    'w:top="1440" '
-    'w:right="1440" '
-    'w:bottom="1440" '
-    'w:left="1440" '
-    'w:header="720" '
-    'w:footer="720" '
-    'w:gutter="0"/>',
+    '</w:document>',
   );
-
-  sb.writeln('</w:sectPr>');
-
-  sb.writeln('</w:body>');
-
-  sb.writeln('</w:document>');
 
   return sb.toString();
 }
@@ -880,10 +1011,15 @@ String _buildDocumentXml(
 // ============================================================================
 
 class _ImageDimension {
+  final int pageWidthTwips;
+  final int pageHeightTwips;
+
   final int widthEmu;
   final int heightEmu;
 
   const _ImageDimension({
+    required this.pageWidthTwips,
+    required this.pageHeightTwips,
     required this.widthEmu,
     required this.heightEmu,
   });

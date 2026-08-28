@@ -633,30 +633,7 @@ class HomeScreen extends StatelessWidget {
 
               const SizedBox(width: 14),
 
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'All Files',
-                      style: TextStyle(
-                        fontSize: isMobile ? 16 : 18,
-                        fontWeight: FontWeight.w800,
-                        color: primaryText,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      'View and manage your documents',
-                      style: TextStyle(
-                        fontSize: isMobile ? 11 : 13,
-                        color: secondaryText,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-
+              // ARROW
               Container(
                 width: 38,
                 height: 38,
@@ -679,3 +656,4 @@ class HomeScreen extends StatelessWidget {
     );
   }
 }
+ 

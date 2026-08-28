@@ -1,5 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:isolate';
+import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:image/image.dart' as img;
@@ -11,16 +13,15 @@ import '../utils/file_utils.dart';
 class PptxGenerationService {
   PptxGenerationService();
 
-  /// Generates a PowerPoint (.pptx) presentation.
+  /// Generates a PowerPoint presentation from images.
   ///
-  /// Each selected image becomes one slide.
-  ///
-  /// Optimized for:
-  /// - Faster generation
-  /// - Lower memory usage
-  /// - Smaller PPTX file size
-  /// - No unnecessary full-resolution image processing
-  /// - Preserved image aspect ratio
+  /// IMPORTANT:
+  /// - Every image becomes one slide.
+  /// - The presentation aspect ratio is based on the first image.
+  /// - The image aspect ratio is always preserved.
+  /// - Images are centered without stretching.
+  /// - Large images are resized for performance.
+  /// - Heavy processing runs in a background isolate.
   Future<DocumentResult> generatePptxFromImages(
     List<String> imagePaths,
   ) async {
@@ -32,538 +33,616 @@ class PptxGenerationService {
 
     final startTimestamp = DateTime.now();
 
-    final tempDir = await FileUtils.getTempDirectory();
+    final paths = List<String>.from(imagePaths);
 
-    final sessionDir = Directory(
-      '${tempDir.path}/pptx_${DateTime.now().millisecondsSinceEpoch}',
+    // ============================================================
+    // BACKGROUND GENERATION
+    // ============================================================
+
+    final Uint8List pptxBytes = await Isolate.run(
+      () => _generatePptxInBackground(paths),
     );
 
-    await sessionDir.create(recursive: true);
-
-    try {
-      final archive = Archive();
-
-      final slideCount = imagePaths.length;
-
-      // ============================================================
-      // 1. READ FIRST IMAGE
-      // ============================================================
-
-      final firstImageFile = File(imagePaths.first);
-
-      if (!await firstImageFile.exists()) {
-        throw Exception(
-          'Image file not found: ${imagePaths.first}',
-        );
-      }
-
-      final firstBytes = await firstImageFile.readAsBytes();
-
-      if (firstBytes.isEmpty) {
-        throw Exception(
-          'First image is empty.',
-        );
-      }
-
-      final firstDecoded = img.decodeImage(firstBytes);
-
-      if (firstDecoded == null) {
-        throw Exception(
-          'Failed to decode first image.',
-        );
-      }
-
-      final firstWidth = firstDecoded.width;
-      final firstHeight = firstDecoded.height;
-
-      if (firstWidth <= 0 || firstHeight <= 0) {
-        throw Exception(
-          'Invalid first image dimensions.',
-        );
-      }
-
-      // ============================================================
-      // 2. PRESENTATION SIZE
-      // ============================================================
-
-      const maxWidthEmu = 12192000;
-      const maxHeightEmu = 6858000;
-
-      final aspectRatio = firstWidth / firstHeight;
-
-      int slideWidthEmu;
-      int slideHeightEmu;
-
-      if (aspectRatio >= 1.0) {
-        slideWidthEmu = maxWidthEmu;
-
-        slideHeightEmu =
-            (slideWidthEmu / aspectRatio).round();
-
-        if (slideHeightEmu > maxHeightEmu) {
-          slideHeightEmu = maxHeightEmu;
-
-          slideWidthEmu =
-              (slideHeightEmu * aspectRatio).round();
-        }
-      } else {
-        slideHeightEmu = maxHeightEmu;
-
-        slideWidthEmu =
-            (slideHeightEmu * aspectRatio).round();
-
-        if (slideWidthEmu > maxWidthEmu) {
-          slideWidthEmu = maxWidthEmu;
-
-          slideHeightEmu =
-              (slideWidthEmu / aspectRatio).round();
-        }
-      }
-
-      // Minimum slide size.
-      const minimumSize = 914400;
-
-      if (slideWidthEmu < minimumSize) {
-        slideWidthEmu = minimumSize;
-      }
-
-      if (slideHeightEmu < minimumSize) {
-        slideHeightEmu = minimumSize;
-      }
-
-      // ============================================================
-      // 3. CONTENT TYPES
-      // ============================================================
-
-      _addTextFile(
-        archive,
-        '[Content_Types].xml',
-        _buildContentTypesXml(slideCount),
+    if (pptxBytes.isEmpty) {
+      throw Exception(
+        'Generated PowerPoint presentation is empty.',
       );
-
-      // ============================================================
-      // 4. ROOT RELATIONSHIPS
-      // ============================================================
-
-      _addTextFile(
-        archive,
-        '_rels/.rels',
-        _buildRootRelsXml(),
-      );
-
-      // ============================================================
-      // 5. PRESENTATION XML
-      // ============================================================
-
-      _addTextFile(
-        archive,
-        'ppt/presentation.xml',
-        _buildPresentationXml(
-          slideCount,
-          slideWidthEmu,
-          slideHeightEmu,
-        ),
-      );
-
-      // ============================================================
-      // 6. PRESENTATION RELATIONSHIPS
-      // ============================================================
-
-      _addTextFile(
-        archive,
-        'ppt/_rels/presentation.xml.rels',
-        _buildPresentationRelsXml(
-          slideCount,
-        ),
-      );
-
-      // ============================================================
-      // 7. POWERPOINT BOILERPLATE
-      // ============================================================
-
-      _addPptTemplateBoilerplate(
-        archive,
-      );
-
-      // ============================================================
-      // 8. PROCESS EACH IMAGE
-      // ============================================================
-
-      for (int i = 0; i < slideCount; i++) {
-        final slideNumber = i + 1;
-
-        final imagePath = imagePaths[i];
-
-        final imageFile = File(imagePath);
-
-        if (!await imageFile.exists()) {
-          throw Exception(
-            'Image file not found: $imagePath',
-          );
-        }
-
-        // ----------------------------------------------------------
-        // Read image
-        // ----------------------------------------------------------
-
-        final bytes = await imageFile.readAsBytes();
-
-        if (bytes.isEmpty) {
-          throw Exception(
-            'Image file is empty: $imagePath',
-          );
-        }
-
-        // ----------------------------------------------------------
-        // Decode image
-        // ----------------------------------------------------------
-
-        img.Image? decoded = img.decodeImage(bytes);
-
-        if (decoded == null) {
-          throw Exception(
-            'Failed to decode image: $imagePath',
-          );
-        }
-
-        if (decoded.width <= 0 || decoded.height <= 0) {
-          throw Exception(
-            'Invalid image dimensions: $imagePath',
-          );
-        }
-
-        // ----------------------------------------------------------
-        // IMPORTANT OPTIMIZATION
-        //
-        // PowerPoint does not need a 5000-8000px image for normal
-        // presentation slides.
-        //
-        // Resize very large images before encoding.
-        // ----------------------------------------------------------
-
-        const maxImageDimension = 2400;
-
-        if (decoded.width > maxImageDimension ||
-            decoded.height > maxImageDimension) {
-          decoded = img.copyResize(
-            decoded,
-            width: decoded.width >= decoded.height
-                ? maxImageDimension
-                : null,
-            height: decoded.height > decoded.width
-                ? maxImageDimension
-                : null,
-            interpolation: img.Interpolation.linear,
-          );
-        }
-
-        // ----------------------------------------------------------
-        // Convert to JPEG.
-        //
-        // Quality 85 gives a good balance between:
-        // - quality
-        // - speed
-        // - file size
-        // ----------------------------------------------------------
-
-        final jpegBytes = img.encodeJpg(
-          decoded,
-          quality: 85,
-        );
-
-        if (jpegBytes.isEmpty) {
-          throw Exception(
-            'Failed to encode image: $imagePath',
-          );
-        }
-
-        // ----------------------------------------------------------
-        // Release reference to decoded image as soon as possible.
-        // ----------------------------------------------------------
-
-        final widthPx = decoded.width;
-        final heightPx = decoded.height;
-
-        // ----------------------------------------------------------
-        // Convert image size to EMU.
-        //
-        // 96 DPI:
-        // 1 pixel = 9525 EMU
-        // ----------------------------------------------------------
-
-        final imageWidthEmu =
-            widthPx * 9525.0;
-
-        final imageHeightEmu =
-            heightPx * 9525.0;
-
-        // ----------------------------------------------------------
-        // Fit image inside slide.
-        // ----------------------------------------------------------
-
-        final scaleX =
-            slideWidthEmu / imageWidthEmu;
-
-        final scaleY =
-            slideHeightEmu / imageHeightEmu;
-
-        final scale =
-            scaleX < scaleY ? scaleX : scaleY;
-
-        final renderedWidthEmu =
-            (imageWidthEmu * scale).round();
-
-        final renderedHeightEmu =
-            (imageHeightEmu * scale).round();
-
-        final offsetX =
-            ((slideWidthEmu - renderedWidthEmu) / 2)
-                .round();
-
-        final offsetY =
-            ((slideHeightEmu - renderedHeightEmu) / 2)
-                .round();
-
-        // ----------------------------------------------------------
-        // Store optimized JPEG.
-        // ----------------------------------------------------------
-
-        final mediaPath =
-            'ppt/media/image$slideNumber.jpeg';
-
-        archive.addFile(
-          ArchiveFile(
-            mediaPath,
-            jpegBytes.length,
-            jpegBytes,
-          ),
-        );
-
-        // ----------------------------------------------------------
-        // Slide XML
-        // ----------------------------------------------------------
-
-        _addTextFile(
-          archive,
-          'ppt/slides/slide$slideNumber.xml',
-          _buildSlideXml(
-            widthEmu: renderedWidthEmu,
-            heightEmu: renderedHeightEmu,
-            offsetX: offsetX,
-            offsetY: offsetY,
-          ),
-        );
-
-        // ----------------------------------------------------------
-        // Slide relationships
-        // ----------------------------------------------------------
-
-        _addTextFile(
-          archive,
-          'ppt/slides/_rels/slide$slideNumber.xml.rels',
-          _buildSlideRelsXml(
-            slideNumber,
-          ),
-        );
-      }
-
-      // ============================================================
-      // 9. ENCODE PPTX
-      // ============================================================
-
-      final zipEncoder = ZipEncoder();
-
-      final pptxBytes = zipEncoder.encode(
-        archive,
-      );
-
-      if (pptxBytes.isEmpty) {
-        throw Exception(
-          'Failed to encode PowerPoint (.pptx) archive.',
-        );
-      }
-
-      // ============================================================
-      // 10. SAVE FILE
-      // ============================================================
-
-      final fileName =
-          await FileUtils.generatePdfFileName(
-        ConversionType.ppt,
-      );
-
-      final appDocDir =
-          await FileUtils.getAppDocumentsDirectory();
-
-      final destinationPath =
-          '${appDocDir.path}/$fileName';
-
-      final targetFile =
-          File(destinationPath);
-
-      await targetFile.writeAsBytes(
-        pptxBytes,
-        flush: true,
-      );
-
-      // ============================================================
-      // 11. VERIFY
-      // ============================================================
-
-      if (!await targetFile.exists()) {
-        throw Exception(
-          'Failed to create PowerPoint presentation.',
-        );
-      }
-
-      final fileSize =
-          await targetFile.length();
-
-      if (fileSize <= 0) {
-        throw Exception(
-          'Generated PowerPoint presentation is empty.',
-        );
-      }
-
-      // ============================================================
-      // 12. RETURN RESULT
-      // ============================================================
-
-      return DocumentResult(
-        filePath: destinationPath,
-        fileName: fileName,
-        pageCount: slideCount,
-        generatedAt: startTimestamp,
-        conversionType: ConversionType.ppt,
-      );
-    } finally {
-      // ============================================================
-      // CLEANUP
-      // ============================================================
-
-      try {
-        if (await sessionDir.exists()) {
-          await sessionDir.delete(
-            recursive: true,
-          );
-        }
-      } catch (_) {
-        // Ignore cleanup errors.
-      }
     }
+
+    // ============================================================
+    // FILE NAME
+    // ============================================================
+
+    final fileName = await FileUtils.generatePdfFileName(
+      ConversionType.ppt,
+    );
+
+    // ============================================================
+    // APP DOCUMENT DIRECTORY
+    // ============================================================
+
+    final appDocDir =
+        await FileUtils.getAppDocumentsDirectory();
+
+    final destinationPath =
+        '${appDocDir.path}/$fileName';
+
+    // ============================================================
+    // SAVE
+    // ============================================================
+
+    final targetFile = File(destinationPath);
+
+    await targetFile.writeAsBytes(
+      pptxBytes,
+      flush: false,
+    );
+
+    // ============================================================
+    // VERIFY
+    // ============================================================
+
+    if (!await targetFile.exists()) {
+      throw Exception(
+        'Failed to create PowerPoint presentation.',
+      );
+    }
+
+    final fileSize = await targetFile.length();
+
+    if (fileSize <= 0) {
+      throw Exception(
+        'Generated PowerPoint presentation is empty.',
+      );
+    }
+
+    // ============================================================
+    // RESULT
+    // ============================================================
+
+    return DocumentResult(
+      filePath: destinationPath,
+      fileName: fileName,
+      pageCount: imagePaths.length,
+      generatedAt: startTimestamp,
+      conversionType: ConversionType.ppt,
+    );
+  }
+}
+
+// ============================================================================
+// BACKGROUND PPTX GENERATION
+// ============================================================================
+
+Uint8List _generatePptxInBackground(
+  List<String> imagePaths,
+) {
+  final archive = Archive();
+
+  final slideCount = imagePaths.length;
+
+  // ==========================================================================
+  // IMAGE OPTIMIZATION
+  // ==========================================================================
+
+  const int maxImageDimension = 2400;
+
+  const int jpegQuality = 85;
+
+  // ==========================================================================
+  // READ FIRST IMAGE
+  // ==========================================================================
+  //
+  // PowerPoint uses ONE presentation-wide slide size.
+  //
+  // Therefore the first image determines the presentation aspect ratio.
+  //
+  // Example:
+  //
+  // 1080 x 1920
+  //       ↓
+  // portrait presentation
+  //
+  // 1920 x 1080
+  //       ↓
+  // landscape presentation
+  //
+  // ==========================================================================
+
+  final firstImageFile = File(
+    imagePaths.first,
+  );
+
+  if (!firstImageFile.existsSync()) {
+    throw Exception(
+      'Image file not found: ${imagePaths.first}',
+    );
   }
 
-  // ==============================================================
-  // ADD TEXT FILE
-  // ==============================================================
+  final firstBytes =
+      firstImageFile.readAsBytesSync();
 
-  void _addTextFile(
-    Archive archive,
-    String path,
-    String content,
-  ) {
-    final bytes = utf8.encode(content);
+  if (firstBytes.isEmpty) {
+    throw Exception(
+      'First image is empty.',
+    );
+  }
+
+  final firstDecoded =
+      img.decodeImage(firstBytes);
+
+  if (firstDecoded == null) {
+    throw Exception(
+      'Failed to decode first image.',
+    );
+  }
+
+  if (firstDecoded.width <= 0 ||
+      firstDecoded.height <= 0) {
+    throw Exception(
+      'Invalid first image dimensions.',
+    );
+  }
+
+  // ==========================================================================
+  // PRESENTATION SIZE
+  // ==========================================================================
+  //
+  // We keep a standard physical width of 13.333 inches.
+  //
+  // Height is calculated from the FIRST IMAGE aspect ratio.
+  //
+  // Therefore:
+  //
+  // presentation ratio = first image ratio
+  //
+  // This avoids forcing every presentation to 16:9.
+  //
+  // ==========================================================================
+
+  const double presentationWidthInches =
+      13.333333;
+
+  final double firstAspectRatio =
+      firstDecoded.width /
+          firstDecoded.height;
+
+  final double presentationHeightInches =
+      presentationWidthInches /
+          firstAspectRatio;
+
+  // ==========================================================================
+  // CONVERT INCHES → EMU
+  // ==========================================================================
+  //
+  // 1 inch = 914400 EMU
+  //
+  // ==========================================================================
+
+  final int slideWidthEmu =
+      _inchesToEmu(
+    presentationWidthInches,
+  );
+
+  final int slideHeightEmu =
+      _inchesToEmu(
+    presentationHeightInches,
+  );
+
+  if (slideWidthEmu <= 0 ||
+      slideHeightEmu <= 0) {
+    throw Exception(
+      'Invalid PowerPoint slide dimensions.',
+    );
+  }
+
+  // ==========================================================================
+  // CONTENT TYPES
+  // ==========================================================================
+
+  _addTextFile(
+    archive,
+    '[Content_Types].xml',
+    _buildContentTypesXml(slideCount),
+  );
+
+  // ==========================================================================
+  // ROOT RELATIONSHIPS
+  // ==========================================================================
+
+  _addTextFile(
+    archive,
+    '_rels/.rels',
+    _buildRootRelsXml(),
+  );
+
+  // ==========================================================================
+  // PRESENTATION
+  // ==========================================================================
+
+  _addTextFile(
+    archive,
+    'ppt/presentation.xml',
+    _buildPresentationXml(
+      slideCount,
+      slideWidthEmu,
+      slideHeightEmu,
+    ),
+  );
+
+  // ==========================================================================
+  // PRESENTATION RELATIONSHIPS
+  // ==========================================================================
+
+  _addTextFile(
+    archive,
+    'ppt/_rels/presentation.xml.rels',
+    _buildPresentationRelsXml(
+      slideCount,
+    ),
+  );
+
+  // ==========================================================================
+  // POWERPOINT BOILERPLATE
+  // ==========================================================================
+
+  _addPptTemplateBoilerplate(
+    archive,
+  );
+
+  // ==========================================================================
+  // PROCESS EACH IMAGE
+  // ==========================================================================
+
+  for (int i = 0; i < slideCount; i++) {
+    final slideNumber = i + 1;
+
+    final imagePath = imagePaths[i];
+
+    final imageFile = File(imagePath);
+
+    if (!imageFile.existsSync()) {
+      throw Exception(
+        'Image file not found: $imagePath',
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // READ
+    // ------------------------------------------------------------------------
+
+    final bytes =
+        imageFile.readAsBytesSync();
+
+    if (bytes.isEmpty) {
+      throw Exception(
+        'Image file is empty: $imagePath',
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // DECODE
+    // ------------------------------------------------------------------------
+
+    img.Image? decoded =
+        img.decodeImage(bytes);
+
+    if (decoded == null) {
+      throw Exception(
+        'Failed to decode image: $imagePath',
+      );
+    }
+
+    if (decoded.width <= 0 ||
+        decoded.height <= 0) {
+      throw Exception(
+        'Invalid image dimensions: $imagePath',
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // RESIZE LARGE IMAGE
+    // ------------------------------------------------------------------------
+
+    if (decoded.width > maxImageDimension ||
+        decoded.height > maxImageDimension) {
+      final double widthScale =
+          maxImageDimension /
+              decoded.width;
+
+      final double heightScale =
+          maxImageDimension /
+              decoded.height;
+
+      final double scale =
+          widthScale < heightScale
+              ? widthScale
+              : heightScale;
+
+      final int newWidth =
+          (decoded.width * scale).round();
+
+      final int newHeight =
+          (decoded.height * scale).round();
+
+      decoded = img.copyResize(
+        decoded,
+        width: newWidth,
+        height: newHeight,
+        interpolation:
+            img.Interpolation.linear,
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // JPEG ENCODE
+    // ------------------------------------------------------------------------
+
+    final List<int> jpegBytes =
+        img.encodeJpg(
+      decoded,
+      quality: jpegQuality,
+    );
+
+    if (jpegBytes.isEmpty) {
+      throw Exception(
+        'Failed to encode image: $imagePath',
+      );
+    }
+
+    // ------------------------------------------------------------------------
+    // IMAGE DIMENSIONS
+    // ------------------------------------------------------------------------
+
+    final double imageWidth =
+        decoded.width.toDouble();
+
+    final double imageHeight =
+        decoded.height.toDouble();
+
+    // ------------------------------------------------------------------------
+    // IMAGE → EMU
+    // ------------------------------------------------------------------------
+    //
+    // We use 96 DPI:
+    //
+    // 1 pixel = 9525 EMU
+    //
+    // ------------------------------------------------------------------------
+
+    final double imageWidthEmu =
+        imageWidth * 9525.0;
+
+    final double imageHeightEmu =
+        imageHeight * 9525.0;
+
+    // ------------------------------------------------------------------------
+    // FIT IMAGE INSIDE SLIDE
+    // ------------------------------------------------------------------------
+    //
+    // IMPORTANT:
+    //
+    // The image is NEVER stretched.
+    //
+    // Its original aspect ratio is preserved.
+    //
+    // ------------------------------------------------------------------------
+
+    final double scaleX =
+        slideWidthEmu /
+            imageWidthEmu;
+
+    final double scaleY =
+        slideHeightEmu /
+            imageHeightEmu;
+
+    final double scale =
+        scaleX < scaleY
+            ? scaleX
+            : scaleY;
+
+    final int renderedWidthEmu =
+        (imageWidthEmu * scale)
+            .round();
+
+    final int renderedHeightEmu =
+        (imageHeightEmu * scale)
+            .round();
+
+    // ------------------------------------------------------------------------
+    // CENTER IMAGE
+    // ------------------------------------------------------------------------
+
+    final int offsetX =
+        ((slideWidthEmu -
+                    renderedWidthEmu) /
+                2)
+            .round();
+
+    final int offsetY =
+        ((slideHeightEmu -
+                    renderedHeightEmu) /
+                2)
+            .round();
+
+    // ==========================================================================
+    // ADD IMAGE
+    // ==========================================================================
+
+    final String mediaPath =
+        'ppt/media/image$slideNumber.jpeg';
 
     archive.addFile(
-      ArchiveFile(
-        path,
-        bytes.length,
-        bytes,
+      ArchiveFile.noCompress(
+        mediaPath,
+        jpegBytes.length,
+        jpegBytes,
+      ),
+    );
+
+    // ==========================================================================
+    // SLIDE XML
+    // ==========================================================================
+
+    _addTextFile(
+      archive,
+      'ppt/slides/slide$slideNumber.xml',
+      _buildSlideXml(
+        widthEmu: renderedWidthEmu,
+        heightEmu: renderedHeightEmu,
+        offsetX: offsetX,
+        offsetY: offsetY,
+      ),
+    );
+
+    // ==========================================================================
+    // SLIDE RELATIONSHIPS
+    // ==========================================================================
+
+    _addTextFile(
+      archive,
+      'ppt/slides/_rels/slide$slideNumber.xml.rels',
+      _buildSlideRelsXml(
+        slideNumber,
       ),
     );
   }
 
-  // ==============================================================
-  // CONTENT TYPES
-  // ==============================================================
+  // ==========================================================================
+  // ENCODE PPTX
+  // ==========================================================================
 
-  String _buildContentTypesXml(
-    int slideCount,
-  ) {
-    final sb = StringBuffer();
+  final zipEncoder = ZipEncoder();
 
-    sb.writeln(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+  final List<int> pptxBytes =
+      zipEncoder.encode(
+    archive,
+    level: DeflateLevel.bestSpeed,
+  );
+
+  if (pptxBytes.isEmpty) {
+    throw Exception(
+      'Failed to encode PowerPoint archive.',
     );
-
-    sb.writeln(
-      '<Types '
-      'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
-    );
-
-    sb.writeln(
-      '<Default '
-      'Extension="rels" '
-      'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
-    );
-
-    sb.writeln(
-      '<Default '
-      'Extension="xml" '
-      'ContentType="application/xml"/>',
-    );
-
-    sb.writeln(
-      '<Default '
-      'Extension="jpeg" '
-      'ContentType="image/jpeg"/>',
-    );
-
-    sb.writeln(
-      '<Default '
-      'Extension="jpg" '
-      'ContentType="image/jpeg"/>',
-    );
-
-    sb.writeln(
-      '<Default '
-      'Extension="png" '
-      'ContentType="image/png"/>',
-    );
-
-    sb.writeln(
-      '<Override '
-      'PartName="/ppt/presentation.xml" '
-      'ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>',
-    );
-
-    sb.writeln(
-      '<Override '
-      'PartName="/ppt/slideMasters/slideMaster1.xml" '
-      'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>',
-    );
-
-    sb.writeln(
-      '<Override '
-      'PartName="/ppt/slideLayouts/slideLayout1.xml" '
-      'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>',
-    );
-
-    sb.writeln(
-      '<Override '
-      'PartName="/ppt/theme/theme1.xml" '
-      'ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>',
-    );
-
-    for (int i = 1; i <= slideCount; i++) {
-      sb.writeln(
-        '<Override '
-        'PartName="/ppt/slides/slide$i.xml" '
-        'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>',
-      );
-    }
-
-    sb.writeln('</Types>');
-
-    return sb.toString();
   }
 
-  // ==============================================================
-  // ROOT RELATIONSHIPS
-  // ==============================================================
+  return Uint8List.fromList(
+    pptxBytes,
+  );
+}
 
-  String _buildRootRelsXml() {
-    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+// ============================================================================
+// UNIT CONVERSION
+// ============================================================================
+
+int _inchesToEmu(
+  double inches,
+) {
+  return (inches * 914400).round();
+}
+
+// ============================================================================
+// ADD TEXT FILE
+// ============================================================================
+
+void _addTextFile(
+  Archive archive,
+  String path,
+  String content,
+) {
+  final bytes =
+      utf8.encode(content);
+
+  archive.addFile(
+    ArchiveFile(
+      path,
+      bytes.length,
+      bytes,
+    ),
+  );
+}
+
+// ============================================================================
+// CONTENT TYPES
+// ============================================================================
+
+String _buildContentTypesXml(
+  int slideCount,
+) {
+  final sb = StringBuffer();
+
+  sb.writeln(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+  );
+
+  sb.writeln(
+    '<Types '
+    'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
+  );
+
+  sb.writeln(
+    '<Default '
+    'Extension="rels" '
+    'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
+  );
+
+  sb.writeln(
+    '<Default '
+    'Extension="xml" '
+    'ContentType="application/xml"/>',
+  );
+
+  sb.writeln(
+    '<Default '
+    'Extension="jpeg" '
+    'ContentType="image/jpeg"/>',
+  );
+
+  sb.writeln(
+    '<Override '
+    'PartName="/ppt/presentation.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>',
+  );
+
+  sb.writeln(
+    '<Override '
+    'PartName="/ppt/slideMasters/slideMaster1.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>',
+  );
+
+  sb.writeln(
+    '<Override '
+    'PartName="/ppt/slideLayouts/slideLayout1.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>',
+  );
+
+  sb.writeln(
+    '<Override '
+    'PartName="/ppt/theme/theme1.xml" '
+    'ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>',
+  );
+
+  for (int i = 1; i <= slideCount; i++) {
+    sb.writeln(
+      '<Override '
+      'PartName="/ppt/slides/slide$i.xml" '
+      'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slide+xml"/>',
+    );
+  }
+
+  sb.writeln(
+    '</Types>',
+  );
+
+  return sb.toString();
+}
+
+// ============================================================================
+// ROOT RELATIONSHIPS
+// ============================================================================
+
+String _buildRootRelsXml() {
+  return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
@@ -573,144 +652,157 @@ class PptxGenerationService {
     Target="ppt/presentation.xml"/>
 
 </Relationships>''';
+}
+
+// ============================================================================
+// PRESENTATION XML
+// ============================================================================
+
+String _buildPresentationXml(
+  int slideCount,
+  int slideWidthEmu,
+  int slideHeightEmu,
+) {
+  final sb = StringBuffer();
+
+  sb.writeln(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+  );
+
+  sb.writeln(
+    '<p:presentation '
+    'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
+    'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
+    'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">',
+  );
+
+  // --------------------------------------------------------------------------
+  // Slide Master
+  // --------------------------------------------------------------------------
+
+  sb.writeln(
+    '<p:sldMasterIdLst>',
+  );
+
+  sb.writeln(
+    '<p:sldMasterId '
+    'id="2147483648" '
+    'r:id="rIdMaster1"/>',
+  );
+
+  sb.writeln(
+    '</p:sldMasterIdLst>',
+  );
+
+  // --------------------------------------------------------------------------
+  // Slides
+  // --------------------------------------------------------------------------
+
+  sb.writeln(
+    '<p:sldIdLst>',
+  );
+
+  for (int i = 1; i <= slideCount; i++) {
+    final int slideId =
+        255 + i;
+
+    sb.writeln(
+      '<p:sldId '
+      'id="$slideId" '
+      'r:id="rIdSlide$i"/>',
+    );
   }
 
-  // ==============================================================
-  // PRESENTATION XML
-  // ==============================================================
+  sb.writeln(
+    '</p:sldIdLst>',
+  );
 
-  String _buildPresentationXml(
-    int slideCount,
-    int slideWidthEmu,
-    int slideHeightEmu,
-  ) {
-    final sb = StringBuffer();
+  // --------------------------------------------------------------------------
+  // EXACT PRESENTATION SIZE
+  // --------------------------------------------------------------------------
 
-    sb.writeln(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-    );
+  sb.writeln(
+    '<p:sldSz '
+    'cx="$slideWidthEmu" '
+    'cy="$slideHeightEmu"/>',
+  );
 
-    sb.writeln(
-      '<p:presentation '
-      'xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main" '
-      'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships" '
-      'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">',
-    );
+  // --------------------------------------------------------------------------
+  // Notes
+  // --------------------------------------------------------------------------
 
-    // ==========================================================
-    // Slide master
-    // ==========================================================
+  sb.writeln(
+    '<p:notesSz '
+    'cx="6858000" '
+    'cy="9144000"/>',
+  );
 
-    sb.writeln('<p:sldMasterIdLst>');
+  sb.writeln(
+    '</p:presentation>',
+  );
 
-    sb.writeln(
-      '<p:sldMasterId '
-      'id="2147483648" '
-      'r:id="rIdMaster1"/>',
-    );
+  return sb.toString();
+}
 
-    sb.writeln('</p:sldMasterIdLst>');
+// ============================================================================
+// PRESENTATION RELATIONSHIPS
+// ============================================================================
 
-    // ==========================================================
-    // Slides
-    // ==========================================================
+String _buildPresentationRelsXml(
+  int slideCount,
+) {
+  final sb = StringBuffer();
 
-    sb.writeln('<p:sldIdLst>');
+  sb.writeln(
+    '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
+  );
 
-    for (int i = 1; i <= slideCount; i++) {
-      final slideId = 255 + i;
+  sb.writeln(
+    '<Relationships '
+    'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
+  );
 
-      sb.writeln(
-        '<p:sldId '
-        'id="$slideId" '
-        'r:id="rIdSlide$i"/>',
-      );
-    }
+  sb.writeln(
+    '<Relationship '
+    'Id="rIdMaster1" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" '
+    'Target="slideMasters/slideMaster1.xml"/>',
+  );
 
-    sb.writeln('</p:sldIdLst>');
+  sb.writeln(
+    '<Relationship '
+    'Id="rIdTheme1" '
+    'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" '
+    'Target="theme/theme1.xml"/>',
+  );
 
-    // ==========================================================
-    // Slide size
-    // ==========================================================
-
-    sb.writeln(
-      '<p:sldSz '
-      'cx="$slideWidthEmu" '
-      'cy="$slideHeightEmu"/>',
-    );
-
-    // ==========================================================
-    // Notes size
-    // ==========================================================
-
-    sb.writeln(
-      '<p:notesSz '
-      'cx="6858000" '
-      'cy="9144000"/>',
-    );
-
-    sb.writeln('</p:presentation>');
-
-    return sb.toString();
-  }
-
-  // ==============================================================
-  // PRESENTATION RELATIONSHIPS
-  // ==============================================================
-
-  String _buildPresentationRelsXml(
-    int slideCount,
-  ) {
-    final sb = StringBuffer();
-
-    sb.writeln(
-      '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>',
-    );
-
-    sb.writeln(
-      '<Relationships '
-      'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
-    );
-
+  for (int i = 1; i <= slideCount; i++) {
     sb.writeln(
       '<Relationship '
-      'Id="rIdMaster1" '
-      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideMaster" '
-      'Target="slideMasters/slideMaster1.xml"/>',
+      'Id="rIdSlide$i" '
+      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" '
+      'Target="slides/slide$i.xml"/>',
     );
-
-    sb.writeln(
-      '<Relationship '
-      'Id="rIdTheme1" '
-      'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" '
-      'Target="theme/theme1.xml"/>',
-    );
-
-    for (int i = 1; i <= slideCount; i++) {
-      sb.writeln(
-        '<Relationship '
-        'Id="rIdSlide$i" '
-        'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slide" '
-        'Target="slides/slide$i.xml"/>',
-      );
-    }
-
-    sb.writeln('</Relationships>');
-
-    return sb.toString();
   }
 
-  // ==============================================================
-  // SLIDE XML
-  // ==============================================================
+  sb.writeln(
+    '</Relationships>',
+  );
 
-  String _buildSlideXml({
-    required int widthEmu,
-    required int heightEmu,
-    required int offsetX,
-    required int offsetY,
-  }) {
-    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  return sb.toString();
+}
+
+// ============================================================================
+// SLIDE XML
+// ============================================================================
+
+String _buildSlideXml({
+  required int widthEmu,
+  required int heightEmu,
+  required int offsetX,
+  required int offsetY,
+}) {
+  return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sld
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -825,16 +917,16 @@ class PptxGenerationService {
   </p:clrMapOvr>
 
 </p:sld>''';
-  }
+}
 
-  // ==============================================================
-  // SLIDE RELATIONSHIPS
-  // ==============================================================
+// ============================================================================
+// SLIDE RELATIONSHIPS
+// ============================================================================
 
-  String _buildSlideRelsXml(
-    int slideNumber,
-  ) {
-    return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+String _buildSlideRelsXml(
+  int slideNumber,
+) {
+  return '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
@@ -849,20 +941,20 @@ class PptxGenerationService {
     Target="../media/image$slideNumber.jpeg"/>
 
 </Relationships>''';
-  }
+}
 
-  // ==============================================================
-  // POWERPOINT BOILERPLATE
-  // ==============================================================
+// ============================================================================
+// POWERPOINT BOILERPLATE
+// ============================================================================
 
-  void _addPptTemplateBoilerplate(
-    Archive archive,
-  ) {
-    // ============================================================
-    // slideLayout1.xml
-    // ============================================================
+void _addPptTemplateBoilerplate(
+  Archive archive,
+) {
+  // ==========================================================================
+  // SLIDE LAYOUT
+  // ==========================================================================
 
-    const slideLayoutXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const slideLayoutXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldLayout
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -901,17 +993,17 @@ class PptxGenerationService {
 
 </p:sldLayout>''';
 
-    _addTextFile(
-      archive,
-      'ppt/slideLayouts/slideLayout1.xml',
-      slideLayoutXml,
-    );
+  _addTextFile(
+    archive,
+    'ppt/slideLayouts/slideLayout1.xml',
+    slideLayoutXml,
+  );
 
-    // ============================================================
-    // slideLayout1.xml.rels
-    // ============================================================
+  // ==========================================================================
+  // SLIDE LAYOUT RELATIONSHIPS
+  // ==========================================================================
 
-    const slideLayoutRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const slideLayoutRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
@@ -922,17 +1014,17 @@ class PptxGenerationService {
 
 </Relationships>''';
 
-    _addTextFile(
-      archive,
-      'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
-      slideLayoutRelsXml,
-    );
+  _addTextFile(
+    archive,
+    'ppt/slideLayouts/_rels/slideLayout1.xml.rels',
+    slideLayoutRelsXml,
+  );
 
-    // ============================================================
-    // slideMaster1.xml
-    // ============================================================
+  // ==========================================================================
+  // SLIDE MASTER
+  // ==========================================================================
 
-    const slideMasterXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const slideMasterXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldMaster
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -984,17 +1076,17 @@ class PptxGenerationService {
 
 </p:sldMaster>''';
 
-    _addTextFile(
-      archive,
-      'ppt/slideMasters/slideMaster1.xml',
-      slideMasterXml,
-    );
+  _addTextFile(
+    archive,
+    'ppt/slideMasters/slideMaster1.xml',
+    slideMasterXml,
+  );
 
-    // ============================================================
-    // slideMaster1.xml.rels
-    // ============================================================
+  // ==========================================================================
+  // SLIDE MASTER RELATIONSHIPS
+  // ==========================================================================
 
-    const slideMasterRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const slideMasterRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
@@ -1010,17 +1102,17 @@ class PptxGenerationService {
 
 </Relationships>''';
 
-    _addTextFile(
-      archive,
-      'ppt/slideMasters/_rels/slideMaster1.xml.rels',
-      slideMasterRelsXml,
-    );
+  _addTextFile(
+    archive,
+    'ppt/slideMasters/_rels/slideMaster1.xml.rels',
+    slideMasterRelsXml,
+  );
 
-    // ============================================================
-    // theme1.xml
-    // ============================================================
+  // ==========================================================================
+  // THEME
+  // ==========================================================================
 
-    const themeXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const themeXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   name="Office Theme">
@@ -1130,10 +1222,9 @@ class PptxGenerationService {
 
 </a:theme>''';
 
-    _addTextFile(
-      archive,
-      'ppt/theme/theme1.xml',
-      themeXml,
-    );
-  }
+  _addTextFile(
+    archive,
+    'ppt/theme/theme1.xml',
+    themeXml,
+  );
 }

@@ -20,16 +20,12 @@ class PdfGenerationService {
 
       final startTime = DateTime.now();
 
-      // Make a separate copy before sending data to isolate.
       final paths = List<String>.from(imagePaths);
 
       // ==========================================================
-      // HEAVY PDF GENERATION
+      // BACKGROUND PDF GENERATION
       // ==========================================================
-      //
-      // All CPU-heavy work runs in a background isolate.
-      // This keeps Flutter UI responsive.
-      //
+
       final Uint8List pdfBytes = await Isolate.run(
         () => _generatePdfInBackground(paths),
       );
@@ -70,17 +66,13 @@ class PdfGenerationService {
       // ==========================================================
 
       if (!await file.exists()) {
-        throw Exception(
-          'Failed to create PDF file',
-        );
+        throw Exception('Failed to create PDF file');
       }
 
       final fileSize = await file.length();
 
       if (fileSize <= 0) {
-        throw Exception(
-          'Generated PDF file is empty',
-        );
+        throw Exception('Generated PDF file is empty');
       }
 
       // ==========================================================
@@ -124,35 +116,26 @@ Future<Uint8List> _generatePdfInBackground(
   final pdf = pw.Document();
 
   // ================================================================
-  // PDF PAGE SETTINGS
+  // PDF PAGE BASE WIDTH
   // ================================================================
+  //
+  // We use A4 width as the base physical width.
+  //
+  // IMPORTANT:
+  // Height is calculated from the ORIGINAL IMAGE ASPECT RATIO.
+  //
+  // Therefore:
+  //
+  // image ratio == PDF page ratio
+  //
+  // No unnecessary white margins.
+  //
 
-  final pageWidth = PdfPageFormat.a4.width;
-  final pageHeight = PdfPageFormat.a4.height;
-
-  const margin = 20.0;
-
-  final availableWidth =
-      pageWidth - (margin * 2);
-
-  final availableHeight =
-      pageHeight - (margin * 2);
+  final basePageWidth = PdfPageFormat.a4.width;
 
   // ================================================================
   // IMAGE LIMIT
   // ================================================================
-  //
-  // Phone camera images can easily be:
-  //
-  // 4000 x 3000
-  // 6000 x 4000
-  // 8000 x 6000
-  //
-  // Putting these original images directly into PDF makes
-  // generation much slower and creates unnecessarily large PDFs.
-  //
-  // 1800 px is enough for good document/PDF quality.
-  //
 
   const maxImageWidth = 1800;
   const maxImageHeight = 2400;
@@ -176,8 +159,7 @@ Future<Uint8List> _generatePdfInBackground(
     // READ IMAGE
     // --------------------------------------------------------------
 
-    final originalBytes =
-        imageFile.readAsBytesSync();
+    final originalBytes = imageFile.readAsBytesSync();
 
     if (originalBytes.isEmpty) {
       throw Exception(
@@ -189,8 +171,7 @@ Future<Uint8List> _generatePdfInBackground(
     // DECODE IMAGE
     // --------------------------------------------------------------
 
-    final decodedImage =
-        img.decodeImage(originalBytes);
+    final decodedImage = img.decodeImage(originalBytes);
 
     if (decodedImage == null) {
       throw Exception(
@@ -209,8 +190,7 @@ Future<Uint8List> _generatePdfInBackground(
     // RESIZE LARGE IMAGE
     // --------------------------------------------------------------
 
-    img.Image processedImage =
-        decodedImage;
+    img.Image processedImage = decodedImage;
 
     final needsResize =
         decodedImage.width > maxImageWidth ||
@@ -245,15 +225,6 @@ Future<Uint8List> _generatePdfInBackground(
     // --------------------------------------------------------------
     // ENCODE JPEG
     // --------------------------------------------------------------
-    //
-    // JPEG is much smaller than raw PNG/photo data.
-    //
-    // Quality 82 gives a good balance between:
-    //
-    // - Speed
-    // - Quality
-    // - PDF size
-    //
 
     final jpegBytes = img.encodeJpg(
       processedImage,
@@ -274,9 +245,27 @@ Future<Uint8List> _generatePdfInBackground(
       Uint8List.fromList(jpegBytes),
     );
 
-    // --------------------------------------------------------------
-    // IMAGE DIMENSIONS
-    // --------------------------------------------------------------
+    // ==============================================================
+    // CALCULATE EXACT PAGE SIZE
+    // ==============================================================
+    //
+    // This is the IMPORTANT FIX.
+    //
+    // Instead of:
+    //
+    // A4 width + A4 height
+    //
+    // we calculate the PDF height from the image ratio.
+    //
+    // Example:
+    //
+    // Image = 1080 x 1920
+    //
+    // Page width  = 595.28
+    // Page height = 595.28 * 1920 / 1080
+    //
+    // So PDF page has exactly the same ratio as the image.
+    //
 
     final imageWidth =
         processedImage.width.toDouble();
@@ -284,41 +273,39 @@ Future<Uint8List> _generatePdfInBackground(
     final imageHeight =
         processedImage.height.toDouble();
 
-    // --------------------------------------------------------------
-    // FIT IMAGE INTO A4
-    // --------------------------------------------------------------
+    final pageWidth = basePageWidth;
 
-    double fitWidth = availableWidth;
-
-    double fitHeight =
-        (availableWidth * imageHeight) /
+    final pageHeight =
+        pageWidth *
+        imageHeight /
         imageWidth;
 
-    if (fitHeight > availableHeight) {
-      fitHeight = availableHeight;
+    // --------------------------------------------------------------
+    // CUSTOM PAGE FORMAT
+    // --------------------------------------------------------------
 
-      fitWidth =
-          (availableHeight * imageWidth) /
-          imageHeight;
-    }
+    final pageFormat = PdfPageFormat(
+      pageWidth,
+      pageHeight,
+    );
 
     // --------------------------------------------------------------
-    // ADD PAGE
+    // ADD IMAGE AS FULL PAGE
     // --------------------------------------------------------------
 
     pdf.addPage(
       pw.Page(
-        pageFormat: PdfPageFormat.a4,
-        margin: const pw.EdgeInsets.all(
-          margin,
-        ),
+        pageFormat: pageFormat,
+        margin: pw.EdgeInsets.zero,
         build: (context) {
-          return pw.Center(
+          return pw.SizedBox(
+            width: pageWidth,
+            height: pageHeight,
             child: pw.Image(
               pdfImage,
-              width: fitWidth,
-              height: fitHeight,
-              fit: pw.BoxFit.contain,
+              width: pageWidth,
+              height: pageHeight,
+              fit: pw.BoxFit.fill,
             ),
           );
         },
@@ -327,16 +314,10 @@ Future<Uint8List> _generatePdfInBackground(
   }
 
   // ================================================================
-  // ENCODE PDF
+  // SAVE PDF
   // ================================================================
-  //
-  // IMPORTANT:
-  //
-  // pdf.save() is CPU-heavy.
-  // It is intentionally executed inside this isolate.
-  //
 
- final List<int> encodedPdf = await pdf.save();
+  final List<int> encodedPdf = await pdf.save();
 
   if (encodedPdf.isEmpty) {
     throw Exception(
