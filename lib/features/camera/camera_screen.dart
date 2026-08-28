@@ -1,5 +1,4 @@
-import 'dart:typed_data';
-
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/camera_service.dart';
 import '../../core/services/gallery_service.dart';
+import '../../core/services/scan_filter_service.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
@@ -81,7 +81,11 @@ class _CameraScreenState extends State<CameraScreen> {
       final image = await _cameraService.capturePhoto();
 
       if (image != null && mounted) {
-        final scannedBytes = await image.readAsBytes();
+        final capturedBytes = await image.readAsBytes();
+        final scannedBytes = await compute(
+          ScanFilterService.autoCrop,
+          capturedBytes,
+        );
 
         if (!mounted) return;
 
