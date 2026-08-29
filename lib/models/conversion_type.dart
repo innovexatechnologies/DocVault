@@ -30,7 +30,7 @@ enum ConversionType {
   docs(
     id: 'docs',
     label: 'Word Document',
-    shortName: 'DOCS',
+    shortName: 'DOCX',
     extension: 'docx',
     mimeType:
         'application/vnd.openxmlformats-officedocument.wordprocessingml.document',

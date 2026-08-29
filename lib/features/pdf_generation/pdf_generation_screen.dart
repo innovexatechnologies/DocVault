@@ -29,6 +29,8 @@ class _PdfGenerationScreenState
   final DocumentGenerationService _documentService =
       DocumentGenerationService();
 
+  bool _hasNavigated = false;
+
   @override
   void initState() {
     super.initState();
@@ -39,45 +41,66 @@ class _PdfGenerationScreenState
   // GENERATE DOCUMENT
   // ============================================================
 
-void _startGeneration() {
-  final imageProvider =
-      context.read<ImageSelectionProvider>();
+  void _startGeneration() {
+    _hasNavigated = false;
 
-  final imagePaths =
-      imageProvider.getImageFilePaths();
+    final imageProvider =
+        context.read<ImageSelectionProvider>();
 
-  _generationFuture = _documentService
-      .generateDocument(
-        imagePaths: imagePaths,
-        conversionType: widget.conversionType,
-      )
-      .then((result) {
-        // ============================================================
-        // IMPORTANT:
-        // PDF/PPT successfully generated.
-        // Current selection is now finished.
-        //
-        // Clear the provider so the next document starts with
-        // a completely fresh image selection.
-        // ============================================================
+    final imagePaths =
+        imageProvider.getImageFilePaths();
 
-        if (mounted) {
-          imageProvider.clearAllImages();
+    _generationFuture = _documentService
+        .generateDocument(
+          imagePaths: imagePaths,
+          conversionType: widget.conversionType,
+        )
+        .then((result) {
+      // ==========================================================
+      // CLEAR SELECTED IMAGES AFTER SUCCESS
+      // ==========================================================
+
+      if (mounted) {
+        imageProvider.clearAllImages();
+      }
+
+      // ==========================================================
+      // DIRECTLY OPEN RESULT SCREEN
+      //
+      // PDF / DOCX / PPTX:
+      // Generation Screen -> ResultScreen
+      //
+      // SUCCESS "VIEW RESULT" SCREEN IS SKIPPED
+      // ==========================================================
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || _hasNavigated) {
+          return;
         }
 
-        return result;
-      })
-      .catchError((error) {
-        debugPrint(
-          'Document generation error: $error',
-        );
+        _hasNavigated = true;
 
-        // IMPORTANT:
-        // Do NOT clear images on error.
-        // This allows the user to retry generation.
-        throw error;
+        Navigator.of(context).pushReplacement(
+          MaterialPageRoute(
+            builder: (_) => ResultScreen(
+              pdfResult: result,
+            ),
+          ),
+        );
       });
-}
+
+      return result;
+    }).catchError((error) {
+      debugPrint(
+        'Document generation error: $error',
+      );
+
+      // Do not clear images on error.
+      // User can retry generation.
+
+      throw error;
+    });
+  }
 
   // ============================================================
   // RETRY
@@ -121,9 +144,6 @@ void _startGeneration() {
         final hasError =
             snapshot.hasError;
 
-        final hasData =
-            snapshot.hasData;
-
         return PopScope(
           canPop: !isLoading,
           onPopInvokedWithResult:
@@ -148,11 +168,9 @@ void _startGeneration() {
                         colorScheme.onSurface,
                     elevation: 0,
                     scrolledUnderElevation: 0,
-                    leading:
-                        IconButton(
+                    leading: IconButton(
                       icon: const Icon(
-                        Icons
-                            .arrow_back_rounded,
+                        Icons.arrow_back_rounded,
                       ),
                       onPressed: () =>
                           Navigator.of(
@@ -174,9 +192,9 @@ void _startGeneration() {
             body: SafeArea(
               child: Builder(
                 builder: (context) {
-                  // ==================================================
+                  // ================================================
                   // LOADING
-                  // ==================================================
+                  // ================================================
 
                   if (isLoading) {
                     return _buildLoadingState(
@@ -187,9 +205,9 @@ void _startGeneration() {
                     );
                   }
 
-                  // ==================================================
+                  // ================================================
                   // ERROR
-                  // ==================================================
+                  // ================================================
 
                   if (hasError) {
                     return _buildErrorState(
@@ -201,19 +219,11 @@ void _startGeneration() {
                     );
                   }
 
-                  // ==================================================
+                  // ================================================
                   // SUCCESS
-                  // ==================================================
-
-                  if (hasData) {
-                    return _buildSuccessState(
-                      context,
-                      responsivePadding,
-                      buttonHeight,
-                      colorScheme,
-                      snapshot.data!,
-                    );
-                  }
+                  //
+                  // Navigation automatically happens to ResultScreen.
+                  // ================================================
 
                   return const SizedBox();
                 },
@@ -622,8 +632,7 @@ void _startGeneration() {
               height: buttonHeight,
               child: OutlinedButton.icon(
                 onPressed: () {
-                  Navigator.of(context)
-                      .pop();
+                  Navigator.of(context).pop();
                 },
                 icon: const Icon(
                   Icons.arrow_back_rounded,
@@ -645,189 +654,6 @@ void _startGeneration() {
                 ),
                 style:
                     OutlinedButton.styleFrom(
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                      12,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  // ============================================================
-  // SUCCESS STATE
-  // ============================================================
-
-  Widget _buildSuccessState(
-    BuildContext context,
-    double responsivePadding,
-    double buttonHeight,
-    ColorScheme colorScheme,
-    DocumentResult result,
-  ) {
-    return Center(
-      child: SingleChildScrollView(
-        padding:
-            EdgeInsets.all(responsivePadding),
-        child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
-          children: [
-            // ----------------------------------------------------
-            // SUCCESS ICON
-            // ----------------------------------------------------
-
-            Container(
-              width:
-                  ResponsiveHelper.isTablet(
-                context,
-              )
-                      ? 130
-                      : 110,
-              height:
-                  ResponsiveHelper.isTablet(
-                context,
-              )
-                      ? 130
-                      : 110,
-              decoration:
-                  BoxDecoration(
-                color: AppTheme
-                    .successColor
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  28,
-                ),
-              ),
-              child: Icon(
-                Icons.check_circle_outline_rounded,
-                size:
-                    ResponsiveHelper
-                        .isTablet(context)
-                            ? 76
-                            : 64,
-                color:
-                    AppTheme.successColor,
-              ),
-            ),
-
-            SizedBox(
-              height:
-                  responsivePadding,
-            ),
-
-            // ----------------------------------------------------
-            // SUCCESS TITLE
-            // ----------------------------------------------------
-
-            Text(
-              '${widget.conversionType.shortName} Created Successfully!',
-              textAlign:
-                  TextAlign.center,
-              style: TextStyle(
-                fontSize:
-                    ResponsiveHelper
-                        .getResponsiveFontSize(
-                  context,
-                  mobileSize: 19,
-                  tabletSize: 22,
-                  desktopSize: 24,
-                ),
-                fontWeight:
-                    FontWeight.w800,
-                color:
-                    colorScheme.onSurface,
-              ),
-            ),
-
-            const SizedBox(
-              height: 8,
-            ),
-
-            Text(
-              'Your document is ready to view.',
-              textAlign:
-                  TextAlign.center,
-              style: TextStyle(
-                fontSize:
-                    ResponsiveHelper
-                        .getResponsiveFontSize(
-                  context,
-                  mobileSize: 13,
-                  tabletSize: 14,
-                  desktopSize: 15,
-                ),
-                color: colorScheme
-                    .onSurface
-                    .withValues(
-                  alpha: 0.60,
-                ),
-              ),
-            ),
-
-            SizedBox(
-              height:
-                  responsivePadding * 1.4,
-            ),
-
-            // ----------------------------------------------------
-            // VIEW RESULT
-            // ----------------------------------------------------
-
-            SizedBox(
-              width: double.infinity,
-              height: buttonHeight,
-              child:
-                  ElevatedButton.icon(
-                onPressed: () {
-                  Navigator.of(context)
-                      .pushReplacement(
-                    MaterialPageRoute(
-                      builder: (_) =>
-                          ResultScreen(
-                        pdfResult: result,
-                      ),
-                    ),
-                  );
-                },
-                icon: const Icon(
-                  Icons
-                      .arrow_forward_rounded,
-                ),
-                label: Text(
-                  'View Result',
-                  style: TextStyle(
-                    fontSize:
-                        ResponsiveHelper
-                            .getResponsiveFontSize(
-                      context,
-                      mobileSize: 14,
-                      tabletSize: 16,
-                      desktopSize: 18,
-                    ),
-                    fontWeight:
-                        FontWeight.w700,
-                  ),
-                ),
-                style:
-                    ElevatedButton.styleFrom(
-                  backgroundColor:
-                      widget
-                          .conversionType
-                          .badgeColor,
-                  foregroundColor:
-                      Colors.white,
-                  elevation: 0,
                   shape:
                       RoundedRectangleBorder(
                     borderRadius:

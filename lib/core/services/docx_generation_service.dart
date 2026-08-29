@@ -127,6 +127,16 @@ Uint8List _generateDocxInBackground(
 
   const int jpegQuality = 90;
 
+  // Standard screen/print DPI assumption used to convert pixels -> inches
+  // when a real page size needs to be derived from BOTH dimensions of the
+  // image instead of forcing one fixed axis.
+  const double assumedDpi = 150.0;
+
+  // Word's own hard page-size limits (in inches). Twips max out at 31680
+  // (22 in) but Word's UI caps at 22in; we stay safely inside that.
+  const double minPageInches = 1.0;
+  const double maxPageInches = 22.0;
+
   // ==========================================================================
   // BASIC DOCX FILES
   // ==========================================================================
@@ -268,32 +278,64 @@ Uint8List _generateDocxInBackground(
     }
 
     // ==========================================================================
-    // PAGE SIZE CALCULATION
+    // PAGE SIZE CALCULATION (FIXED)
+    //
+    // Previous version always fixed width to 8.0in and derived height from
+    // it. That meant a tiny or a huge image both got forced onto an 8in-wide
+    // page, which is itself a "fixed axis" bug of the same family as forcing
+    // A4 - it just fixes width instead of the whole page.
+    //
+    // Fix: derive BOTH dimensions from the image's actual pixel size at a
+    // fixed DPI, so page size scales proportionally to the image itself in
+    // both directions, then clamp into Word's safe range while preserving
+    // aspect ratio.
     // ==========================================================================
 
-    double pageWidthInches = 8.0;
-
-    final double imageWidth =
+    final double imageWidthPx =
         processedImage.width.toDouble();
 
-    final double imageHeight =
+    final double imageHeightPx =
         processedImage.height.toDouble();
 
-    double pageHeightInches =
-        pageWidthInches *
-        imageHeight /
-        imageWidth;
+    double pageWidthInches = imageWidthPx / assumedDpi;
+    double pageHeightInches = imageHeightPx / assumedDpi;
 
     // ------------------------------------------------------------------------
-    // MS WORD SAFETY LIMIT
+    // CLAMP TO WORD'S SAFE PAGE-SIZE RANGE (BOTH MIN AND MAX),
+    // ALWAYS PRESERVING ASPECT RATIO
     // ------------------------------------------------------------------------
-    
-    if (pageHeightInches > 20.0) {
-      pageHeightInches = 20.0;
-      pageWidthInches = pageHeightInches * imageWidth / imageHeight;
-    } else if (pageWidthInches > 20.0) {
-      pageWidthInches = 20.0;
-      pageHeightInches = pageWidthInches * imageHeight / imageWidth;
+
+    final double aspect = imageWidthPx / imageHeightPx;
+
+    if (pageWidthInches > maxPageInches) {
+      pageWidthInches = maxPageInches;
+      pageHeightInches = pageWidthInches / aspect;
+    }
+
+    if (pageHeightInches > maxPageInches) {
+      pageHeightInches = maxPageInches;
+      pageWidthInches = pageHeightInches * aspect;
+    }
+
+    if (pageWidthInches < minPageInches) {
+      pageWidthInches = minPageInches;
+      pageHeightInches = pageWidthInches / aspect;
+    }
+
+    if (pageHeightInches < minPageInches) {
+      pageHeightInches = minPageInches;
+      pageWidthInches = pageHeightInches * aspect;
+    }
+
+    // Re-check the other axis after a min-clamp could have pushed it back
+    // above max (happens with extreme aspect ratios, e.g. very thin strips).
+    if (pageWidthInches > maxPageInches) {
+      pageWidthInches = maxPageInches;
+      pageHeightInches = pageWidthInches / aspect;
+    }
+    if (pageHeightInches > maxPageInches) {
+      pageHeightInches = maxPageInches;
+      pageWidthInches = pageHeightInches * aspect;
     }
 
     // ------------------------------------------------------------------------
@@ -576,7 +618,22 @@ String _buildSettingsXml() {
 }
 
 // ============================================================================
-// DOCUMENT XML (UPDATED FOR ABSOLUTE ZERO MARGINS)
+// DOCUMENT XML
+//
+// FIXED: previously the sectPr that defines a page's size was written
+// inside the SAME paragraph's pPr as that page's own image. In OOXML, a
+// sectPr inside a paragraph's pPr terminates the section for all content
+// BEFORE that paragraph, not the paragraph itself. With one image per
+// paragraph and no other content, this happened to still line up, but it
+// is structurally wrong and breaks the moment any extra paragraph (a
+// caption, spacing paragraph, etc.) is ever added - the page size would
+// then apply to the wrong image.
+//
+// Fix: insert a dedicated EMPTY paragraph carrying the sectPr for image N
+// directly AFTER image N's paragraph. That empty paragraph correctly closes
+// the section containing image N with image N's own page size, and the next
+// image starts a fresh section. The last image's page size is still applied
+// as the body-level sectPr at the very end (this part was already correct).
 // ============================================================================
 
 String _buildDocumentXml(
@@ -618,20 +675,21 @@ String _buildDocumentXml(
     final int docPrId =
         i + 1;
 
+    // Unique z-order per image, instead of a hard-coded "1" for every
+    // drawing (previously all images shared relativeHeight="1").
+    final int relativeHeight =
+        i + 1;
+
     final bool isLast =
         i == dimensions.length - 1;
 
     // ========================================================================
-    // IMAGE PARAGRAPH
+    // IMAGE PARAGRAPH (image only - no sectPr here anymore)
     // ========================================================================
 
     sb.writeln('<w:p>');
 
     sb.writeln('<w:pPr>');
-
-    // ------------------------------------------------------------------------
-    // REMOVE ALL SPACING EXACTLY
-    // ------------------------------------------------------------------------
 
     sb.writeln(
       '<w:spacing '
@@ -641,47 +699,12 @@ String _buildDocumentXml(
       'w:lineRule="exact"/>',
     );
 
-    // ------------------------------------------------------------------------
-    // REMOVE INDENTS
-    // ------------------------------------------------------------------------
-
     sb.writeln(
       '<w:ind '
       'w:left="0" '
       'w:right="0" '
       'w:firstLine="0"/>',
     );
-
-    // ------------------------------------------------------------------------
-    // SECTION SIZE
-    // ------------------------------------------------------------------------
-
-    if (!isLast) {
-      sb.writeln('<w:sectPr>');
-
-      sb.writeln(
-        '<w:type w:val="nextPage"/>',
-      );
-
-      sb.writeln(
-        '<w:pgSz '
-        'w:w="${dimension.pageWidthTwips}" '
-        'w:h="${dimension.pageHeightTwips}"/>',
-      );
-
-      sb.writeln(
-        '<w:pgMar '
-        'w:top="0" '
-        'w:right="0" '
-        'w:bottom="0" '
-        'w:left="0" '
-        'w:header="0" '
-        'w:footer="0" '
-        'w:gutter="0"/>',
-      );
-
-      sb.writeln('</w:sectPr>');
-    }
 
     sb.writeln('</w:pPr>');
 
@@ -700,7 +723,7 @@ String _buildDocumentXml(
       'distL="0" '
       'distR="0" '
       'simplePos="0" '
-      'relativeHeight="1" '
+      'relativeHeight="$relativeHeight" '
       'behindDoc="1" '
       'locked="0" '
       'layoutInCell="1" '
@@ -748,7 +771,7 @@ String _buildDocumentXml(
       'r="0" '
       'b="0"/>',
     );
-    
+
     sb.writeln('<wp:wrapNone/>');
 
     sb.writeln(
@@ -779,10 +802,6 @@ String _buildDocumentXml(
 
     sb.writeln('<pic:pic>');
 
-    // ========================================================================
-    // IMAGE PROPERTIES
-    // ========================================================================
-
     sb.writeln('<pic:nvPicPr>');
 
     sb.writeln(
@@ -803,10 +822,6 @@ String _buildDocumentXml(
 
     sb.writeln('</pic:nvPicPr>');
 
-    // ========================================================================
-    // IMAGE DATA
-    // ========================================================================
-
     sb.writeln('<pic:blipFill>');
 
     sb.writeln(
@@ -820,10 +835,6 @@ String _buildDocumentXml(
     sb.writeln('</a:stretch>');
 
     sb.writeln('</pic:blipFill>');
-
-    // ========================================================================
-    // IMAGE TRANSFORM
-    // ========================================================================
 
     sb.writeln('<pic:spPr>');
 
@@ -854,10 +865,6 @@ String _buildDocumentXml(
 
     sb.writeln('</pic:spPr>');
 
-    // ========================================================================
-    // CLOSE IMAGE
-    // ========================================================================
-
     sb.writeln('</pic:pic>');
 
     sb.writeln('</a:graphicData>');
@@ -871,10 +878,50 @@ String _buildDocumentXml(
     sb.writeln('</w:r>');
 
     sb.writeln('</w:p>');
+
+    // ========================================================================
+    // DEDICATED SECTION-BREAK PARAGRAPH FOR THIS PAGE'S SIZE
+    //
+    // This empty paragraph's sectPr closes the section that contains only
+    // the image paragraph above, applying THIS image's page size to THIS
+    // image specifically - regardless of what content (if any) sits
+    // between images in the future.
+    // ========================================================================
+
+    if (!isLast) {
+      sb.writeln('<w:p>');
+      sb.writeln('<w:pPr>');
+
+      sb.writeln('<w:sectPr>');
+
+      sb.writeln('<w:type w:val="nextPage"/>');
+
+      sb.writeln(
+        '<w:pgSz '
+        'w:w="${dimension.pageWidthTwips}" '
+        'w:h="${dimension.pageHeightTwips}"/>',
+      );
+
+      sb.writeln(
+        '<w:pgMar '
+        'w:top="0" '
+        'w:right="0" '
+        'w:bottom="0" '
+        'w:left="0" '
+        'w:header="0" '
+        'w:footer="0" '
+        'w:gutter="0"/>',
+      );
+
+      sb.writeln('</w:sectPr>');
+
+      sb.writeln('</w:pPr>');
+      sb.writeln('</w:p>');
+    }
   }
 
   // ==========================================================================
-  // FINAL SECTION
+  // FINAL SECTION (applies to the last image's paragraph, body-level sectPr)
   // ==========================================================================
 
   if (dimensions.isNotEmpty) {
