@@ -1,4 +1,4 @@
- import 'dart:math' as math;
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
@@ -28,6 +28,10 @@ enum ScanFilter {
 }
 
 class ScanFilterService {
+  // ============================================================
+  // PROFESSIONAL AUTO DOCUMENT CROP
+  // ============================================================
+
   static Uint8List autoCrop(Uint8List inputBytes) {
     final original = img.decodeImage(inputBytes);
 
@@ -35,261 +39,737 @@ class ScanFilterService {
       throw ArgumentError('Could not decode image bytes.');
     }
 
-    if (original.width < 80 || original.height < 80) {
+    if (original.width < 120 || original.height < 120) {
       return inputBytes;
     }
 
-    const maxSize = 900;
+    // ----------------------------------------------------------
+    // 1. Create smaller analysis image.
+    // ----------------------------------------------------------
+
+    const analysisMaxSize = 1200;
 
     img.Image analysis = original;
 
-    if (original.width > maxSize || original.height > maxSize) {
+    if (original.width > analysisMaxSize ||
+        original.height > analysisMaxSize) {
       final scale = original.width >= original.height
-          ? maxSize / original.width
-          : maxSize / original.height;
+          ? analysisMaxSize / original.width
+          : analysisMaxSize / original.height;
 
       analysis = img.copyResize(
         original,
-        width: (original.width * scale).round(),
-        height: (original.height * scale).round(),
+        width: math.max(
+          1,
+          (original.width * scale).round(),
+        ),
+        height: math.max(
+          1,
+          (original.height * scale).round(),
+        ),
+        interpolation: img.Interpolation.linear,
       );
     }
+
+    // ----------------------------------------------------------
+    // 2. Normalize image.
+    // ----------------------------------------------------------
 
     final gray = img.grayscale(analysis);
-    final width = gray.width;
-    final height = gray.height;
 
-    final borderValues = <int>[];
-
-    final borderStep = math.max(
-      2,
-      math.min(width, height) ~/ 150,
+    // Slight contrast improvement helps document boundaries.
+    final enhanced = img.adjustColor(
+      gray,
+      contrast: 1.15,
+      brightness: 1.02,
     );
 
-for (var x = 0; x < width; x += borderStep) {
-  final topPixel = gray.getPixel(x, 0);
-  final bottomPixel = gray.getPixel(x, height - 1);
+    // ----------------------------------------------------------
+    // 3. Build edge map.
+    // ----------------------------------------------------------
 
-  borderValues.add(
-    ((topPixel.r + topPixel.g + topPixel.b) / 3).round(),
-  );
+    final edgeMap = _buildEdgeMap(enhanced);
 
-  borderValues.add(
-    ((bottomPixel.r + bottomPixel.g + bottomPixel.b) / 3).round(),
-  );
-}
+    // ----------------------------------------------------------
+    // 4. Detect strongest document candidates.
+    // ----------------------------------------------------------
 
-for (var y = 0; y < height; y += borderStep) {
-  final leftPixel = gray.getPixel(0, y);
-  final rightPixel = gray.getPixel(width - 1, y);
+    final candidate = _findBestDocumentQuad(
+      edgeMap,
+      enhanced,
+    );
 
-  borderValues.add(
-    ((leftPixel.r + leftPixel.g + leftPixel.b) / 3).round(),
-  );
-
-  borderValues.add(
-    ((rightPixel.r + rightPixel.g + rightPixel.b) / 3).round(),
-  );
-}
-
-    if (borderValues.isEmpty) {
+    if (candidate == null) {
       return inputBytes;
     }
 
-    borderValues.sort();
+    // ----------------------------------------------------------
+    // 5. Convert analysis coordinates to original coordinates.
+    // ----------------------------------------------------------
 
-    final borderMedian =
-        borderValues[borderValues.length ~/ 2];
+    final scaleX = original.width / analysis.width;
+    final scaleY = original.height / analysis.height;
 
-    _CropCandidate? bestCandidate;
-
-    const thresholds = [
-      18,
-      25,
-      35,
-      45,
-      60,
-      80,
-    ];
-
-    for (final threshold in thresholds) {
-      final candidate = _detectDocumentBounds(
-        gray,
-        borderMedian,
-        threshold,
-      );
-
-      if (candidate == null) {
-        continue;
-      }
-
-      if (bestCandidate == null ||
-          candidate.score > bestCandidate.score) {
-        bestCandidate = candidate;
-      }
-    }
-
-    if (bestCandidate == null) {
-      return inputBytes;
-    }
-
-    final scaleX = original.width / width;
-    final scaleY = original.height / height;
-
-    var left =
-        (bestCandidate.left * scaleX).round();
-
-    var top =
-        (bestCandidate.top * scaleY).round();
-
-    var right =
-        (bestCandidate.right * scaleX).round();
-
-    var bottom =
-        (bestCandidate.bottom * scaleY).round();
-
-    final paddingX = math.max(
-      4,
-      (original.width * 0.008).round(),
+    final topLeft = _Point(
+      candidate.topLeft.x * scaleX,
+      candidate.topLeft.y * scaleY,
     );
 
-    final paddingY = math.max(
-      4,
-      (original.height * 0.008).round(),
+    final topRight = _Point(
+      candidate.topRight.x * scaleX,
+      candidate.topRight.y * scaleY,
     );
 
-    left = math.max(0, left - paddingX);
-    top = math.max(0, top - paddingY);
+    final bottomRight = _Point(
+      candidate.bottomRight.x * scaleX,
+      candidate.bottomRight.y * scaleY,
+    );
 
-    right = math.min(
+    final bottomLeft = _Point(
+      candidate.bottomLeft.x * scaleX,
+      candidate.bottomLeft.y * scaleY,
+    );
+
+    // ----------------------------------------------------------
+    // 6. Add a very small margin.
+    // ----------------------------------------------------------
+
+    final expanded = _expandQuad(
+      topLeft,
+      topRight,
+      bottomRight,
+      bottomLeft,
       original.width,
-      right + paddingX,
-    );
-
-    bottom = math.min(
       original.height,
-      bottom + paddingY,
     );
 
-    final cropWidth = right - left;
-    final cropHeight = bottom - top;
+    // ----------------------------------------------------------
+    // 7. Perspective correction.
+    //
+    // image.copyRectify maps the detected quadrilateral
+    // to the output image.
+    // ----------------------------------------------------------
 
-    if (cropWidth <= 20 || cropHeight <= 20) {
-      return inputBytes;
-    }
-
-    if (cropWidth < original.width * 0.15 ||
-        cropHeight < original.height * 0.15) {
-      return inputBytes;
-    }
-
-    final cropped = img.copyCrop(
+    final rectified = img.copyRectify(
       original,
-      x: left,
-      y: top,
-      width: cropWidth,
-      height: cropHeight,
+      topLeft: img.Point(
+        expanded.topLeft.x.round(),
+        expanded.topLeft.y.round(),
+      ),
+      topRight: img.Point(
+        expanded.topRight.x.round(),
+        expanded.topRight.y.round(),
+      ),
+      bottomLeft: img.Point(
+        expanded.bottomLeft.x.round(),
+        expanded.bottomLeft.y.round(),
+      ),
+      bottomRight: img.Point(
+        expanded.bottomRight.x.round(),
+        expanded.bottomRight.y.round(),
+      ),
+      interpolation: img.Interpolation.cubic,
     );
+
+    // ----------------------------------------------------------
+    // 8. Validate result.
+    // ----------------------------------------------------------
+
+    if (rectified.width < 50 ||
+        rectified.height < 50) {
+      return inputBytes;
+    }
 
     return Uint8List.fromList(
       img.encodeJpg(
-        cropped,
+        rectified,
         quality: 95,
       ),
     );
   }
 
-  static _CropCandidate? _detectDocumentBounds(
-    img.Image gray,
-    int borderMedian,
-    int threshold,
-  ) {
-    final width = gray.width;
-    final height = gray.height;
+  // ============================================================
+  // EDGE DETECTION
+  // ============================================================
 
-    var minX = width;
-    var minY = height;
+  static img.Image _buildEdgeMap(img.Image image) {
+    final width = image.width;
+    final height = image.height;
 
-    var maxX = -1;
-    var maxY = -1;
-
-    var detectedPixels = 0;
-
-    final sampleStep = math.max(
-      1,
-      math.min(width, height) ~/ 500,
+    final result = img.Image(
+      width: width,
+      height: height,
+      numChannels: 1,
     );
 
-    for (var y = 0; y < height; y += sampleStep) {
-      for (var x = 0; x < width; x += sampleStep) {
-        final pixel = gray.getPixel(x, y);
+    const threshold = 22;
 
-final value =
-    ((pixel.r + pixel.g + pixel.b) / 3).round();
+    for (var y = 1; y < height - 1; y++) {
+      for (var x = 1; x < width - 1; x++) {
+        final p00 = _gray(image, x - 1, y - 1);
+        final p01 = _gray(image, x, y - 1);
+        final p02 = _gray(image, x + 1, y - 1);
 
-        final difference =
-            (value - borderMedian).abs();
+        final p10 = _gray(image, x - 1, y);
+        final p12 = _gray(image, x + 1, y);
 
-        if (difference >= threshold) {
-          detectedPixels++;
+        final p20 = _gray(image, x - 1, y + 1);
+        final p21 = _gray(image, x, y + 1);
+        final p22 = _gray(image, x + 1, y + 1);
 
-          if (x < minX) minX = x;
-          if (x > maxX) maxX = x;
-          if (y < minY) minY = y;
-          if (y > maxY) maxY = y;
+        final gx =
+            (-p00) +
+            p02 +
+            (-2 * p10) +
+            (2 * p12) +
+            (-p20) +
+            p22;
+
+        final gy =
+            (-p00) +
+            (-2 * p01) +
+            (-p02) +
+            p20 +
+            (2 * p21) +
+            p22;
+
+        final magnitude =
+            math.sqrt(
+              (gx * gx) + (gy * gy),
+            );
+
+        final value =
+            magnitude >= threshold
+                ? math.min(255, magnitude.round())
+                : 0;
+
+        result.setPixelRgba(
+          x,
+          y,
+          value,
+          value,
+          value,
+          255,
+        );
+      }
+    }
+
+    return result;
+  }
+
+  static int _gray(
+    img.Image image,
+    int x,
+    int y,
+  ) {
+    final pixel = image.getPixel(x, y);
+
+    return (
+      (pixel.r * 0.299) +
+      (pixel.g * 0.587) +
+      (pixel.b * 0.114)
+    ).round();
+  }
+
+  // ============================================================
+  // DOCUMENT QUADRILATERAL DETECTION
+  // ============================================================
+
+  static _DocumentCandidate? _findBestDocumentQuad(
+    img.Image edges,
+    img.Image gray,
+  ) {
+    final width = edges.width;
+    final height = edges.height;
+
+    final points = <_Point>[];
+
+    // ----------------------------------------------------------
+    // Collect strong edge points.
+    // ----------------------------------------------------------
+
+    final step = math.max(
+      2,
+      math.min(width, height) ~/ 450,
+    );
+
+    for (var y = 0; y < height; y += step) {
+      for (var x = 0; x < width; x += step) {
+        final pixel = edges.getPixel(x, y);
+
+        if (pixel.r >= 90) {
+          points.add(
+            _Point(
+              x.toDouble(),
+              y.toDouble(),
+            ),
+          );
         }
       }
     }
 
-    if (maxX <= minX || maxY <= minY) {
+    if (points.length < 40) {
       return null;
     }
 
-    final detectedWidth = maxX - minX;
-    final detectedHeight = maxY - minY;
+    // ----------------------------------------------------------
+    // Get extreme points.
+    // ----------------------------------------------------------
 
-    final imageArea = width * height;
-    final detectedArea =
-        detectedWidth * detectedHeight;
+    final topLeft = _findExtreme(
+      points,
+      type: _ExtremeType.topLeft,
+    );
 
-    final areaRatio =
-        detectedArea / imageArea;
+    final topRight = _findExtreme(
+      points,
+      type: _ExtremeType.topRight,
+    );
 
-    if (areaRatio < 0.20 || areaRatio > 0.98) {
+    final bottomRight = _findExtreme(
+      points,
+      type: _ExtremeType.bottomRight,
+    );
+
+    final bottomLeft = _findExtreme(
+      points,
+      type: _ExtremeType.bottomLeft,
+    );
+
+    if (topLeft == null ||
+        topRight == null ||
+        bottomRight == null ||
+        bottomLeft == null) {
       return null;
     }
 
-    final aspectRatio =
-        detectedWidth / detectedHeight;
+    final candidate = _DocumentCandidate(
+      topLeft: topLeft,
+      topRight: topRight,
+      bottomRight: bottomRight,
+      bottomLeft: bottomLeft,
+      score: 0,
+    );
 
-    if (aspectRatio < 0.25 || aspectRatio > 4.5) {
+    if (!_isValidQuad(
+      candidate,
+      width,
+      height,
+    )) {
       return null;
     }
 
-    final totalSamples =
-        ((width + sampleStep - 1) ~/ sampleStep) *
-            ((height + sampleStep - 1) ~/ sampleStep);
+    final score = _scoreQuad(
+      candidate,
+      edges,
+      gray,
+    );
 
-    final coverage =
-        detectedPixels / totalSamples;
+    if (score < 0.42) {
+      return null;
+    }
 
-    final areaScore =
-        areaRatio < 0.85
-            ? areaRatio
-            : 1.0 - areaRatio;
-
-    final score =
-        (areaScore * 0.7) +
-            (coverage * 0.3);
-
-    return _CropCandidate(
-      left: minX,
-      top: minY,
-      right: maxX,
-      bottom: maxY,
+    return _DocumentCandidate(
+      topLeft: topLeft,
+      topRight: topRight,
+      bottomRight: bottomRight,
+      bottomLeft: bottomLeft,
       score: score,
     );
   }
+
+  // ============================================================
+  // EXTREME POINT SEARCH
+  // ============================================================
+
+  static _Point? _findExtreme(
+    List<_Point> points, {
+    required _ExtremeType type,
+  }) {
+    if (points.isEmpty) {
+      return null;
+    }
+
+    _Point best = points.first;
+    double bestScore = double.infinity;
+
+    for (final point in points) {
+      double score;
+
+      switch (type) {
+        case _ExtremeType.topLeft:
+          score = point.x + point.y;
+          break;
+
+        case _ExtremeType.topRight:
+          score = -point.x + point.y;
+          break;
+
+        case _ExtremeType.bottomRight:
+          score = -point.x - point.y;
+          break;
+
+        case _ExtremeType.bottomLeft:
+          score = point.x - point.y;
+          break;
+      }
+
+      if (score < bestScore) {
+        bestScore = score;
+        best = point;
+      }
+    }
+
+    return best;
+  }
+
+  // ============================================================
+  // QUAD VALIDATION
+  // ============================================================
+
+  static bool _isValidQuad(
+    _DocumentCandidate c,
+    int width,
+    int height,
+  ) {
+    final area = _quadArea(c);
+
+    final imageArea = width * height;
+
+    final ratio = area / imageArea;
+
+    // Document should occupy a meaningful part of image.
+    if (ratio < 0.20 || ratio > 0.98) {
+      return false;
+    }
+
+    final top = _distance(
+      c.topLeft,
+      c.topRight,
+    );
+
+    final bottom = _distance(
+      c.bottomLeft,
+      c.bottomRight,
+    );
+
+    final left = _distance(
+      c.topLeft,
+      c.bottomLeft,
+    );
+
+    final right = _distance(
+      c.topRight,
+      c.bottomRight,
+    );
+
+    if (top < width * 0.15 ||
+        bottom < width * 0.15 ||
+        left < height * 0.15 ||
+        right < height * 0.15) {
+      return false;
+    }
+
+    final horizontalRatio =
+        math.min(top, bottom) /
+            math.max(top, bottom);
+
+    final verticalRatio =
+        math.min(left, right) /
+            math.max(left, right);
+
+    // Opposite sides should not be wildly different.
+    if (horizontalRatio < 0.55 ||
+        verticalRatio < 0.55) {
+      return false;
+    }
+
+    return true;
+  }
+
+  // ============================================================
+  // DOCUMENT SCORE
+  // ============================================================
+
+  static double _scoreQuad(
+    _DocumentCandidate c,
+    img.Image edges,
+    img.Image gray,
+  ) {
+    final width = edges.width;
+    final height = edges.height;
+
+    final edgeScore = _edgeSupportScore(
+      c,
+      edges,
+    );
+
+    final geometryScore =
+        _geometryScore(c);
+
+    final areaRatio =
+        _quadArea(c) /
+            (width * height);
+
+    double areaScore;
+
+    if (areaRatio >= 0.35 &&
+        areaRatio <= 0.90) {
+      areaScore = 1.0;
+    } else {
+      areaScore =
+          1.0 -
+          ((areaRatio - 0.625).abs() / 0.625);
+
+      areaScore =
+          areaScore.clamp(0.0, 1.0);
+    }
+
+    return
+        (edgeScore * 0.50) +
+        (geometryScore * 0.30) +
+        (areaScore * 0.20);
+  }
+
+  static double _edgeSupportScore(
+    _DocumentCandidate c,
+    img.Image edges,
+  ) {
+    final sides = [
+      _Line(c.topLeft, c.topRight),
+      _Line(c.topRight, c.bottomRight),
+      _Line(c.bottomRight, c.bottomLeft),
+      _Line(c.bottomLeft, c.topLeft),
+    ];
+
+    double total = 0;
+
+    for (final line in sides) {
+      var supported = 0;
+      var samples = 0;
+
+      final length =
+          _distance(
+            line.a,
+            line.b,
+          );
+
+      final count =
+          math.max(
+            12,
+            (length / 8).round(),
+          );
+
+      for (var i = 0; i <= count; i++) {
+        final t = i / count;
+
+        final x =
+            (line.a.x +
+                    ((line.b.x - line.a.x) * t))
+                .round();
+
+        final y =
+            (line.a.y +
+                    ((line.b.y - line.a.y) * t))
+                .round();
+
+        if (x < 1 ||
+            y < 1 ||
+            x >= edges.width - 1 ||
+            y >= edges.height - 1) {
+          continue;
+        }
+
+        samples++;
+
+        var localStrong = false;
+
+        // Search a few pixels around expected line.
+        for (var oy = -3; oy <= 3; oy++) {
+          for (var ox = -3; ox <= 3; ox++) {
+            final p =
+                edges.getPixel(
+              x + ox,
+              y + oy,
+            );
+
+            if (p.r >= 70) {
+              localStrong = true;
+              break;
+            }
+          }
+
+          if (localStrong) {
+            break;
+          }
+        }
+
+        if (localStrong) {
+          supported++;
+        }
+      }
+
+      if (samples > 0) {
+        total += supported / samples;
+      }
+    }
+
+    return total / sides.length;
+  }
+
+  static double _geometryScore(
+    _DocumentCandidate c,
+  ) {
+    final top = _distance(
+      c.topLeft,
+      c.topRight,
+    );
+
+    final bottom = _distance(
+      c.bottomLeft,
+      c.bottomRight,
+    );
+
+    final left = _distance(
+      c.topLeft,
+      c.bottomLeft,
+    );
+
+    final right = _distance(
+      c.topRight,
+      c.bottomRight,
+    );
+
+    final horizontal =
+        math.min(top, bottom) /
+            math.max(top, bottom);
+
+    final vertical =
+        math.min(left, right) /
+            math.max(left, right);
+
+    return (
+      horizontal +
+      vertical
+    ) /
+    2;
+  }
+
+  // ============================================================
+  // QUAD AREA
+  // ============================================================
+
+  static double _quadArea(
+    _DocumentCandidate c,
+  ) {
+    final p = [
+      c.topLeft,
+      c.topRight,
+      c.bottomRight,
+      c.bottomLeft,
+    ];
+
+    double area = 0;
+
+    for (var i = 0; i < 4; i++) {
+      final current = p[i];
+      final next = p[(i + 1) % 4];
+
+      area +=
+          (current.x * next.y) -
+          (next.x * current.y);
+    }
+
+    return area.abs() / 2;
+  }
+
+  // ============================================================
+  // SMALL SMART PADDING
+  // ============================================================
+
+  static _DocumentCandidate _expandQuad(
+    _Point topLeft,
+    _Point topRight,
+    _Point bottomRight,
+    _Point bottomLeft,
+    int width,
+    int height,
+  ) {
+    // Only ~0.7% padding.
+    final pad =
+        math.min(width, height) * 0.007;
+
+    final center = _Point(
+      (
+        topLeft.x +
+        topRight.x +
+        bottomRight.x +
+        bottomLeft.x
+      ) /
+          4,
+      (
+        topLeft.y +
+        topRight.y +
+        bottomRight.y +
+        bottomLeft.y
+      ) /
+          4,
+    );
+
+    _Point expand(_Point p) {
+      final dx = p.x - center.x;
+      final dy = p.y - center.y;
+
+      final length =
+          math.sqrt(
+            (dx * dx) +
+            (dy * dy),
+          );
+
+      if (length == 0) {
+        return p;
+      }
+
+      final nx = dx / length;
+      final ny = dy / length;
+
+      return _Point(
+        (p.x + nx * pad)
+            .clamp(0, width - 1),
+        (p.y + ny * pad)
+            .clamp(0, height - 1),
+      );
+    }
+
+    return _DocumentCandidate(
+      topLeft: expand(topLeft),
+      topRight: expand(topRight),
+      bottomRight: expand(bottomRight),
+      bottomLeft: expand(bottomLeft),
+      score: 1,
+    );
+  }
+
+  // ============================================================
+  // DISTANCE
+  // ============================================================
+
+  static double _distance(
+    _Point a,
+    _Point b,
+  ) {
+    final dx = a.x - b.x;
+    final dy = a.y - b.y;
+
+    return math.sqrt(
+      (dx * dx) +
+      (dy * dy),
+    );
+  }
+
+  // ============================================================
+  // EXISTING FILTER SYSTEM
+  // ============================================================
 
   static Uint8List apply(
     ScanFilter filter,
@@ -407,7 +887,7 @@ final value =
   static img.Image _applyBlackAndWhite(
     img.Image image,
   ) {
-    img.Image result = img.grayscale(image);
+    var result = img.grayscale(image);
 
     result = img.adjustColor(
       result,
@@ -447,7 +927,7 @@ final value =
   static img.Image _applyVivid(
     img.Image image,
   ) {
-    img.Image result = img.adjustColor(
+    var result = img.adjustColor(
       image,
       contrast: 1.25,
       saturation: 1.5,
@@ -469,7 +949,7 @@ final value =
   static img.Image _applySoftLight(
     img.Image image,
   ) {
-    img.Image result = img.adjustColor(
+    var result = img.adjustColor(
       image,
       contrast: 0.92,
       brightness: 1.1,
@@ -485,7 +965,7 @@ final value =
   static img.Image _applyWarmTone(
     img.Image image,
   ) {
-    img.Image result = img.adjustColor(
+    var result = img.adjustColor(
       image,
       contrast: 1.1,
       brightness: 1.04,
@@ -503,7 +983,7 @@ final value =
   static img.Image _applyCoolTone(
     img.Image image,
   ) {
-    img.Image result = img.adjustColor(
+    var result = img.adjustColor(
       image,
       contrast: 1.1,
       brightness: 1.03,
@@ -520,8 +1000,7 @@ final value =
   static img.Image _applyHighContrastBW(
     img.Image image,
   ) {
-    img.Image result =
-        img.grayscale(image);
+    final result = img.grayscale(image);
 
     return img.adjustColor(
       result,
@@ -533,8 +1012,7 @@ final value =
   static img.Image _applySoftBW(
     img.Image image,
   ) {
-    img.Image result =
-        img.grayscale(image);
+    final result = img.grayscale(image);
 
     return img.adjustColor(
       result,
@@ -546,8 +1024,7 @@ final value =
   static img.Image _applySepia(
     img.Image image,
   ) {
-    img.Image result =
-        img.grayscale(image);
+    final result = img.grayscale(image);
 
     for (final pixel in result) {
       final l =
@@ -571,8 +1048,7 @@ final value =
   static img.Image _applyNoirDramatic(
     img.Image image,
   ) {
-    img.Image result =
-        img.grayscale(image);
+    var result = img.grayscale(image);
 
     result = img.adjustColor(
       result,
@@ -619,7 +1095,7 @@ final value =
   static img.Image _applyVintagePaper(
     img.Image image,
   ) {
-    img.Image result = img.adjustColor(
+    var result = img.adjustColor(
       image,
       contrast: 0.95,
       brightness: 1.02,
@@ -637,8 +1113,7 @@ final value =
   static img.Image _applyColdSteel(
     img.Image image,
   ) {
-    img.Image result =
-        img.grayscale(image);
+    var result = img.grayscale(image);
 
     result = img.adjustColor(
       result,
@@ -668,7 +1143,7 @@ final value =
   static img.Image _applyMagicColorPro(
     img.Image image,
   ) {
-    img.Image result = img.adjustColor(
+    var result = img.adjustColor(
       image,
       contrast: 1.45,
       brightness: 1.1,
@@ -688,8 +1163,7 @@ final value =
   static img.Image _applyCleanDocument(
     img.Image image,
   ) {
-    img.Image result =
-        img.gaussianBlur(
+    var result = img.gaussianBlur(
       image,
       radius: 1,
     );
@@ -717,83 +1191,93 @@ final value =
     switch (filter) {
       case ScanFilter.original:
         return 'Original';
-
       case ScanFilter.grayscale:
         return 'Gray';
-
       case ScanFilter.blackAndWhite:
         return 'B&W';
-
       case ScanFilter.enhance:
         return 'Enhance';
-
       case ScanFilter.sharpen:
         return 'Sharpen';
-
       case ScanFilter.vivid:
         return 'Vivid';
-
       case ScanFilter.softLight:
         return 'Soft Light';
-
       case ScanFilter.warmTone:
         return 'Warm Tone';
-
       case ScanFilter.coolTone:
         return 'Cool Tone';
-
       case ScanFilter.highContrastBW:
         return 'High Contrast B&W';
-
       case ScanFilter.softBW:
         return 'Soft B&W';
-
       case ScanFilter.sepia:
         return 'Sepia';
-
       case ScanFilter.noirDramatic:
         return 'Noir';
-
       case ScanFilter.brightWhite:
         return 'Bright White';
-
       case ScanFilter.lowLightBoost:
         return 'Low Light Boost';
-
       case ScanFilter.matte:
         return 'Matte';
-
       case ScanFilter.vintagePaper:
         return 'Vintage Paper';
-
       case ScanFilter.coldSteel:
         return 'Cold Steel';
-
       case ScanFilter.magicColorPro:
         return 'Magic Color Pro';
-
       case ScanFilter.invertNegative:
         return 'Negative';
-
       case ScanFilter.cleanDocument:
         return 'Clean Document';
     }
   }
 }
 
-class _CropCandidate {
-  final int left;
-  final int top;
-  final int right;
-  final int bottom;
+// ============================================================
+// SUPPORT CLASSES
+// ============================================================
+
+enum _ExtremeType {
+  topLeft,
+  topRight,
+  bottomRight,
+  bottomLeft,
+}
+
+class _Point {
+  final double x;
+  final double y;
+
+  const _Point(
+    this.x,
+    this.y,
+  );
+}
+
+class _Line {
+  final _Point a;
+  final _Point b;
+
+  const _Line(
+    this.a,
+    this.b,
+  );
+}
+
+class _DocumentCandidate {
+  final _Point topLeft;
+  final _Point topRight;
+  final _Point bottomRight;
+  final _Point bottomLeft;
   final double score;
 
-  const _CropCandidate({
-    required this.left,
-    required this.top,
-    required this.right,
-    required this.bottom,
+  const _DocumentCandidate({
+    required this.topLeft,
+    required this.topRight,
+    required this.bottomRight,
+    required this.bottomLeft,
     required this.score,
   });
 }
- 

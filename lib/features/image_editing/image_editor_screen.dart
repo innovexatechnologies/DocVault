@@ -1,4 +1,5 @@
-import 'dart:io';
+ import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -7,6 +8,7 @@ import '../../core/providers/image_selection_provider.dart';
 import '../../core/services/image_editor_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/unsaved_changes_dialog.dart';
+import '../../core/services/scan_filter_service.dart';
 
 enum EditorMode {
   none,
@@ -43,8 +45,7 @@ class _ImageEditorScreenState
   bool _isProcessing = false;
   bool _hasUnsavedEdits = false;
 
-  EditorMode _activeMode =
-      EditorMode.none;
+  EditorMode _activeMode = EditorMode.none;
 
   // ============================================================
   // TEXT
@@ -65,6 +66,17 @@ class _ImageEditorScreenState
 
   String _selectedCropRatio = 'Free';
 
+  // Normalized crop rectangle.
+  // x/y/width/height are 0.0 -> 1.0.
+  Rect _cropRect = const Rect.fromLTWH(
+    0.08,
+    0.08,
+    0.84,
+    0.84,
+  );
+
+  Size? _imageSize;
+
   // ============================================================
   // FILTER
   // ============================================================
@@ -82,6 +94,34 @@ class _ImageEditorScreenState
 
     _currentWorkingPath =
         widget.imagePath;
+
+    _loadImageSize();
+  }
+
+  Future<void> _loadImageSize() async {
+    try {
+      final bytes =
+          await File(_currentWorkingPath)
+              .readAsBytes();
+
+      final codec =
+          await ui.instantiateImageCodec(bytes);
+
+      final frame =
+          await codec.getNextFrame();
+
+      if (!mounted) return;
+
+      setState(() {
+        _imageSize = Size(
+          frame.image.width.toDouble(),
+          frame.image.height.toDouble(),
+        );
+      });
+
+      frame.image.dispose();
+      codec.dispose();
+    } catch (_) {}
   }
 
   // ============================================================
@@ -110,6 +150,8 @@ class _ImageEditorScreenState
         _currentWorkingPath = newPath;
         _hasUnsavedEdits = true;
       });
+
+      await _loadImageSize();
     } catch (e) {
       _showError(
         'Rotation failed: $e',
@@ -173,7 +215,6 @@ class _ImageEditorScreenState
   ) async {
     if (_isProcessing) return;
 
-    // Original should restore the original/current image.
     if (filter == ImageFilterType.none) {
       setState(() {
         _activeFilter =
@@ -218,6 +259,117 @@ class _ImageEditorScreenState
   }
 
   // ============================================================
+  // AUTO CROP
+  // ============================================================
+
+  Future<void> _handleAutoCrop() async {
+    if (_isProcessing) return;
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      final file =
+          File(_currentWorkingPath);
+
+      final bytes =
+          await file.readAsBytes();
+
+      final croppedBytes = ScanFilterService.autoCrop(bytes);
+
+      final tempFile =
+          await _writeAutoCropFile(
+        croppedBytes,
+      );
+
+      if (!mounted) return;
+
+      setState(() {
+        _currentWorkingPath =
+            tempFile.path;
+
+        _hasUnsavedEdits = true;
+
+        _activeMode =
+            EditorMode.none;
+
+        _selectedCropRatio =
+            'Free';
+
+        _cropRect =
+            const Rect.fromLTWH(
+          0.08,
+          0.08,
+          0.84,
+          0.84,
+        );
+      });
+
+      await _loadImageSize();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(
+          SnackBar(
+            content: const Row(
+              children: [
+                Icon(
+                  Icons.auto_awesome_rounded,
+                  color: Colors.white,
+                ),
+                SizedBox(width: 8),
+                Text(
+                  'Document automatically cropped',
+                ),
+              ],
+            ),
+            backgroundColor:
+                AppTheme.primaryColor,
+            behavior:
+                SnackBarBehavior.floating,
+            margin:
+                const EdgeInsets.all(16),
+            shape:
+                RoundedRectangleBorder(
+              borderRadius:
+                  BorderRadius.circular(14),
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      _showError(
+        'Auto Crop failed: $e',
+      );
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<File> _writeAutoCropFile(
+    List<int> bytes,
+  ) async {
+    final directory =
+        Directory.systemTemp;
+
+    final file = File(
+      '${directory.path}/auto_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
+    );
+
+    await file.writeAsBytes(
+      bytes,
+      flush: true,
+    );
+
+    return file;
+  }
+
+  // ============================================================
   // TEXT
   // ============================================================
 
@@ -244,10 +396,15 @@ class _ImageEditorScreenState
       if (!mounted) return;
 
       setState(() {
-        _currentWorkingPath = newPath;
+        _currentWorkingPath =
+            newPath;
+
         _overlayText = '';
+
         _hasUnsavedEdits = true;
-        _activeMode = EditorMode.none;
+
+        _activeMode =
+            EditorMode.none;
       });
     } catch (e) {
       _showError(
@@ -263,101 +420,96 @@ class _ImageEditorScreenState
   }
 
   // ============================================================
-  // CROP
+  // APPLY MANUAL CROP
   // ============================================================
 
   Future<void> _handleApplyCrop() async {
     if (_isProcessing) return;
+
+    if (_imageSize == null) {
+      _showError(
+        'Image is still loading.',
+      );
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      final file =
-          File(_currentWorkingPath);
+      final imageWidth =
+          _imageSize!.width;
 
-      final bytes =
-          await file.readAsBytes();
+      final imageHeight =
+          _imageSize!.height;
 
-      final decoded =
-          await decodeImageFromList(bytes);
-
-      int cropW = decoded.width;
-      int cropH = decoded.height;
-
-      if (_selectedCropRatio == '1:1') {
-        final minDim =
-            decoded.width < decoded.height
-                ? decoded.width
-                : decoded.height;
-
-        cropW = minDim;
-        cropH = minDim;
-      } else if (_selectedCropRatio == '4:3') {
-        cropW = decoded.width;
-
-        cropH =
-            (decoded.width * 3 / 4)
-                .round()
-                .clamp(
-                  1,
-                  decoded.height,
-                );
-      } else if (_selectedCropRatio == '16:9') {
-        cropW = decoded.width;
-
-        cropH =
-            (decoded.width * 9 / 16)
-                .round()
-                .clamp(
-                  1,
-                  decoded.height,
-                );
-      } else if (_selectedCropRatio == 'A4') {
-        cropW = decoded.width;
-
-        cropH =
-            (decoded.width / 0.7071)
-                .round()
-                .clamp(
-                  1,
-                  decoded.height,
-                );
-      } else {
-        cropW =
-            (decoded.width * 0.90)
-                .round();
-
-        cropH =
-            (decoded.height * 0.90)
-                .round();
-      }
-
-      final startX =
-          ((decoded.width - cropW) / 2)
+      final x =
+          (_cropRect.left *
+                  imageWidth)
               .round();
 
-      final startY =
-          ((decoded.height - cropH) / 2)
+      final y =
+          (_cropRect.top *
+                  imageHeight)
               .round();
+
+      final width =
+          (_cropRect.width *
+                  imageWidth)
+              .round();
+
+      final height =
+          (_cropRect.height *
+                  imageHeight)
+              .round();
+
+      final safeX =
+          x.clamp(
+        0,
+        imageWidth.toInt() - 1,
+      );
+
+      final safeY =
+          y.clamp(
+        0,
+        imageHeight.toInt() - 1,
+      );
+
+      final safeWidth =
+          width.clamp(
+        1,
+        imageWidth.toInt() - safeX,
+      );
+
+      final safeHeight =
+          height.clamp(
+        1,
+        imageHeight.toInt() - safeY,
+      );
 
       final newPath =
           await _editorService.cropImage(
         _currentWorkingPath,
-        x: startX,
-        y: startY,
-        width: cropW,
-        height: cropH,
+        x: safeX,
+        y: safeY,
+        width: safeWidth,
+        height: safeHeight,
       );
 
       if (!mounted) return;
 
       setState(() {
-        _currentWorkingPath = newPath;
+        _currentWorkingPath =
+            newPath;
+
         _hasUnsavedEdits = true;
-        _activeMode = EditorMode.none;
+
+        _activeMode =
+            EditorMode.none;
       });
+
+      await _loadImageSize();
     } catch (e) {
       _showError(
         'Crop failed: $e',
@@ -369,6 +521,344 @@ class _ImageEditorScreenState
         });
       }
     }
+  }
+
+  // ============================================================
+  // CROP RATIO
+  // ============================================================
+
+  void _selectCropRatio(
+    String ratio,
+  ) {
+    if (_imageSize == null) return;
+
+    setState(() {
+      _selectedCropRatio =
+          ratio;
+
+      if (ratio == 'Free' ||
+          ratio == 'Auto Crop') {
+        return;
+      }
+
+      final targetRatio =
+          _ratioValue(ratio);
+
+      if (targetRatio == null) {
+        return;
+      }
+
+      _cropRect =
+          _createCenteredCropRect(
+        targetRatio,
+      );
+    });
+  }
+
+  double? _ratioValue(
+    String ratio,
+  ) {
+    switch (ratio) {
+      case 'Original':
+        return _imageSize!.width /
+            _imageSize!.height;
+
+      case '1:1':
+        return 1.0;
+
+      case '4:3':
+        return 4 / 3;
+
+      case '3:4':
+        return 3 / 4;
+
+      case '16:9':
+        return 16 / 9;
+
+      case '9:16':
+        return 9 / 16;
+
+      // A4 = 210 / 297.
+      case 'A4 Portrait':
+        return 210 / 297;
+
+      // A4 landscape.
+      case 'A4 Landscape':
+        return 297 / 210;
+
+      // A5 = 148 / 210.
+      case 'A5 Portrait':
+        return 148 / 210;
+
+      case 'A5 Landscape':
+        return 210 / 148;
+
+      // Standard CR80 ID card.
+      case 'ID Card':
+        return 85.60 / 53.98;
+
+      default:
+        return null;
+    }
+  }
+
+  Rect _createCenteredCropRect(
+    double targetRatio,
+  ) {
+    final imageRatio =
+        _imageSize!.width /
+            _imageSize!.height;
+
+    double width;
+    double height;
+
+    if (imageRatio > targetRatio) {
+      height = 0.86;
+      width =
+          height *
+          (_imageSize!.height /
+              _imageSize!.width) *
+          targetRatio;
+    } else {
+      width = 0.86;
+      height =
+          width *
+          (_imageSize!.width /
+              _imageSize!.height) /
+          targetRatio;
+    }
+
+    width =
+        width.clamp(0.08, 0.94);
+
+    height =
+        height.clamp(0.08, 0.94);
+
+    final left =
+        ((1 - width) / 2)
+            .clamp(0.0, 1.0 - width);
+
+    final top =
+        ((1 - height) / 2)
+            .clamp(0.0, 1.0 - height);
+
+    return Rect.fromLTWH(
+      left,
+      top,
+      width,
+      height,
+    );
+  }
+
+  // ============================================================
+  // CROP DRAG
+  // ============================================================
+
+  void _moveCrop(
+    Offset delta,
+    Size canvasSize,
+  ) {
+    final dx =
+        delta.dx /
+            canvasSize.width;
+
+    final dy =
+        delta.dy /
+            canvasSize.height;
+
+    var left =
+        _cropRect.left + dx;
+
+    var top =
+        _cropRect.top + dy;
+
+    left =
+        left.clamp(
+      0.0,
+      1.0 - _cropRect.width,
+    );
+
+    top =
+        top.clamp(
+      0.0,
+      1.0 - _cropRect.height,
+    );
+
+    setState(() {
+      _cropRect =
+          Rect.fromLTWH(
+        left,
+        top,
+        _cropRect.width,
+        _cropRect.height,
+      );
+    });
+  }
+
+  void _resizeCrop(
+    _CropHandle handle,
+    Offset delta,
+    Size canvasSize,
+  ) {
+    final dx =
+        delta.dx /
+            canvasSize.width;
+
+    final dy =
+        delta.dy /
+            canvasSize.height;
+
+    var left =
+        _cropRect.left;
+
+    var top =
+        _cropRect.top;
+
+    var right =
+        _cropRect.right;
+
+    var bottom =
+        _cropRect.bottom;
+
+    switch (handle) {
+      case _CropHandle.topLeft:
+        left += dx;
+        top += dy;
+        break;
+
+      case _CropHandle.topRight:
+        right += dx;
+        top += dy;
+        break;
+
+      case _CropHandle.bottomLeft:
+        left += dx;
+        bottom += dy;
+        break;
+
+      case _CropHandle.bottomRight:
+        right += dx;
+        bottom += dy;
+        break;
+    }
+
+    const minSize = 0.08;
+
+    left =
+        left.clamp(
+      0.0,
+      right - minSize,
+    );
+
+    right =
+        right.clamp(
+      left + minSize,
+      1.0,
+    );
+
+    top =
+        top.clamp(
+      0.0,
+      bottom - minSize,
+    );
+
+    bottom =
+        bottom.clamp(
+      top + minSize,
+      1.0,
+    );
+
+    // Keep fixed aspect ratio for all ratio modes.
+    final ratio =
+        _ratioValue(
+      _selectedCropRatio,
+    );
+
+    if (ratio != null) {
+      final newWidth =
+          right - left;
+
+      final newHeight =
+          bottom - top;
+
+      final pixelRatio =
+          _imageSize!.width /
+              _imageSize!.height;
+
+      final currentRatio =
+          (newWidth * pixelRatio) /
+              newHeight;
+
+      if ((currentRatio - ratio)
+              .abs() >
+          0.001) {
+        if (currentRatio > ratio) {
+          final correctedWidth =
+              newHeight *
+                  ratio /
+                  pixelRatio;
+
+          if (handle ==
+                  _CropHandle.topLeft ||
+              handle ==
+                  _CropHandle.bottomLeft) {
+            left =
+                right -
+                    correctedWidth;
+          } else {
+            right =
+                left +
+                    correctedWidth;
+          }
+        } else {
+          final correctedHeight =
+              newWidth *
+                  pixelRatio /
+                  ratio;
+
+          if (handle ==
+                  _CropHandle.topLeft ||
+              handle ==
+                  _CropHandle.topRight) {
+            top =
+                bottom -
+                    correctedHeight;
+          } else {
+            bottom =
+                top +
+                    correctedHeight;
+          }
+        }
+      }
+    }
+
+    left =
+        left.clamp(0.0, 0.92);
+
+    top =
+        top.clamp(0.0, 0.92);
+
+    right =
+        right.clamp(
+      left + minSize,
+      1.0,
+    );
+
+    bottom =
+        bottom.clamp(
+      top + minSize,
+      1.0,
+    );
+
+    setState(() {
+      _cropRect =
+          Rect.fromLTRB(
+        left,
+        top,
+        right,
+        bottom,
+      );
+    });
   }
 
   // ============================================================
@@ -523,11 +1013,9 @@ class _ImageEditorScreenState
                       ),
                     ),
                   ),
-
                   const SizedBox(
                     height: 20,
                   ),
-
                   Align(
                     alignment:
                         Alignment
@@ -546,11 +1034,9 @@ class _ImageEditorScreenState
                       ),
                     ),
                   ),
-
                   const SizedBox(
                     height: 12,
                   ),
-
                   Wrap(
                     spacing: 12,
                     runSpacing: 12,
@@ -593,35 +1079,21 @@ class _ImageEditorScreenState
                                     .circle,
                             border:
                                 Border.all(
-                              color: isSelected
-                                  ? AppTheme
-                                      .primaryColor
-                                  : colors
-                                      .outline
-                                      .withValues(
-                                      alpha:
-                                          0.35,
-                                    ),
+                              color:
+                                  isSelected
+                                      ? AppTheme
+                                          .primaryColor
+                                      : colors
+                                          .outline
+                                          .withValues(
+                                          alpha:
+                                              0.35,
+                                        ),
                               width:
                                   isSelected
                                       ? 3
                                       : 1,
                             ),
-                            boxShadow:
-                                isSelected
-                                    ? [
-                                        BoxShadow(
-                                          color: AppTheme
-                                              .primaryColor
-                                              .withValues(
-                                            alpha:
-                                                0.25,
-                                          ),
-                                          blurRadius:
-                                              10,
-                                        ),
-                                      ]
-                                    : null,
                           ),
                           child:
                               isSelected
@@ -646,8 +1118,7 @@ class _ImageEditorScreenState
                 ],
               ),
               actionsPadding:
-                  const EdgeInsets
-                      .fromLTRB(
+                  const EdgeInsets.fromLTRB(
                 20,
                 0,
                 20,
@@ -742,11 +1213,6 @@ class _ImageEditorScreenState
       child: Scaffold(
         backgroundColor:
             backgroundColor,
-
-        // ======================================================
-        // APP BAR
-        // ======================================================
-
         appBar: AppBar(
           backgroundColor:
               backgroundColor,
@@ -754,7 +1220,6 @@ class _ImageEditorScreenState
               colorScheme.onSurface,
           elevation: 0,
           scrolledUnderElevation: 0,
-
           leading:
               Padding(
             padding:
@@ -771,9 +1236,7 @@ class _ImageEditorScreenState
                   _handleCancelOrBack,
             ),
           ),
-
           titleSpacing: 12,
-
           title:
               Column(
             crossAxisAlignment:
@@ -812,7 +1275,6 @@ class _ImageEditorScreenState
               ),
             ],
           ),
-
           actions: [
             Padding(
               padding:
@@ -840,21 +1302,6 @@ class _ImageEditorScreenState
                             .circular(
                       14,
                     ),
-                    boxShadow: [
-                      BoxShadow(
-                        color: AppTheme
-                            .primaryColor
-                            .withValues(
-                          alpha: 0.25,
-                        ),
-                        blurRadius: 12,
-                        offset:
-                            const Offset(
-                          0,
-                          4,
-                        ),
-                      ),
-                    ],
                   ),
                   child:
                       const Row(
@@ -890,19 +1337,10 @@ class _ImageEditorScreenState
             ),
           ],
         ),
-
-        // ======================================================
-        // BODY
-        // ======================================================
-
         body: Stack(
           children: [
             Column(
               children: [
-                // ==================================================
-                // IMAGE AREA
-                // ==================================================
-
                 Expanded(
                   child:
                       Padding(
@@ -937,25 +1375,6 @@ class _ImageEditorScreenState
                               : AppTheme
                                   .dividerColor,
                         ),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors
-                                .black
-                                .withValues(
-                              alpha:
-                                  isDark
-                                      ? 0.20
-                                      : 0.06,
-                            ),
-                            blurRadius:
-                                20,
-                            offset:
-                                const Offset(
-                              0,
-                              8,
-                            ),
-                          ),
-                        ],
                       ),
                       child:
                           ClipRRect(
@@ -965,161 +1384,19 @@ class _ImageEditorScreenState
                           25,
                         ),
                         child:
-                            InteractiveViewer(
-                          minScale:
-                              0.5,
-                          maxScale:
-                              4.0,
-                          boundaryMargin:
-                              const EdgeInsets
-                                  .all(
-                            40,
-                          ),
-                          child:
-                              Center(
-                            child:
-                                Stack(
-                              alignment:
-                                  Alignment
-                                      .center,
-                              children: [
-                                Image.file(
-                                  File(
-                                    _currentWorkingPath,
-                                  ),
-                                  fit: BoxFit
-                                      .contain,
-                                  key: ValueKey(
-                                    _currentWorkingPath,
-                                  ),
-                                ),
-
-                                // ==================================================
-                                // TEXT OVERLAY
-                                // ==================================================
-
-                                if (_activeMode ==
-                                        EditorMode
-                                            .text &&
-                                    _overlayText
-                                        .isNotEmpty)
-                                  Positioned(
-                                    left:
-                                        MediaQuery.of(
-                                              context,
-                                            ).size.width *
-                                            (_textXPercent -
-                                                0.1),
-                                    top:
-                                        MediaQuery.of(
-                                              context,
-                                            ).size.height *
-                                            (_textYPercent -
-                                                0.15),
-                                    child:
-                                        GestureDetector(
-                                      onPanUpdate:
-                                          (details) {
-                                        setState(
-                                          () {
-                                            _textXPercent =
-                                                (_textXPercent +
-                                                        details
-                                                            .delta
-                                                            .dx /
-                                                    300)
-                                                    .clamp(
-                                              0.05,
-                                              0.95,
-                                            );
-
-                                            _textYPercent =
-                                                (_textYPercent +
-                                                        details
-                                                            .delta
-                                                            .dy /
-                                                    500)
-                                                    .clamp(
-                                              0.05,
-                                              0.95,
-                                            );
-                                          },
-                                        );
-                                      },
-                                      child:
-                                          Container(
-                                        padding:
-                                            const EdgeInsets
-                                                .symmetric(
-                                          horizontal:
-                                              12,
-                                          vertical:
-                                              8,
-                                        ),
-                                        decoration:
-                                            BoxDecoration(
-                                          color: Colors
-                                              .black
-                                              .withValues(
-                                            alpha:
-                                                0.58,
-                                          ),
-                                          borderRadius:
-                                              BorderRadius
-                                                  .circular(
-                                            12,
-                                          ),
-                                          border:
-                                              Border.all(
-                                            color: Colors
-                                                .white
-                                                .withValues(
-                                              alpha:
-                                                  0.65,
-                                            ),
-                                          ),
-                                        ),
-                                        child:
-                                            Text(
-                                          _overlayText,
-                                          style:
-                                              TextStyle(
-                                            color:
-                                                _textColor,
-                                            fontSize:
-                                                _textFontSize
-                                                    .toDouble(),
-                                            fontWeight:
-                                                FontWeight.bold,
-                                          ),
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                              ],
-                            ),
-                          ),
+                            _buildImageArea(
+                          isDark,
                         ),
                       ),
                     ),
                   ),
                 ),
-
-                // ==================================================
-                // TOOL AREA
-                // ==================================================
-
                 _buildBottomEditorPanel(
                   isDark,
                   colorScheme,
                 ),
               ],
             ),
-
-            // ======================================================
-            // PROCESSING OVERLAY
-            // ======================================================
-
             if (_isProcessing)
               Positioned.fill(
                 child:
@@ -1135,10 +1412,8 @@ class _ImageEditorScreenState
                       padding:
                           const EdgeInsets
                               .symmetric(
-                        horizontal:
-                            24,
-                        vertical:
-                            20,
+                        horizontal: 24,
+                        vertical: 20,
                       ),
                       decoration:
                           BoxDecoration(
@@ -1163,8 +1438,7 @@ class _ImageEditorScreenState
                             height: 30,
                             child:
                                 CircularProgressIndicator(
-                              strokeWidth:
-                                  3,
+                              strokeWidth: 3,
                               color: AppTheme
                                   .primaryColor,
                             ),
@@ -1179,8 +1453,9 @@ class _ImageEditorScreenState
                               fontWeight:
                                   FontWeight
                                       .w700,
-                              color: colorScheme
-                                  .onSurface,
+                              color:
+                                  colorScheme
+                                      .onSurface,
                             ),
                           ),
                         ],
@@ -1190,6 +1465,388 @@ class _ImageEditorScreenState
                 ),
               ),
           ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // IMAGE AREA
+  // ============================================================
+
+  Widget _buildImageArea(
+    bool isDark,
+  ) {
+    if (_activeMode ==
+        EditorMode.crop) {
+      return _buildCropArea(
+        isDark,
+      );
+    }
+
+    return InteractiveViewer(
+      minScale: 0.5,
+      maxScale: 4.0,
+      boundaryMargin:
+          const EdgeInsets.all(40),
+      child: Center(
+        child: Stack(
+          alignment:
+              Alignment.center,
+          children: [
+            Image.file(
+              File(
+                _currentWorkingPath,
+              ),
+              fit: BoxFit.contain,
+              key: ValueKey(
+                _currentWorkingPath,
+              ),
+            ),
+            if (_activeMode ==
+                    EditorMode.text &&
+                _overlayText
+                    .isNotEmpty)
+              Positioned(
+                left:
+                    MediaQuery.of(
+                          context,
+                        ).size.width *
+                        (_textXPercent -
+                            0.1),
+                top:
+                    MediaQuery.of(
+                          context,
+                        ).size.height *
+                        (_textYPercent -
+                            0.15),
+                child:
+                    GestureDetector(
+                  onPanUpdate:
+                      (details) {
+                    setState(() {
+                      _textXPercent =
+                          (_textXPercent +
+                                  details
+                                      .delta
+                                      .dx /
+                                      300)
+                              .clamp(
+                        0.05,
+                        0.95,
+                      );
+
+                      _textYPercent =
+                          (_textYPercent +
+                                  details
+                                      .delta
+                                      .dy /
+                                      500)
+                              .clamp(
+                        0.05,
+                        0.95,
+                      );
+                    });
+                  },
+                  child:
+                      Container(
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      horizontal: 12,
+                      vertical: 8,
+                    ),
+                    decoration:
+                        BoxDecoration(
+                      color: Colors.black
+                          .withValues(
+                        alpha: 0.58,
+                      ),
+                      borderRadius:
+                          BorderRadius
+                              .circular(
+                        12,
+                      ),
+                      border:
+                          Border.all(
+                        color: Colors
+                            .white
+                            .withValues(
+                          alpha: 0.65,
+                        ),
+                      ),
+                    ),
+                    child:
+                        Text(
+                      _overlayText,
+                      style:
+                          TextStyle(
+                        color:
+                            _textColor,
+                        fontSize:
+                            _textFontSize
+                                .toDouble(),
+                        fontWeight:
+                            FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // CROP AREA
+  // ============================================================
+
+  Widget _buildCropArea(
+    bool isDark,
+  ) {
+    return LayoutBuilder(
+      builder:
+          (context, constraints) {
+        final size =
+            Size(
+          constraints.maxWidth,
+          constraints.maxHeight,
+        );
+
+        return Stack(
+          fit: StackFit.expand,
+          children: [
+            Image.file(
+              File(
+                _currentWorkingPath,
+              ),
+              fit: BoxFit.contain,
+              key: ValueKey(
+                _currentWorkingPath,
+              ),
+            ),
+
+            Container(
+              color: Colors.black
+                  .withValues(
+                alpha: 0.48,
+              ),
+            ),
+
+            Positioned.fill(
+              child:
+                  GestureDetector(
+                onPanUpdate:
+                    (details) {
+                  _moveCrop(
+                    details.delta,
+                    size,
+                  );
+                },
+                child:
+                    CustomPaint(
+                  painter:
+                      _CropPainter(
+                    cropRect:
+                        _cropRect,
+                    primaryColor:
+                        AppTheme
+                            .primaryColor,
+                  ),
+                ),
+              ),
+            ),
+
+            _buildCropHandleWidget(
+              _CropHandle.topLeft,
+              size,
+            ),
+
+            _buildCropHandleWidget(
+              _CropHandle.topRight,
+              size,
+            ),
+
+            _buildCropHandleWidget(
+              _CropHandle.bottomLeft,
+              size,
+            ),
+
+            _buildCropHandleWidget(
+              _CropHandle.bottomRight,
+              size,
+            ),
+
+            Positioned(
+              top: 16,
+              left: 16,
+              right: 16,
+              child:
+                  Row(
+                children: [
+                  Container(
+                    padding:
+                        const EdgeInsets
+                            .symmetric(
+                      horizontal: 12,
+                      vertical: 7,
+                    ),
+                    decoration:
+                        BoxDecoration(
+                      color: Colors.black
+                          .withValues(
+                        alpha: 0.60,
+                      ),
+                      borderRadius:
+                          BorderRadius
+                              .circular(
+                        12,
+                      ),
+                    ),
+                    child:
+                        Text(
+                      _selectedCropRatio,
+                      style:
+                          const TextStyle(
+                        color:
+                            Colors.white,
+                        fontWeight:
+                            FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                  ),
+                  const Spacer(),
+                  if (_selectedCropRatio ==
+                      'Free')
+                    Container(
+                      padding:
+                          const EdgeInsets
+                              .symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      decoration:
+                          BoxDecoration(
+                        color: Colors.black
+                            .withValues(
+                          alpha: 0.60,
+                        ),
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          12,
+                        ),
+                      ),
+                      child:
+                          const Text(
+                        'Drag corners',
+                        style:
+                            TextStyle(
+                          color:
+                              Colors.white,
+                          fontWeight:
+                              FontWeight.w600,
+                          fontSize: 12,
+                        ),
+                      ),
+                    ),
+                ],
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCropHandleWidget(
+    _CropHandle handle,
+    Size size,
+  ) {
+    double left =
+        _cropRect.left *
+            size.width;
+
+    double top =
+        _cropRect.top *
+            size.height;
+
+    if (handle ==
+        _CropHandle.topRight) {
+      left =
+          _cropRect.right *
+              size.width;
+    }
+
+    if (handle ==
+        _CropHandle.bottomLeft) {
+      top =
+          _cropRect.bottom *
+              size.height;
+    }
+
+    if (handle ==
+        _CropHandle.bottomRight) {
+      left =
+          _cropRect.right *
+              size.width;
+
+      top =
+          _cropRect.bottom *
+              size.height;
+    }
+
+    return Positioned(
+      left: left - 17,
+      top: top - 17,
+      child:
+          GestureDetector(
+        behavior:
+            HitTestBehavior.opaque,
+        onPanUpdate:
+            (details) {
+          _resizeCrop(
+            handle,
+            details.delta,
+            size,
+          );
+        },
+        child:
+            Container(
+          width: 34,
+          height: 34,
+          decoration:
+              BoxDecoration(
+            color: Colors.white,
+            shape:
+                BoxShape.circle,
+            border:
+                Border.all(
+              color: AppTheme
+                  .primaryColor,
+              width: 3,
+            ),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black
+                    .withValues(
+                  alpha: 0.30,
+                ),
+                blurRadius: 8,
+              ),
+            ],
+          ),
+          child:
+              Icon(
+            Icons
+                .open_in_full_rounded,
+            size: 16,
+            color: AppTheme
+                .primaryColor,
+          ),
         ),
       ),
     );
@@ -1209,7 +1866,8 @@ class _ImageEditorScreenState
             Brightness.dark;
 
     return Material(
-      color: Colors.transparent,
+      color:
+          Colors.transparent,
       child:
           InkWell(
         onTap: onTap,
@@ -1243,9 +1901,10 @@ class _ImageEditorScreenState
               Icon(
             icon,
             size: 22,
-            color: Theme.of(context)
-                .colorScheme
-                .onSurface,
+            color:
+                Theme.of(context)
+                    .colorScheme
+                    .onSurface,
           ),
         ),
       ),
@@ -1266,15 +1925,13 @@ class _ImageEditorScreenState
       decoration:
           BoxDecoration(
         color: isDark
-            ? AppTheme
-                .surfaceDark
+            ? AppTheme.surfaceDark
             : Colors.white,
         borderRadius:
             const BorderRadius
                 .vertical(
-          top: Radius.circular(
-            28,
-          ),
+          top:
+              Radius.circular(28),
         ),
         border:
             Border(
@@ -1287,23 +1944,6 @@ class _ImageEditorScreenState
                     .dividerColor,
           ),
         ),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black
-                .withValues(
-              alpha:
-                  isDark
-                      ? 0.22
-                      : 0.06,
-            ),
-            blurRadius: 20,
-            offset:
-                const Offset(
-              0,
-              -6,
-            ),
-          ),
-        ],
       ),
       child:
           SafeArea(
@@ -1313,49 +1953,31 @@ class _ImageEditorScreenState
           mainAxisSize:
               MainAxisSize.min,
           children: [
-            // ======================================================
-            // ACTIVE TOOL CONTROLS
-            // ======================================================
-
             if (_activeMode ==
-                EditorMode
-                    .rotate)
+                EditorMode.rotate)
               _buildRotateControls(
                 isDark,
               ),
-
             if (_activeMode ==
                 EditorMode.crop)
               _buildCropControls(
                 isDark,
               ),
-
             if (_activeMode ==
                 EditorMode.filters)
               _buildFilterControls(
                 isDark,
               ),
-
             if (_activeMode ==
-                    EditorMode
-                        .text &&
+                    EditorMode.text &&
                 _overlayText
                     .isNotEmpty)
               _buildTextControls(
                 isDark,
               ),
-
-            // ======================================================
-            // TOOL BAR
-            // ======================================================
-
             Container(
               padding:
-                  const EdgeInsets
-                      .fromLTRB(
-                12,
-                12,
-                12,
+                  const EdgeInsets.all(
                 12,
               ),
               child:
@@ -1364,58 +1986,43 @@ class _ImageEditorScreenState
                   Expanded(
                     child:
                         _buildToolItem(
-                      icon:
-                          Icons
-                              .crop_rounded,
-                      label:
-                          'Crop',
+                      icon: Icons
+                          .crop_rounded,
+                      label: 'Crop',
                       mode:
-                          EditorMode
-                              .crop,
+                          EditorMode.crop,
                     ),
                   ),
-
                   Expanded(
                     child:
                         _buildToolItem(
-                      icon:
-                          Icons
-                              .rotate_right_rounded,
-                      label:
-                          'Rotate',
+                      icon: Icons
+                          .rotate_right_rounded,
+                      label: 'Rotate',
                       mode:
-                          EditorMode
-                              .rotate,
+                          EditorMode.rotate,
                     ),
                   ),
-
                   Expanded(
                     child:
                         _buildToolItem(
-                      icon:
-                          Icons
-                              .text_fields_rounded,
-                      label:
-                          'Text',
+                      icon: Icons
+                          .text_fields_rounded,
+                      label: 'Text',
                       mode:
-                          EditorMode
-                              .text,
+                          EditorMode.text,
                       onTap:
                           _openTextDialog,
                     ),
                   ),
-
                   Expanded(
                     child:
                         _buildToolItem(
-                      icon:
-                          Icons
-                              .auto_awesome_rounded,
-                      label:
-                          'Filters',
+                      icon: Icons
+                          .auto_awesome_rounded,
+                      label: 'Filters',
                       mode:
-                          EditorMode
-                              .filters,
+                          EditorMode.filters,
                     ),
                   ),
                 ],
@@ -1457,6 +2064,20 @@ class _ImageEditorScreenState
                   isSelected
                       ? EditorMode.none
                       : mode;
+
+              if (mode ==
+                  EditorMode.crop) {
+                _selectedCropRatio =
+                    'Free';
+
+                _cropRect =
+                    const Rect.fromLTWH(
+                  0.08,
+                  0.08,
+                  0.84,
+                  0.84,
+                );
+              }
             });
           },
       child:
@@ -1496,11 +2117,7 @@ class _ImageEditorScreenState
           mainAxisSize:
               MainAxisSize.min,
           children: [
-            AnimatedContainer(
-              duration:
-                  const Duration(
-                milliseconds: 200,
-              ),
+            Container(
               width: 42,
               height: 42,
               decoration:
@@ -1529,11 +2146,9 @@ class _ImageEditorScreenState
                     ),
               ),
             ),
-
             const SizedBox(
               height: 6,
             ),
-
             Text(
               label,
               style:
@@ -1580,51 +2195,40 @@ class _ImageEditorScreenState
             icon:
                 Icons
                     .rotate_left_rounded,
-            label:
-                'Left',
-            onTap:
-                () => _handleRotate(
+            label: 'Left',
+            onTap: () =>
+                _handleRotate(
               270,
             ),
           ),
-
           _buildActionButton(
             icon:
                 Icons
                     .rotate_right_rounded,
-            label:
-                'Right',
-            onTap:
-                () => _handleRotate(
+            label: 'Right',
+            onTap: () =>
+                _handleRotate(
               90,
             ),
           ),
-
           _buildActionButton(
             icon:
-                Icons
-                    .flip_rounded,
-            label:
-                'Flip H',
-            onTap:
-                () => _handleFlip(
-              horizontal:
-                  true,
+                Icons.flip_rounded,
+            label: 'Flip H',
+            onTap: () =>
+                _handleFlip(
+              horizontal: true,
             ),
           ),
-
           _buildActionButton(
             icon:
                 Icons
                     .swap_vert_rounded,
-            label:
-                'Flip V',
-            onTap:
-                () => _handleFlip(
-              horizontal:
-                  false,
-              vertical:
-                  true,
+            label: 'Flip V',
+            onTap: () =>
+                _handleFlip(
+              horizontal: false,
+              vertical: true,
             ),
           ),
         ],
@@ -1641,10 +2245,17 @@ class _ImageEditorScreenState
   ) {
     final ratios = [
       'Free',
+      'Original',
       '1:1',
       '4:3',
+      '3:4',
       '16:9',
-      'A4',
+      '9:16',
+      'A4 Portrait',
+      'A4 Landscape',
+      'A5 Portrait',
+      'A5 Landscape',
+      'ID Card',
     ];
 
     return _buildSubPanel(
@@ -1682,13 +2293,46 @@ class _ImageEditorScreenState
                           .onSurface,
                 ),
               ),
+              const Spacer(),
+              OutlinedButton.icon(
+                onPressed:
+                    _handleAutoCrop,
+                icon:
+                    const Icon(
+                  Icons
+                      .auto_awesome_rounded,
+                  size: 17,
+                ),
+                label:
+                    const Text(
+                  'Auto Crop',
+                ),
+                style:
+                    OutlinedButton
+                        .styleFrom(
+                  foregroundColor:
+                      AppTheme
+                          .primaryColor,
+                  side:
+                      const BorderSide(
+                    color: AppTheme
+                        .primaryColor,
+                  ),
+                  shape:
+                      RoundedRectangleBorder(
+                    borderRadius:
+                        BorderRadius
+                            .circular(
+                      12,
+                    ),
+                  ),
+                ),
+              ),
             ],
           ),
-
           const SizedBox(
             height: 12,
           ),
-
           SingleChildScrollView(
             scrollDirection:
                 Axis.horizontal,
@@ -1696,88 +2340,94 @@ class _ImageEditorScreenState
                 const BouncingScrollPhysics(),
             child:
                 Row(
-              children: [
-                ...ratios.map(
-                  (ratio) {
-                    final selected =
-                        _selectedCropRatio ==
-                            ratio;
+              children:
+                  ratios.map(
+                (ratio) {
+                  final selected =
+                      _selectedCropRatio ==
+                          ratio;
 
-                    return Padding(
-                      padding:
-                          const EdgeInsets
-                              .only(
-                        right: 8,
-                      ),
-                      child:
-                          ChoiceChip(
-                        label:
-                            Text(
-                          ratio,
-                          style:
-                              TextStyle(
-                            fontSize:
-                                12,
-                            fontWeight:
-                                FontWeight
-                                    .w700,
-                            color: selected
-                                ? Colors
-                                    .white
-                                : Theme.of(
-                                    context,
-                                  )
-                                    .colorScheme
-                                    .onSurface,
-                          ),
+                  return Padding(
+                    padding:
+                        const EdgeInsets
+                            .only(
+                      right: 8,
+                    ),
+                    child:
+                        ChoiceChip(
+                      label:
+                          Text(
+                        ratio,
+                        style:
+                            TextStyle(
+                          fontSize:
+                              11,
+                          fontWeight:
+                              FontWeight
+                                  .w700,
+                          color:
+                              selected
+                                  ? Colors
+                                      .white
+                                  : Theme.of(
+                                      context,
+                                    )
+                                      .colorScheme
+                                      .onSurface,
                         ),
-                        selected:
-                            selected,
-                        selectedColor:
-                            AppTheme
-                                .primaryColor,
-                        backgroundColor:
-                            isDark
-                                ? AppTheme
-                                    .cardDark
-                                : AppTheme
-                                    .bgLight,
-                        side:
-                            BorderSide(
-                          color: selected
+                      ),
+                      selected:
+                          selected,
+                      selectedColor:
+                          AppTheme
+                              .primaryColor,
+                      backgroundColor:
+                          isDark
                               ? AppTheme
-                                  .primaryColor
-                              : Theme.of(
-                                  context,
-                                )
-                                  .colorScheme
-                                  .outline
-                                  .withValues(
-                                  alpha:
-                                      0.18,
-                                ),
-                        ),
-                        onSelected:
-                            (value) {
-                          if (value) {
-                            setState(
-                              () {
-                                _selectedCropRatio =
-                                    ratio;
-                              },
-                            );
-                          }
-                        },
-                      ),
-                    );
+                                  .cardDark
+                              : AppTheme
+                                  .bgLight,
+                      onSelected:
+                          (value) {
+                        if (value) {
+                          _selectCropRatio(
+                            ratio,
+                          );
+                        }
+                      },
+                    ),
+                  );
+                },
+              ).toList(),
+            ),
+          ),
+          const SizedBox(
+            height: 12,
+          ),
+          Row(
+            children: [
+              Expanded(
+                child:
+                    OutlinedButton(
+                  onPressed: () {
+                    setState(() {
+                      _activeMode =
+                          EditorMode
+                              .none;
+                    });
                   },
+                  child:
+                      const Text(
+                    'Cancel',
+                  ),
                 ),
-
-                const SizedBox(
-                  width: 4,
-                ),
-
-                ElevatedButton.icon(
+              ),
+              const SizedBox(
+                width: 10,
+              ),
+              Expanded(
+                child:
+                    ElevatedButton.icon(
                   onPressed:
                       _handleApplyCrop,
                   icon:
@@ -1788,7 +2438,7 @@ class _ImageEditorScreenState
                   ),
                   label:
                       const Text(
-                    'Apply',
+                    'Apply Crop',
                   ),
                   style:
                       ElevatedButton
@@ -1796,10 +2446,7 @@ class _ImageEditorScreenState
                     padding:
                         const EdgeInsets
                             .symmetric(
-                      horizontal:
-                          16,
-                      vertical:
-                          10,
+                      vertical: 12,
                     ),
                     shape:
                         RoundedRectangleBorder(
@@ -1811,8 +2458,8 @@ class _ImageEditorScreenState
                     ),
                   ),
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
         ],
       ),
@@ -1863,15 +2510,9 @@ class _ImageEditorScreenState
               ),
             ],
           ),
-
           const SizedBox(
             height: 12,
           ),
-
-          // ======================================================
-          // ALL 21 FILTERS
-          // ======================================================
-
           SingleChildScrollView(
             scrollDirection:
                 Axis.horizontal,
@@ -1879,40 +2520,35 @@ class _ImageEditorScreenState
                 const BouncingScrollPhysics(),
             child:
                 Row(
-              children: [
-                ...ImageFilterType
-                    .values
-                    .map(
-                  (filter) {
-                    return Padding(
-                      padding:
-                          const EdgeInsets
-                              .only(
-                        right: 8,
-                      ),
-                      child:
-                          _filterButton(
-                        ImageEditorService
-                            .label(
-                          filter,
-                        ),
+              children:
+                  ImageFilterType
+                      .values
+                      .map(
+                (filter) {
+                  return Padding(
+                    padding:
+                        const EdgeInsets
+                            .only(
+                      right: 8,
+                    ),
+                    child:
+                        _filterButton(
+                      ImageEditorService
+                          .label(
                         filter,
-                        isDark,
                       ),
-                    );
-                  },
-                ),
-              ],
+                      filter,
+                      isDark,
+                    ),
+                  );
+                },
+              ).toList(),
             ),
           ),
         ],
       ),
     );
   }
-
-  // ============================================================
-  // FILTER BUTTON
-  // ============================================================
 
   Widget _filterButton(
     String label,
@@ -2023,11 +2659,9 @@ class _ImageEditorScreenState
               size: 21,
             ),
           ),
-
           const SizedBox(
             width: 10,
           ),
-
           Expanded(
             child:
                 Text(
@@ -2036,7 +2670,8 @@ class _ImageEditorScreenState
                   TextStyle(
                 fontSize: 12,
                 fontWeight:
-                    FontWeight.w600,
+                    FontWeight
+                        .w600,
                 color:
                     Theme.of(
                   context,
@@ -2049,7 +2684,6 @@ class _ImageEditorScreenState
               ),
             ),
           ),
-
           ElevatedButton.icon(
             onPressed:
                 _handleApplyText,
@@ -2159,8 +2793,7 @@ class _ImageEditorScreenState
         decoration:
             BoxDecoration(
           color: isDark
-              ? AppTheme
-                  .surfaceDark
+              ? AppTheme.surfaceDark
               : Colors.white,
           borderRadius:
               BorderRadius.circular(
@@ -2199,11 +2832,9 @@ class _ImageEditorScreenState
                 size: 20,
               ),
             ),
-
             const SizedBox(
               height: 4,
             ),
-
             Text(
               label,
               style:
@@ -2219,3 +2850,150 @@ class _ImageEditorScreenState
     );
   }
 }
+
+// ================================================================
+// CROP HANDLE
+// ================================================================
+
+enum _CropHandle {
+  topLeft,
+  topRight,
+  bottomLeft,
+  bottomRight,
+}
+
+// ================================================================
+// CROP PAINTER
+// ================================================================
+
+class _CropPainter
+    extends CustomPainter {
+  final Rect cropRect;
+  final Color primaryColor;
+
+  const _CropPainter({
+    required this.cropRect,
+    required this.primaryColor,
+  });
+
+  @override
+  void paint(
+    Canvas canvas,
+    Size size,
+  ) {
+    final rect =
+        Rect.fromLTWH(
+      cropRect.left *
+          size.width,
+      cropRect.top *
+          size.height,
+      cropRect.width *
+          size.width,
+      cropRect.height *
+          size.height,
+    );
+
+    final overlayPaint =
+        Paint()
+          ..color = Colors.black
+              .withValues(
+            alpha: 0.35,
+          );
+
+    final full =
+        Path()
+          ..addRect(
+            Offset.zero &
+                size,
+          );
+
+    final selected =
+        Path()
+          ..addRect(rect);
+
+    final outside =
+        Path.combine(
+      PathOperation
+          .difference,
+      full,
+      selected,
+    );
+
+    canvas.drawPath(
+      outside,
+      overlayPaint,
+    );
+
+    final borderPaint =
+        Paint()
+          ..color =
+              primaryColor
+          ..style =
+              PaintingStyle.stroke
+          ..strokeWidth = 2.5;
+
+    canvas.drawRect(
+      rect,
+      borderPaint,
+    );
+
+    final guidePaint =
+        Paint()
+          ..color = Colors.white
+              .withValues(
+            alpha: 0.35,
+          )
+          ..strokeWidth = 1;
+
+    final thirdX =
+        rect.width / 3;
+
+    final thirdY =
+        rect.height / 3;
+
+    for (var i = 1; i <= 2; i++) {
+      final x =
+          rect.left +
+              thirdX * i;
+
+      canvas.drawLine(
+        Offset(
+          x,
+          rect.top,
+        ),
+        Offset(
+          x,
+          rect.bottom,
+        ),
+        guidePaint,
+      );
+
+      final y =
+          rect.top +
+              thirdY * i;
+
+      canvas.drawLine(
+        Offset(
+          rect.left,
+          y,
+        ),
+        Offset(
+          rect.right,
+          y,
+        ),
+        guidePaint,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _CropPainter oldDelegate,
+  ) {
+    return oldDelegate.cropRect !=
+            cropRect ||
+        oldDelegate.primaryColor !=
+            primaryColor;
+  }
+}
+ 
