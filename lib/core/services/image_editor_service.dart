@@ -1,56 +1,119 @@
 import 'dart:io';
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:uuid/uuid.dart';
+
 import '../utils/file_utils.dart';
 
+/// All available image filters.
+///
+/// Total: 21 filters.
 enum ImageFilterType {
   none,
   grayscale,
-  document,
+  blackAndWhite,
   enhance,
+  sharpen,
+  vivid,
+  softLight,
+  warmTone,
+  coolTone,
+  highContrastBW,
+  softBW,
+  sepia,
+  noirDramatic,
+  brightWhite,
+  lowLightBoost,
+  matte,
+  vintagePaper,
+  coldSteel,
+  magicColorPro,
+  invertNegative,
+  cleanDocument,
 }
 
 class ImageEditorService {
   static const _uuid = Uuid();
 
+  // ============================================================
+  // FILE PATH
+  // ============================================================
+
   Future<String> _getNewEditedPath() async {
     final cacheDir = await FileUtils.getCacheDirectory();
-    final fileName = 'edited_${DateTime.now().millisecondsSinceEpoch}_${_uuid.v4().substring(0, 8)}.jpg';
+
+    final fileName =
+        'edited_${DateTime.now().millisecondsSinceEpoch}_'
+        '${_uuid.v4().substring(0, 8)}.jpg';
+
     return '${cacheDir.path}/$fileName';
   }
 
-  /// Rotates the image by [degrees] (90, 180, 270)
-  Future<String> rotateImage(String inputPath, int degrees) async {
+  // ============================================================
+  // ROTATE
+  // ============================================================
+
+  /// Rotates image by 90, 180 or 270 degrees.
+  Future<String> rotateImage(
+    String inputPath,
+    int degrees,
+  ) async {
     final bytes = await File(inputPath).readAsBytes();
+
     final image = img.decodeImage(bytes);
-    if (image == null) throw Exception('Unable to decode image.');
+
+    if (image == null) {
+      throw Exception('Unable to decode image.');
+    }
 
     img.Image rotated;
+
     final normalized = degrees % 360;
+
     if (normalized == 90) {
-      rotated = img.copyRotate(image, angle: 90);
+      rotated = img.copyRotate(
+        image,
+        angle: 90,
+      );
     } else if (normalized == 180) {
-      rotated = img.copyRotate(image, angle: 180);
+      rotated = img.copyRotate(
+        image,
+        angle: 180,
+      );
     } else if (normalized == 270) {
-      rotated = img.copyRotate(image, angle: 270);
+      rotated = img.copyRotate(
+        image,
+        angle: 270,
+      );
     } else {
       rotated = image;
     }
 
-    final outPath = await _getNewEditedPath();
-    final outBytes = img.encodeJpg(rotated, quality: 92);
-    await File(outPath).writeAsBytes(outBytes, flush: true);
-    return outPath;
+    return _saveImage(rotated);
   }
 
-  /// Flips the image horizontally or vertically
-  Future<String> flipImage(String inputPath, {bool horizontal = true, bool vertical = false}) async {
+  // ============================================================
+  // FLIP
+  // ============================================================
+
+  /// Flips image horizontally or vertically.
+  Future<String> flipImage(
+    String inputPath, {
+    bool horizontal = true,
+    bool vertical = false,
+  }) async {
     final bytes = await File(inputPath).readAsBytes();
+
     final image = img.decodeImage(bytes);
-    if (image == null) throw Exception('Unable to decode image.');
+
+    if (image == null) {
+      throw Exception('Unable to decode image.');
+    }
 
     img.FlipDirection direction;
+
     if (horizontal && vertical) {
       direction = img.FlipDirection.both;
     } else if (horizontal) {
@@ -59,14 +122,19 @@ class ImageEditorService {
       direction = img.FlipDirection.vertical;
     }
 
-    final flipped = img.copyFlip(image, direction: direction);
-    final outPath = await _getNewEditedPath();
-    final outBytes = img.encodeJpg(flipped, quality: 92);
-    await File(outPath).writeAsBytes(outBytes, flush: true);
-    return outPath;
+    final flipped = img.copyFlip(
+      image,
+      direction: direction,
+    );
+
+    return _saveImage(flipped);
   }
 
-  /// Crops the image with the specified pixel coordinates
+  // ============================================================
+  // CROP
+  // ============================================================
+
+  /// Crops image using pixel coordinates.
   Future<String> cropImage(
     String inputPath, {
     required int x,
@@ -75,13 +143,32 @@ class ImageEditorService {
     required int height,
   }) async {
     final bytes = await File(inputPath).readAsBytes();
-    final image = img.decodeImage(bytes);
-    if (image == null) throw Exception('Unable to decode image.');
 
-    final clampX = x.clamp(0, image.width - 1);
-    final clampY = y.clamp(0, image.height - 1);
-    final clampW = width.clamp(1, image.width - clampX);
-    final clampH = height.clamp(1, image.height - clampY);
+    final image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Unable to decode image.');
+    }
+
+    final clampX = x.clamp(
+      0,
+      image.width - 1,
+    );
+
+    final clampY = y.clamp(
+      0,
+      image.height - 1,
+    );
+
+    final clampW = width.clamp(
+      1,
+      image.width - clampX,
+    );
+
+    final clampH = height.clamp(
+      1,
+      image.height - clampY,
+    );
 
     final cropped = img.copyCrop(
       image,
@@ -91,46 +178,965 @@ class ImageEditorService {
       height: clampH,
     );
 
-    final outPath = await _getNewEditedPath();
-    final outBytes = img.encodeJpg(cropped, quality: 92);
-    await File(outPath).writeAsBytes(outBytes, flush: true);
-    return outPath;
+    return _saveImage(cropped);
   }
 
-  /// Applies a visual filter (none, grayscale, document, enhance)
-  Future<String> applyFilter(String inputPath, ImageFilterType filter) async {
-    if (filter == ImageFilterType.none) return inputPath;
+  // ============================================================
+  // APPLY FILTER
+  // ============================================================
+
+  /// Applies one of the 21 image filters.
+  Future<String> applyFilter(
+    String inputPath,
+    ImageFilterType filter,
+  ) async {
+    // Original = no processing.
+    if (filter == ImageFilterType.none) {
+      return inputPath;
+    }
 
     final bytes = await File(inputPath).readAsBytes();
-    final image = img.decodeImage(bytes);
-    if (image == null) throw Exception('Unable to decode image.');
 
-    img.Image filtered = img.Image.from(image);
+    final image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Unable to decode image.');
+    }
+
+    img.Image filtered;
 
     switch (filter) {
+      // ----------------------------------------------------------
+      // 1. GRAYSCALE
+      // ----------------------------------------------------------
+
       case ImageFilterType.grayscale:
-        filtered = img.grayscale(filtered);
+        filtered = _applyGrayscale(image);
         break;
-      case ImageFilterType.document:
-        filtered = img.grayscale(filtered);
-        filtered = img.contrast(filtered, contrast: 140);
-        filtered = img.adjustColor(filtered, brightness: 1.1);
+
+      // ----------------------------------------------------------
+      // 2. BLACK & WHITE
+      // ----------------------------------------------------------
+
+      case ImageFilterType.blackAndWhite:
+        filtered = _applyBlackAndWhite(image);
         break;
+
+      // ----------------------------------------------------------
+      // 3. ENHANCE
+      // ----------------------------------------------------------
+
       case ImageFilterType.enhance:
-        filtered = img.contrast(filtered, contrast: 120);
-        filtered = img.adjustColor(filtered, saturation: 1.15, brightness: 1.05);
+        filtered = _applyEnhance(image);
         break;
+
+      // ----------------------------------------------------------
+      // 4. SHARPEN
+      // ----------------------------------------------------------
+
+      case ImageFilterType.sharpen:
+        filtered = _applySharpen(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 5. VIVID
+      // ----------------------------------------------------------
+
+      case ImageFilterType.vivid:
+        filtered = _applyVivid(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 6. SOFT LIGHT
+      // ----------------------------------------------------------
+
+      case ImageFilterType.softLight:
+        filtered = _applySoftLight(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 7. WARM TONE
+      // ----------------------------------------------------------
+
+      case ImageFilterType.warmTone:
+        filtered = _applyWarmTone(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 8. COOL TONE
+      // ----------------------------------------------------------
+
+      case ImageFilterType.coolTone:
+        filtered = _applyCoolTone(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 9. HIGH CONTRAST B&W
+      // ----------------------------------------------------------
+
+      case ImageFilterType.highContrastBW:
+        filtered = _applyHighContrastBW(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 10. SOFT B&W
+      // ----------------------------------------------------------
+
+      case ImageFilterType.softBW:
+        filtered = _applySoftBW(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 11. SEPIA
+      // ----------------------------------------------------------
+
+      case ImageFilterType.sepia:
+        filtered = _applySepia(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 12. NOIR
+      // ----------------------------------------------------------
+
+      case ImageFilterType.noirDramatic:
+        filtered = _applyNoirDramatic(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 13. BRIGHT WHITE
+      // ----------------------------------------------------------
+
+      case ImageFilterType.brightWhite:
+        filtered = _applyBrightWhite(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 14. LOW LIGHT BOOST
+      // ----------------------------------------------------------
+
+      case ImageFilterType.lowLightBoost:
+        filtered = _applyLowLightBoost(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 15. MATTE
+      // ----------------------------------------------------------
+
+      case ImageFilterType.matte:
+        filtered = _applyMatte(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 16. VINTAGE PAPER
+      // ----------------------------------------------------------
+
+      case ImageFilterType.vintagePaper:
+        filtered = _applyVintagePaper(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 17. COLD STEEL
+      // ----------------------------------------------------------
+
+      case ImageFilterType.coldSteel:
+        filtered = _applyColdSteel(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 18. MAGIC COLOR PRO
+      // ----------------------------------------------------------
+
+      case ImageFilterType.magicColorPro:
+        filtered = _applyMagicColorPro(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 19. NEGATIVE
+      // ----------------------------------------------------------
+
+      case ImageFilterType.invertNegative:
+        filtered = img.invert(image);
+        break;
+
+      // ----------------------------------------------------------
+      // 20. CLEAN DOCUMENT
+      // ----------------------------------------------------------
+
+      case ImageFilterType.cleanDocument:
+        filtered = _applyCleanDocument(image);
+        break;
+
+      // ----------------------------------------------------------
+      // ORIGINAL
+      // ----------------------------------------------------------
+
       case ImageFilterType.none:
+        filtered = image;
         break;
     }
 
-    final outPath = await _getNewEditedPath();
-    final outBytes = img.encodeJpg(filtered, quality: 92);
-    await File(outPath).writeAsBytes(outBytes, flush: true);
-    return outPath;
+    return _saveImage(filtered);
   }
 
-  /// Overlays text onto the image
+  // ============================================================
+  // FILTER 1 - GRAYSCALE
+  // ============================================================
+
+  static img.Image _applyGrayscale(
+    img.Image image,
+  ) {
+    return img.grayscale(image);
+  }
+
+  // ============================================================
+  // FILTER 2 - BLACK & WHITE
+  // ============================================================
+
+  static img.Image _applyBlackAndWhite(
+    img.Image image,
+  ) {
+    img.Image result = img.grayscale(image);
+
+    result = img.adjustColor(
+      result,
+      contrast: 1.9,
+      brightness: 1.05,
+    );
+
+    const threshold = 140;
+
+    for (final pixel in result) {
+      final luminance = img.getLuminance(pixel);
+
+      final value =
+          luminance > threshold ? 255 : 0;
+
+      pixel
+        ..r = value
+        ..g = value
+        ..b = value;
+    }
+
+    return result;
+  }
+
+  // ============================================================
+  // FILTER 3 - ENHANCE
+  // ============================================================
+
+  static img.Image _applyEnhance(
+    img.Image image,
+  ) {
+    return img.adjustColor(
+      image,
+      contrast: 1.35,
+      brightness: 1.08,
+      saturation: 1.15,
+    );
+  }
+
+  // ============================================================
+  // FILTER 4 - SHARPEN
+  // ============================================================
+
+  static img.Image _applySharpen(
+    img.Image image,
+  ) {
+    return img.convolution(
+      image,
+      filter: [
+        0, -1, 0,
+        -1, 5, -1,
+        0, -1, 0,
+      ],
+    );
+  }
+
+  // ============================================================
+  // FILTER 5 - VIVID
+  // ============================================================
+
+  static img.Image _applyVivid(
+    img.Image image,
+  ) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.25,
+      saturation: 1.5,
+      brightness: 1.03,
+    );
+
+    result = img.convolution(
+      result,
+      filter: [
+        0, -1, 0,
+        -1, 5, -1,
+        0, -1, 0,
+      ],
+    );
+
+    return result;
+  }
+
+  // ============================================================
+  // FILTER 6 - SOFT LIGHT
+  // ============================================================
+
+  static img.Image _applySoftLight(
+    img.Image image,
+  ) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 0.92,
+      brightness: 1.10,
+      saturation: 0.95,
+    );
+
+    return img.gaussianBlur(
+      result,
+      radius: 1,
+    );
+  }
+
+  // ============================================================
+  // FILTER 7 - WARM TONE
+  // ============================================================
+
+  static img.Image _applyWarmTone(
+    img.Image image,
+  ) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.10,
+      brightness: 1.04,
+      saturation: 1.05,
+    );
+
+    return img.colorOffset(
+      result,
+      red: 18,
+      green: 6,
+      blue: -14,
+    );
+  }
+
+  // ============================================================
+  // FILTER 8 - COOL TONE
+  // ============================================================
+
+  static img.Image _applyCoolTone(
+    img.Image image,
+  ) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.10,
+      brightness: 1.03,
+    );
+
+    return img.colorOffset(
+      result,
+      red: -12,
+      green: -2,
+      blue: 16,
+    );
+  }
+
+  // ============================================================
+  // FILTER 9 - HIGH CONTRAST B&W
+  // ============================================================
+
+  static img.Image _applyHighContrastBW(
+    img.Image image,
+  ) {
+    img.Image result = img.grayscale(image);
+
+    return img.adjustColor(
+      result,
+      contrast: 2.4,
+      brightness: 1.02,
+    );
+  }
+
+  // ============================================================
+  // FILTER 10 - SOFT B&W
+  // ============================================================
+
+  static img.Image _applySoftBW(
+    img.Image image,
+  ) {
+    img.Image result = img.grayscale(image);
+
+    return img.adjustColor(
+      result,
+      contrast: 1.15,
+      brightness: 1.05,
+    );
+  }
+
+  // ============================================================
+  // FILTER 11 - SEPIA
+  // ============================================================
+
+  static img.Image _applySepia(
+    img.Image image,
+  ) {
+    img.Image result = img.grayscale(image);
+
+    for (final pixel in result) {
+      final l = img.getLuminance(pixel);
+
+      pixel
+        ..r = (l * 1.07)
+            .clamp(0, 255)
+            .toInt()
+        ..g = (l * 0.86)
+            .clamp(0, 255)
+            .toInt()
+        ..b = (l * 0.63)
+            .clamp(0, 255)
+            .toInt();
+    }
+
+    return result;
+  }
+
+  // ============================================================
+  // FILTER 12 - NOIR DRAMATIC
+  // ============================================================
+
+  static img.Image _applyNoirDramatic(
+    img.Image image,
+  ) {
+    img.Image result = img.grayscale(image);
+
+    result = img.adjustColor(
+      result,
+      contrast: 1.7,
+      brightness: 0.85,
+    );
+
+    return result;
+  }
+
+  // ============================================================
+  // FILTER 13 - BRIGHT WHITE
+  // ============================================================
+
+  static img.Image _applyBrightWhite(
+    img.Image image,
+  ) {
+    return img.adjustColor(
+      image,
+      contrast: 1.5,
+      brightness: 1.25,
+      saturation: 0.6,
+    );
+  }
+
+  // ============================================================
+  // FILTER 14 - LOW LIGHT BOOST
+  // ============================================================
+
+  static img.Image _applyLowLightBoost(
+    img.Image image,
+  ) {
+    return img.adjustColor(
+      image,
+      brightness: 1.35,
+      contrast: 1.12,
+      gamma: 0.85,
+    );
+  }
+
+  // ============================================================
+  // FILTER 15 - MATTE
+  // ============================================================
+
+  static img.Image _applyMatte(
+    img.Image image,
+  ) {
+    return img.adjustColor(
+      image,
+      contrast: 0.85,
+      brightness: 1.02,
+      saturation: 0.85,
+    );
+  }
+
+  // ============================================================
+  // FILTER 16 - VINTAGE PAPER
+  // ============================================================
+
+  static img.Image _applyVintagePaper(
+    img.Image image,
+  ) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 0.95,
+      brightness: 1.02,
+      saturation: 0.7,
+    );
+
+    return img.colorOffset(
+      result,
+      red: 20,
+      green: 10,
+      blue: -20,
+    );
+  }
+
+  // ============================================================
+  // FILTER 17 - COLD STEEL
+  // ============================================================
+
+  static img.Image _applyColdSteel(
+    img.Image image,
+  ) {
+    img.Image result = img.grayscale(image);
+
+    result = img.adjustColor(
+      result,
+      contrast: 1.3,
+      brightness: 1.0,
+    );
+
+    for (final pixel in result) {
+      final l = img.getLuminance(pixel);
+
+      pixel
+        ..r = (l * 0.85)
+            .clamp(0, 255)
+            .toInt()
+        ..g = (l * 0.95)
+            .clamp(0, 255)
+            .toInt()
+        ..b = (l * 1.15)
+            .clamp(0, 255)
+            .toInt();
+    }
+
+    return result;
+  }
+
+  // ============================================================
+  // FILTER 18 - MAGIC COLOR PRO
+  // ============================================================
+
+  static img.Image _applyMagicColorPro(
+    img.Image image,
+  ) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.45,
+      brightness: 1.10,
+      saturation: 1.30,
+    );
+
+    return img.convolution(
+      result,
+      filter: [
+        0, -1, 0,
+        -1, 5, -1,
+        0, -1, 0,
+      ],
+    );
+  }
+
+  // ============================================================
+  // FILTER 20 - CLEAN DOCUMENT
+  // ============================================================
+
+  static img.Image _applyCleanDocument(
+    img.Image image,
+  ) {
+    img.Image result = img.gaussianBlur(
+      image,
+      radius: 1,
+    );
+
+    result = img.adjustColor(
+      result,
+      contrast: 1.4,
+      brightness: 1.15,
+      saturation: 0.9,
+    );
+
+    return img.convolution(
+      result,
+      filter: [
+        0, -1, 0,
+        -1, 5, -1,
+        0, -1, 0,
+      ],
+    );
+  }
+
+  // ============================================================
+  // AUTO CROP
+  // ============================================================
+
+  /// Attempts to detect the document area automatically.
+  Future<String> autoCropImage(
+    String inputPath,
+  ) async {
+    final bytes = await File(inputPath).readAsBytes();
+
+    final original = img.decodeImage(bytes);
+
+    if (original == null) {
+      throw ArgumentError(
+        'Could not decode image bytes.',
+      );
+    }
+
+    if (original.width < 80 ||
+        original.height < 80) {
+      return inputPath;
+    }
+
+    const maxSize = 900;
+
+    img.Image analysis = original;
+
+    if (original.width > maxSize ||
+        original.height > maxSize) {
+      final scale =
+          original.width >= original.height
+              ? maxSize / original.width
+              : maxSize / original.height;
+
+      analysis = img.copyResize(
+        original,
+        width:
+            (original.width * scale).round(),
+        height:
+            (original.height * scale).round(),
+      );
+    }
+
+    final gray = img.grayscale(analysis);
+
+    final width = gray.width;
+    final height = gray.height;
+
+    final borderValues = <int>[];
+
+    final borderStep = math.max(
+      2,
+      math.min(width, height) ~/ 150,
+    );
+
+    for (
+      var x = 0;
+      x < width;
+      x += borderStep
+    ) {
+      final topPixel =
+          gray.getPixel(x, 0);
+
+      final bottomPixel =
+          gray.getPixel(x, height - 1);
+
+      borderValues.add(
+        ((topPixel.r +
+                    topPixel.g +
+                    topPixel.b) /
+                3)
+            .round(),
+      );
+
+      borderValues.add(
+        ((bottomPixel.r +
+                    bottomPixel.g +
+                    bottomPixel.b) /
+                3)
+            .round(),
+      );
+    }
+
+    for (
+      var y = 0;
+      y < height;
+      y += borderStep
+    ) {
+      final leftPixel =
+          gray.getPixel(0, y);
+
+      final rightPixel =
+          gray.getPixel(width - 1, y);
+
+      borderValues.add(
+        ((leftPixel.r +
+                    leftPixel.g +
+                    leftPixel.b) /
+                3)
+            .round(),
+      );
+
+      borderValues.add(
+        ((rightPixel.r +
+                    rightPixel.g +
+                    rightPixel.b) /
+                3)
+            .round(),
+      );
+    }
+
+    if (borderValues.isEmpty) {
+      return inputPath;
+    }
+
+    borderValues.sort();
+
+    final borderMedian =
+        borderValues[
+            borderValues.length ~/ 2];
+
+    _CropCandidate? bestCandidate;
+
+    const thresholds = [
+      18,
+      25,
+      35,
+      45,
+      60,
+      80,
+    ];
+
+    for (final threshold in thresholds) {
+      final candidate =
+          _detectDocumentBounds(
+        gray,
+        borderMedian,
+        threshold,
+      );
+
+      if (candidate == null) {
+        continue;
+      }
+
+      if (bestCandidate == null ||
+          candidate.score >
+              bestCandidate.score) {
+        bestCandidate = candidate;
+      }
+    }
+
+    if (bestCandidate == null) {
+      return inputPath;
+    }
+
+    final scaleX =
+        original.width / width;
+
+    final scaleY =
+        original.height / height;
+
+    var left =
+        (bestCandidate.left * scaleX)
+            .round();
+
+    var top =
+        (bestCandidate.top * scaleY)
+            .round();
+
+    var right =
+        (bestCandidate.right * scaleX)
+            .round();
+
+    var bottom =
+        (bestCandidate.bottom * scaleY)
+            .round();
+
+    final paddingX = math.max(
+      4,
+      (original.width * 0.008).round(),
+    );
+
+    final paddingY = math.max(
+      4,
+      (original.height * 0.008).round(),
+    );
+
+    left = math.max(
+      0,
+      left - paddingX,
+    );
+
+    top = math.max(
+      0,
+      top - paddingY,
+    );
+
+    right = math.min(
+      original.width,
+      right + paddingX,
+    );
+
+    bottom = math.min(
+      original.height,
+      bottom + paddingY,
+    );
+
+    final cropWidth =
+        right - left;
+
+    final cropHeight =
+        bottom - top;
+
+    if (cropWidth <= 20 ||
+        cropHeight <= 20) {
+      return inputPath;
+    }
+
+    if (cropWidth <
+            original.width * 0.15 ||
+        cropHeight <
+            original.height * 0.15) {
+      return inputPath;
+    }
+
+    final cropped = img.copyCrop(
+      original,
+      x: left,
+      y: top,
+      width: cropWidth,
+      height: cropHeight,
+    );
+
+    return _saveImage(cropped);
+  }
+
+  // ============================================================
+  // DOCUMENT DETECTION
+  // ============================================================
+
+  static _CropCandidate?
+      _detectDocumentBounds(
+    img.Image gray,
+    int borderMedian,
+    int threshold,
+  ) {
+    final width = gray.width;
+    final height = gray.height;
+
+    var minX = width;
+    var minY = height;
+
+    var maxX = -1;
+    var maxY = -1;
+
+    var detectedPixels = 0;
+
+    final sampleStep = math.max(
+      1,
+      math.min(width, height) ~/ 500,
+    );
+
+    for (
+      var y = 0;
+      y < height;
+      y += sampleStep
+    ) {
+      for (
+        var x = 0;
+        x < width;
+        x += sampleStep
+      ) {
+        final pixel =
+            gray.getPixel(x, y);
+
+        final value =
+            ((pixel.r +
+                        pixel.g +
+                        pixel.b) /
+                    3)
+                .round();
+
+        final difference =
+            (value - borderMedian).abs();
+
+        if (difference >= threshold) {
+          detectedPixels++;
+
+          if (x < minX) minX = x;
+          if (x > maxX) maxX = x;
+          if (y < minY) minY = y;
+          if (y > maxY) maxY = y;
+        }
+      }
+    }
+
+    if (maxX <= minX ||
+        maxY <= minY) {
+      return null;
+    }
+
+    final detectedWidth =
+        maxX - minX;
+
+    final detectedHeight =
+        maxY - minY;
+
+    final imageArea =
+        width * height;
+
+    final detectedArea =
+        detectedWidth * detectedHeight;
+
+    final areaRatio =
+        detectedArea / imageArea;
+
+    if (areaRatio < 0.20 ||
+        areaRatio > 0.98) {
+      return null;
+    }
+
+    final aspectRatio =
+        detectedWidth /
+            detectedHeight;
+
+    if (aspectRatio < 0.25 ||
+        aspectRatio > 4.5) {
+      return null;
+    }
+
+    final totalSamples =
+        ((width +
+                    sampleStep -
+                    1) ~/
+                sampleStep) *
+            ((height +
+                    sampleStep -
+                    1) ~/
+                sampleStep);
+
+    final coverage =
+        detectedPixels /
+            totalSamples;
+
+    final areaScore =
+        areaRatio < 0.85
+            ? areaRatio
+            : 1.0 - areaRatio;
+
+    final score =
+        (areaScore * 0.7) +
+            (coverage * 0.3);
+
+    return _CropCandidate(
+      left: minX,
+      top: minY,
+      right: maxX,
+      bottom: maxY,
+      score: score,
+    );
+  }
+
+  // ============================================================
+  // TEXT OVERLAY
+  // ============================================================
+
   Future<String> addTextOverlay(
     String inputPath, {
     required String text,
@@ -139,22 +1145,55 @@ class ImageEditorService {
     required Color color,
     int fontSize = 24,
   }) async {
-    final bytes = await File(inputPath).readAsBytes();
-    final image = img.decodeImage(bytes);
-    if (image == null) throw Exception('Unable to decode image.');
+    final bytes =
+        await File(inputPath).readAsBytes();
 
-    final posX = (xPercent * image.width).toInt().clamp(0, image.width - 20);
-    final posY = (yPercent * image.height).toInt().clamp(0, image.height - 20);
+    final image =
+        img.decodeImage(bytes);
 
-    final font = fontSize > 32
-        ? img.arial48
-        : (fontSize > 18 ? img.arial24 : img.arial14);
+    if (image == null) {
+      throw Exception(
+        'Unable to decode image.',
+      );
+    }
 
-    final textColor = img.ColorRgba8(
-      (color.r * 255).round().clamp(0, 255),
-      (color.g * 255).round().clamp(0, 255),
-      (color.b * 255).round().clamp(0, 255),
-      (color.a * 255).round().clamp(0, 255),
+    final posX =
+        (xPercent * image.width)
+            .toInt()
+            .clamp(
+              0,
+              image.width - 20,
+            );
+
+    final posY =
+        (yPercent * image.height)
+            .toInt()
+            .clamp(
+              0,
+              image.height - 20,
+            );
+
+    final font =
+        fontSize > 32
+            ? img.arial48
+            : (fontSize > 18
+                ? img.arial24
+                : img.arial14);
+
+    final textColor =
+        img.ColorRgba8(
+      (color.r * 255)
+          .round()
+          .clamp(0, 255),
+      (color.g * 255)
+          .round()
+          .clamp(0, 255),
+      (color.b * 255)
+          .round()
+          .clamp(0, 255),
+      (color.a * 255)
+          .round()
+          .clamp(0, 255),
     );
 
     img.drawString(
@@ -166,9 +1205,123 @@ class ImageEditorService {
       color: textColor,
     );
 
-    final outPath = await _getNewEditedPath();
-    final outBytes = img.encodeJpg(image, quality: 92);
-    await File(outPath).writeAsBytes(outBytes, flush: true);
+    return _saveImage(image);
+  }
+
+  // ============================================================
+  // FILTER LABEL
+  // ============================================================
+
+  static String label(
+    ImageFilterType filter,
+  ) {
+    switch (filter) {
+      case ImageFilterType.none:
+        return 'Original';
+
+      case ImageFilterType.grayscale:
+        return 'Gray';
+
+      case ImageFilterType.blackAndWhite:
+        return 'B&W';
+
+      case ImageFilterType.enhance:
+        return 'Enhance';
+
+      case ImageFilterType.sharpen:
+        return 'Sharpen';
+
+      case ImageFilterType.vivid:
+        return 'Vivid';
+
+      case ImageFilterType.softLight:
+        return 'Soft Light';
+
+      case ImageFilterType.warmTone:
+        return 'Warm Tone';
+
+      case ImageFilterType.coolTone:
+        return 'Cool Tone';
+
+      case ImageFilterType.highContrastBW:
+        return 'High Contrast';
+
+      case ImageFilterType.softBW:
+        return 'Soft B&W';
+
+      case ImageFilterType.sepia:
+        return 'Sepia';
+
+      case ImageFilterType.noirDramatic:
+        return 'Noir';
+
+      case ImageFilterType.brightWhite:
+        return 'Bright White';
+
+      case ImageFilterType.lowLightBoost:
+        return 'Low Light';
+
+      case ImageFilterType.matte:
+        return 'Matte';
+
+      case ImageFilterType.vintagePaper:
+        return 'Vintage Paper';
+
+      case ImageFilterType.coldSteel:
+        return 'Cold Steel';
+
+      case ImageFilterType.magicColorPro:
+        return 'Magic Color';
+
+      case ImageFilterType.invertNegative:
+        return 'Negative';
+
+      case ImageFilterType.cleanDocument:
+        return 'Clean Doc';
+    }
+  }
+
+  // ============================================================
+  // SAVE IMAGE
+  // ============================================================
+
+  Future<String> _saveImage(
+    img.Image image,
+  ) async {
+    final outPath =
+        await _getNewEditedPath();
+
+    final outBytes =
+        img.encodeJpg(
+      image,
+      quality: 92,
+    );
+
+    await File(outPath).writeAsBytes(
+      outBytes,
+      flush: true,
+    );
+
     return outPath;
   }
+}
+
+// ================================================================
+// CROP CANDIDATE
+// ================================================================
+
+class _CropCandidate {
+  final int left;
+  final int top;
+  final int right;
+  final int bottom;
+  final double score;
+
+  const _CropCandidate({
+    required this.left,
+    required this.top,
+    required this.right,
+    required this.bottom,
+    required this.score,
+  });
 }

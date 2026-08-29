@@ -29,18 +29,22 @@ class ImageEditorScreen extends StatefulWidget {
   });
 
   @override
-  State<ImageEditorScreen> createState() => _ImageEditorScreenState();
+  State<ImageEditorScreen> createState() =>
+      _ImageEditorScreenState();
 }
 
-class _ImageEditorScreenState extends State<ImageEditorScreen> {
-  final ImageEditorService _editorService = ImageEditorService();
+class _ImageEditorScreenState
+    extends State<ImageEditorScreen> {
+  final ImageEditorService _editorService =
+      ImageEditorService();
 
   late String _currentWorkingPath;
 
   bool _isProcessing = false;
   bool _hasUnsavedEdits = false;
 
-  EditorMode _activeMode = EditorMode.none;
+  EditorMode _activeMode =
+      EditorMode.none;
 
   // ============================================================
   // TEXT
@@ -65,7 +69,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // FILTER
   // ============================================================
 
-  ImageFilterType _activeFilter = ImageFilterType.none;
+  ImageFilterType _activeFilter =
+      ImageFilterType.none;
 
   // ============================================================
   // INIT
@@ -75,14 +80,17 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   void initState() {
     super.initState();
 
-    _currentWorkingPath = widget.imagePath;
+    _currentWorkingPath =
+        widget.imagePath;
   }
 
   // ============================================================
   // ROTATE
   // ============================================================
 
-  Future<void> _handleRotate(int degrees) async {
+  Future<void> _handleRotate(
+    int degrees,
+  ) async {
     if (_isProcessing) return;
 
     setState(() {
@@ -90,7 +98,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     });
 
     try {
-      final newPath = await _editorService.rotateImage(
+      final newPath =
+          await _editorService.rotateImage(
         _currentWorkingPath,
         degrees,
       );
@@ -102,7 +111,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _hasUnsavedEdits = true;
       });
     } catch (e) {
-      _showError('Rotation failed: $e');
+      _showError(
+        'Rotation failed: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -127,7 +138,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     });
 
     try {
-      final newPath = await _editorService.flipImage(
+      final newPath =
+          await _editorService.flipImage(
         _currentWorkingPath,
         horizontal: horizontal,
         vertical: vertical,
@@ -140,7 +152,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _hasUnsavedEdits = true;
       });
     } catch (e) {
-      _showError('Flip failed: $e');
+      _showError(
+        'Flip failed: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -154,15 +168,31 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // FILTER
   // ============================================================
 
-  Future<void> _handleFilter(ImageFilterType filter) async {
-    if (_isProcessing || _activeFilter == filter) return;
+  Future<void> _handleFilter(
+    ImageFilterType filter,
+  ) async {
+    if (_isProcessing) return;
+
+    // Original should restore the original/current image.
+    if (filter == ImageFilterType.none) {
+      setState(() {
+        _activeFilter =
+            ImageFilterType.none;
+      });
+      return;
+    }
+
+    if (_activeFilter == filter) {
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      final newPath = await _editorService.applyFilter(
+      final newPath =
+          await _editorService.applyFilter(
         _currentWorkingPath,
         filter,
       );
@@ -175,7 +205,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _hasUnsavedEdits = true;
       });
     } catch (e) {
-      _showError('Filter application failed: $e');
+      _showError(
+        'Filter application failed: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -190,14 +222,17 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // ============================================================
 
   Future<void> _handleApplyText() async {
-    if (_overlayText.trim().isEmpty) return;
+    if (_overlayText.trim().isEmpty) {
+      return;
+    }
 
     setState(() {
       _isProcessing = true;
     });
 
     try {
-      final newPath = await _editorService.addTextOverlay(
+      final newPath =
+          await _editorService.addTextOverlay(
         _currentWorkingPath,
         text: _overlayText,
         xPercent: _textXPercent,
@@ -215,7 +250,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _activeMode = EditorMode.none;
       });
     } catch (e) {
-      _showError('Failed to add text: $e');
+      _showError(
+        'Failed to add text: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -237,53 +274,76 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     });
 
     try {
-      final file = File(_currentWorkingPath);
+      final file =
+          File(_currentWorkingPath);
 
-      final bytes = await file.readAsBytes();
+      final bytes =
+          await file.readAsBytes();
 
-      final decoded = await decodeImageFromList(bytes);
+      final decoded =
+          await decodeImageFromList(bytes);
 
       int cropW = decoded.width;
       int cropH = decoded.height;
 
       if (_selectedCropRatio == '1:1') {
-        final minDim = decoded.width < decoded.height
-            ? decoded.width
-            : decoded.height;
+        final minDim =
+            decoded.width < decoded.height
+                ? decoded.width
+                : decoded.height;
 
         cropW = minDim;
         cropH = minDim;
       } else if (_selectedCropRatio == '4:3') {
         cropW = decoded.width;
 
-        cropH = (decoded.width * 3 / 4)
-            .round()
-            .clamp(1, decoded.height);
+        cropH =
+            (decoded.width * 3 / 4)
+                .round()
+                .clamp(
+                  1,
+                  decoded.height,
+                );
       } else if (_selectedCropRatio == '16:9') {
         cropW = decoded.width;
 
-        cropH = (decoded.width * 9 / 16)
-            .round()
-            .clamp(1, decoded.height);
+        cropH =
+            (decoded.width * 9 / 16)
+                .round()
+                .clamp(
+                  1,
+                  decoded.height,
+                );
       } else if (_selectedCropRatio == 'A4') {
         cropW = decoded.width;
 
-        cropH = (decoded.width / 0.7071)
-            .round()
-            .clamp(1, decoded.height);
+        cropH =
+            (decoded.width / 0.7071)
+                .round()
+                .clamp(
+                  1,
+                  decoded.height,
+                );
       } else {
-        cropW = (decoded.width * 0.90).round();
+        cropW =
+            (decoded.width * 0.90)
+                .round();
 
-        cropH = (decoded.height * 0.90).round();
+        cropH =
+            (decoded.height * 0.90)
+                .round();
       }
 
       final startX =
-          ((decoded.width - cropW) / 2).round();
+          ((decoded.width - cropW) / 2)
+              .round();
 
       final startY =
-          ((decoded.height - cropH) / 2).round();
+          ((decoded.height - cropH) / 2)
+              .round();
 
-      final newPath = await _editorService.cropImage(
+      final newPath =
+          await _editorService.cropImage(
         _currentWorkingPath,
         x: startX,
         y: startY,
@@ -299,7 +359,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _activeMode = EditorMode.none;
       });
     } catch (e) {
-      _showError('Crop failed: $e');
+      _showError(
+        'Crop failed: $e',
+      );
     } finally {
       if (mounted) {
         setState(() {
@@ -315,13 +377,16 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
   void _saveAndExit() {
     if (_hasUnsavedEdits) {
-      context.read<ImageSelectionProvider>().updateImageFilePath(
+      context
+          .read<ImageSelectionProvider>()
+          .updateImageFilePath(
             widget.imageId,
             _currentWorkingPath,
           );
     }
 
-    Navigator.of(context).pop(_currentWorkingPath);
+    Navigator.of(context)
+        .pop(_currentWorkingPath);
   }
 
   // ============================================================
@@ -334,7 +399,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
       return;
     }
 
-    final result = await UnsavedChangesDialog.show(
+    final result =
+        await UnsavedChangesDialog.show(
       context,
       title: 'Discard Image Edits?',
       message:
@@ -345,9 +411,11 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
     if (!mounted) return;
 
-    if (result == UnsavedChangesAction.save) {
+    if (result ==
+        UnsavedChangesAction.save) {
       _saveAndExit();
-    } else if (result == UnsavedChangesAction.discard) {
+    } else if (result ==
+        UnsavedChangesAction.discard) {
       Navigator.of(context).pop();
     }
   }
@@ -356,17 +424,25 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // ERROR
   // ============================================================
 
-  void _showError(String message) {
+  void _showError(
+    String message,
+  ) {
     if (!mounted) return;
 
-    ScaffoldMessenger.of(context).showSnackBar(
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
       SnackBar(
         content: Text(message),
-        backgroundColor: AppTheme.errorColor,
-        behavior: SnackBarBehavior.floating,
-        margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
+        backgroundColor:
+            AppTheme.errorColor,
+        behavior:
+            SnackBarBehavior.floating,
+        margin:
+            const EdgeInsets.all(16),
+        shape:
+            RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.circular(14),
         ),
       ),
     );
@@ -378,63 +454,102 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
   void _openTextDialog() {
     final textController =
-        TextEditingController(text: _overlayText);
+        TextEditingController(
+      text: _overlayText,
+    );
 
-    Color selectedColor = _textColor;
+    Color selectedColor =
+        _textColor;
 
     showDialog(
       context: context,
       builder: (ctx) {
-        final theme = Theme.of(ctx);
-        final colors = theme.colorScheme;
+        final theme =
+            Theme.of(ctx);
+
+        final colors =
+            theme.colorScheme;
 
         return StatefulBuilder(
-          builder: (context, setDialogState) {
+          builder:
+              (context, setDialogState) {
             return AlertDialog(
-              backgroundColor: colors.surface,
-              surfaceTintColor: Colors.transparent,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              title: const Text(
-                'Add Text',
-                style: TextStyle(
-                  fontWeight: FontWeight.w800,
+              backgroundColor:
+                  colors.surface,
+              surfaceTintColor:
+                  Colors.transparent,
+              shape:
+                  RoundedRectangleBorder(
+                borderRadius:
+                    BorderRadius.circular(
+                  24,
                 ),
               ),
-              content: Column(
-                mainAxisSize: MainAxisSize.min,
+              title:
+                  const Text(
+                'Add Text',
+                style: TextStyle(
+                  fontWeight:
+                      FontWeight.w800,
+                ),
+              ),
+              content:
+                  Column(
+                mainAxisSize:
+                    MainAxisSize.min,
                 children: [
                   TextField(
-                    controller: textController,
-                    autofocus: true,
+                    controller:
+                        textController,
+                    autofocus:
+                        true,
                     maxLines: 3,
-                    decoration: InputDecoration(
-                      hintText: 'Enter text...',
+                    decoration:
+                        InputDecoration(
+                      hintText:
+                          'Enter text...',
                       filled: true,
-                      fillColor: theme.brightness == Brightness.dark
-                          ? AppTheme.cardDark
-                          : AppTheme.bgLight,
-                      prefixIcon: const Icon(
-                        Icons.text_fields_rounded,
+                      fillColor:
+                          theme.brightness ==
+                                  Brightness.dark
+                              ? AppTheme
+                                  .cardDark
+                              : AppTheme
+                                  .bgLight,
+                      prefixIcon:
+                          const Icon(
+                        Icons
+                            .text_fields_rounded,
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 20),
+                  const SizedBox(
+                    height: 20,
+                  ),
 
                   Align(
-                    alignment: Alignment.centerLeft,
-                    child: Text(
+                    alignment:
+                        Alignment
+                            .centerLeft,
+                    child:
+                        Text(
                       'Text Color',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w700,
-                        color: colors.onSurface,
+                      style:
+                          TextStyle(
+                        fontWeight:
+                            FontWeight
+                                .w700,
+                        color:
+                            colors
+                                .onSurface,
                       ),
                     ),
                   ),
 
-                  const SizedBox(height: 12),
+                  const SizedBox(
+                    height: 12,
+                  ),
 
                   Wrap(
                     spacing: 12,
@@ -442,54 +557,88 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                     children: [
                       Colors.black,
                       Colors.white,
-                      AppTheme.primaryColor,
+                      AppTheme
+                          .primaryColor,
                       Colors.red,
                       Colors.blue,
                       Colors.green,
                     ].map((c) {
                       final isSelected =
-                          selectedColor == c;
+                          selectedColor ==
+                              c;
 
                       return GestureDetector(
                         onTap: () {
-                          setDialogState(() {
-                            selectedColor = c;
-                          });
+                          setDialogState(
+                            () {
+                              selectedColor =
+                                  c;
+                            },
+                          );
                         },
-                        child: AnimatedContainer(
+                        child:
+                            AnimatedContainer(
                           duration:
-                              const Duration(milliseconds: 180),
+                              const Duration(
+                            milliseconds:
+                                180,
+                          ),
                           width: 38,
                           height: 38,
-                          decoration: BoxDecoration(
+                          decoration:
+                              BoxDecoration(
                             color: c,
-                            shape: BoxShape.circle,
-                            border: Border.all(
+                            shape:
+                                BoxShape
+                                    .circle,
+                            border:
+                                Border.all(
                               color: isSelected
-                                  ? AppTheme.primaryColor
-                                  : colors.outline
-                                      .withValues(alpha: 0.35),
-                              width: isSelected ? 3 : 1,
-                            ),
-                            boxShadow: isSelected
-                                ? [
-                                    BoxShadow(
-                                      color: AppTheme.primaryColor
-                                          .withValues(alpha: 0.25),
-                                      blurRadius: 10,
+                                  ? AppTheme
+                                      .primaryColor
+                                  : colors
+                                      .outline
+                                      .withValues(
+                                      alpha:
+                                          0.35,
                                     ),
-                                  ]
-                                : null,
+                              width:
+                                  isSelected
+                                      ? 3
+                                      : 1,
+                            ),
+                            boxShadow:
+                                isSelected
+                                    ? [
+                                        BoxShadow(
+                                          color: AppTheme
+                                              .primaryColor
+                                              .withValues(
+                                            alpha:
+                                                0.25,
+                                          ),
+                                          blurRadius:
+                                              10,
+                                        ),
+                                      ]
+                                    : null,
                           ),
-                          child: isSelected
-                              ? Icon(
-                                  Icons.check_rounded,
-                                  size: 20,
-                                  color: c == Colors.white
-                                      ? Colors.black
-                                      : Colors.white,
-                                )
-                              : null,
+                          child:
+                              isSelected
+                                  ? Icon(
+                                      Icons
+                                          .check_rounded,
+                                      size:
+                                          20,
+                                      color: c ==
+                                              Colors
+                                                  .white
+                                          ? Colors
+                                              .black
+                                          : Colors
+                                              .white,
+                                    )
+                                  : null,
                         ),
                       );
                     }).toList(),
@@ -497,36 +646,59 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                 ],
               ),
               actionsPadding:
-                  const EdgeInsets.fromLTRB(20, 0, 20, 16),
+                  const EdgeInsets
+                      .fromLTRB(
+                20,
+                0,
+                20,
+                16,
+              ),
               actions: [
                 TextButton(
                   onPressed: () =>
-                      Navigator.of(ctx).pop(),
-                  child: const Text('Cancel'),
+                      Navigator.of(
+                    ctx,
+                  ).pop(),
+                  child:
+                      const Text(
+                    'Cancel',
+                  ),
                 ),
                 ElevatedButton.icon(
                   onPressed: () {
-                    if (textController.text
+                    if (textController
+                        .text
                         .trim()
                         .isNotEmpty) {
                       setState(() {
                         _overlayText =
-                            textController.text.trim();
+                            textController
+                                .text
+                                .trim();
 
-                        _textColor = selectedColor;
+                        _textColor =
+                            selectedColor;
 
                         _activeMode =
-                            EditorMode.text;
+                            EditorMode
+                                .text;
                       });
                     }
 
-                    Navigator.of(ctx).pop();
+                    Navigator.of(
+                      ctx,
+                    ).pop();
                   },
-                  icon: const Icon(
-                    Icons.check_rounded,
+                  icon:
+                      const Icon(
+                    Icons
+                        .check_rounded,
                     size: 19,
                   ),
-                  label: const Text('Add Text'),
+                  label:
+                      const Text(
+                    'Add Text',
+                  ),
                 ),
               ],
             );
@@ -541,72 +713,101 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // ============================================================
 
   @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
+  Widget build(
+    BuildContext context,
+  ) {
+    final theme =
+        Theme.of(context);
 
-    final colorScheme = theme.colorScheme;
+    final colorScheme =
+        theme.colorScheme;
 
     final isDark =
-        theme.brightness == Brightness.dark;
+        theme.brightness ==
+            Brightness.dark;
 
-    final backgroundColor = isDark
-        ? AppTheme.bgDark
-        : AppTheme.bgLight;
+    final backgroundColor =
+        isDark
+            ? AppTheme.bgDark
+            : AppTheme.bgLight;
 
     return PopScope(
       canPop: false,
-      onPopInvokedWithResult: (didPop, result) {
+      onPopInvokedWithResult:
+          (didPop, result) {
         if (!didPop) {
           _handleCancelOrBack();
         }
       },
       child: Scaffold(
-        backgroundColor: backgroundColor,
+        backgroundColor:
+            backgroundColor,
 
-        // ========================================================
+        // ======================================================
         // APP BAR
-        // ========================================================
+        // ======================================================
 
         appBar: AppBar(
-          backgroundColor: backgroundColor,
-          foregroundColor: colorScheme.onSurface,
+          backgroundColor:
+              backgroundColor,
+          foregroundColor:
+              colorScheme.onSurface,
           elevation: 0,
           scrolledUnderElevation: 0,
 
-          leading: Padding(
-            padding: const EdgeInsets.only(
+          leading:
+              Padding(
+            padding:
+                const EdgeInsets.only(
               left: 12,
               top: 6,
               bottom: 6,
             ),
-            child: _buildTopButton(
-              icon: Icons.close_rounded,
-              onTap: _handleCancelOrBack,
+            child:
+                _buildTopButton(
+              icon:
+                  Icons.close_rounded,
+              onTap:
+                  _handleCancelOrBack,
             ),
           ),
 
           titleSpacing: 12,
 
-          title: Column(
+          title:
+              Column(
             crossAxisAlignment:
-                CrossAxisAlignment.start,
+                CrossAxisAlignment
+                    .start,
             children: [
               Text(
                 'Image Editor',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontSize: 18,
-                  fontWeight: FontWeight.w800,
-                  color: colorScheme.onSurface,
+                  fontWeight:
+                      FontWeight.w800,
+                  color:
+                      colorScheme
+                          .onSurface,
                 ),
               ),
-              const SizedBox(height: 2),
+              const SizedBox(
+                height: 2,
+              ),
               Text(
                 'Edit Page ${widget.pageIndex + 1}',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontSize: 12,
-                  fontWeight: FontWeight.w500,
-                  color: colorScheme.onSurface
-                      .withValues(alpha: 0.55),
+                  fontWeight:
+                      FontWeight.w500,
+                  color:
+                      colorScheme
+                          .onSurface
+                          .withValues(
+                    alpha: 0.55,
+                  ),
                 ),
               ),
             ],
@@ -614,43 +815,71 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
           actions: [
             Padding(
-              padding: const EdgeInsets.only(
+              padding:
+                  const EdgeInsets.only(
                 right: 14,
               ),
-              child: GestureDetector(
-                onTap: _saveAndExit,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
+              child:
+                  GestureDetector(
+                onTap:
+                    _saveAndExit,
+                child:
+                    Container(
+                  padding:
+                      const EdgeInsets
+                          .symmetric(
                     horizontal: 16,
                     vertical: 9,
                   ),
-                  decoration: BoxDecoration(
-                    color: AppTheme.primaryColor,
+                  decoration:
+                      BoxDecoration(
+                    color: AppTheme
+                        .primaryColor,
                     borderRadius:
-                        BorderRadius.circular(14),
+                        BorderRadius
+                            .circular(
+                      14,
+                    ),
                     boxShadow: [
                       BoxShadow(
-                        color: AppTheme.primaryColor
-                            .withValues(alpha: 0.25),
+                        color: AppTheme
+                            .primaryColor
+                            .withValues(
+                          alpha: 0.25,
+                        ),
                         blurRadius: 12,
-                        offset: const Offset(0, 4),
+                        offset:
+                            const Offset(
+                          0,
+                          4,
+                        ),
                       ),
                     ],
                   ),
-                  child: const Row(
-                    mainAxisSize: MainAxisSize.min,
+                  child:
+                      const Row(
+                    mainAxisSize:
+                        MainAxisSize.min,
                     children: [
                       Icon(
-                        Icons.check_rounded,
-                        color: Colors.white,
+                        Icons
+                            .check_rounded,
+                        color:
+                            Colors.white,
                         size: 18,
                       ),
-                      SizedBox(width: 5),
+                      SizedBox(
+                        width: 5,
+                      ),
                       Text(
                         'Done',
-                        style: TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w800,
+                        style:
+                            TextStyle(
+                          color:
+                              Colors.white,
+                          fontWeight:
+                              FontWeight
+                                  .w800,
                           fontSize: 14,
                         ),
                       ),
@@ -662,9 +891,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           ],
         ),
 
-        // ========================================================
+        // ======================================================
         // BODY
-        // ========================================================
+        // ======================================================
 
         body: Stack(
           children: [
@@ -675,122 +904,165 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                 // ==================================================
 
                 Expanded(
-                  child: Padding(
-                    padding: const EdgeInsets.fromLTRB(
+                  child:
+                      Padding(
+                    padding:
+                        const EdgeInsets
+                            .fromLTRB(
                       16,
                       8,
                       16,
                       12,
                     ),
-                    child: Container(
-                      width: double.infinity,
-                      decoration: BoxDecoration(
+                    child:
+                        Container(
+                      width:
+                          double.infinity,
+                      decoration:
+                          BoxDecoration(
                         color: isDark
-                            ? AppTheme.cardDark
+                            ? AppTheme
+                                .cardDark
                             : Colors.white,
                         borderRadius:
-                            BorderRadius.circular(26),
-                        border: Border.all(
+                            BorderRadius
+                                .circular(
+                          26,
+                        ),
+                        border:
+                            Border.all(
                           color: isDark
-                              ? AppTheme.dividerDark
-                              : AppTheme.dividerColor,
+                              ? AppTheme
+                                  .dividerDark
+                              : AppTheme
+                                  .dividerColor,
                         ),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withValues(
-                              alpha: isDark ? 0.20 : 0.06,
+                            color: Colors
+                                .black
+                                .withValues(
+                              alpha:
+                                  isDark
+                                      ? 0.20
+                                      : 0.06,
                             ),
-                            blurRadius: 20,
-                            offset: const Offset(0, 8),
+                            blurRadius:
+                                20,
+                            offset:
+                                const Offset(
+                              0,
+                              8,
+                            ),
                           ),
                         ],
                       ),
-                      child: ClipRRect(
+                      child:
+                          ClipRRect(
                         borderRadius:
-                            BorderRadius.circular(25),
-                        child: InteractiveViewer(
-                          minScale: 0.5,
-                          maxScale: 4.0,
+                            BorderRadius
+                                .circular(
+                          25,
+                        ),
+                        child:
+                            InteractiveViewer(
+                          minScale:
+                              0.5,
+                          maxScale:
+                              4.0,
                           boundaryMargin:
-                              const EdgeInsets.all(40),
-
-                          child: Center(
-                            child: Stack(
+                              const EdgeInsets
+                                  .all(
+                            40,
+                          ),
+                          child:
+                              Center(
+                            child:
+                                Stack(
                               alignment:
-                                  Alignment.center,
+                                  Alignment
+                                      .center,
                               children: [
                                 Image.file(
                                   File(
                                     _currentWorkingPath,
                                   ),
-                                  fit: BoxFit.contain,
+                                  fit: BoxFit
+                                      .contain,
                                   key: ValueKey(
                                     _currentWorkingPath,
                                   ),
                                 ),
 
-                                // ====================================
+                                // ==================================================
                                 // TEXT OVERLAY
-                                // ====================================
+                                // ==================================================
 
                                 if (_activeMode ==
-                                        EditorMode.text &&
-                                    _overlayText.isNotEmpty)
+                                        EditorMode
+                                            .text &&
+                                    _overlayText
+                                        .isNotEmpty)
                                   Positioned(
                                     left:
-                                        MediaQuery.of(context)
-                                                .size
-                                                .width *
+                                        MediaQuery.of(
+                                              context,
+                                            ).size.width *
                                             (_textXPercent -
                                                 0.1),
                                     top:
-                                        MediaQuery.of(context)
-                                                .size
-                                                .height *
+                                        MediaQuery.of(
+                                              context,
+                                            ).size.height *
                                             (_textYPercent -
                                                 0.15),
-
                                     child:
                                         GestureDetector(
                                       onPanUpdate:
                                           (details) {
-                                        setState(() {
-                                          _textXPercent =
-                                              (_textXPercent +
-                                                      details
-                                                          .delta
-                                                          .dx /
-                                                      300)
-                                                  .clamp(
-                                                0.05,
-                                                0.95,
-                                              );
+                                        setState(
+                                          () {
+                                            _textXPercent =
+                                                (_textXPercent +
+                                                        details
+                                                            .delta
+                                                            .dx /
+                                                    300)
+                                                    .clamp(
+                                              0.05,
+                                              0.95,
+                                            );
 
-                                          _textYPercent =
-                                              (_textYPercent +
-                                                      details
-                                                          .delta
-                                                          .dy /
-                                                      500)
-                                                  .clamp(
-                                                0.05,
-                                                0.95,
-                                              );
-                                        });
+                                            _textYPercent =
+                                                (_textYPercent +
+                                                        details
+                                                            .delta
+                                                            .dy /
+                                                    500)
+                                                    .clamp(
+                                              0.05,
+                                              0.95,
+                                            );
+                                          },
+                                        );
                                       },
                                       child:
                                           Container(
                                         padding:
                                             const EdgeInsets
                                                 .symmetric(
-                                          horizontal: 12,
-                                          vertical: 8,
+                                          horizontal:
+                                              12,
+                                          vertical:
+                                              8,
                                         ),
                                         decoration:
                                             BoxDecoration(
-                                          color: Colors.black
+                                          color: Colors
+                                              .black
                                               .withValues(
-                                            alpha: 0.58,
+                                            alpha:
+                                                0.58,
                                           ),
                                           borderRadius:
                                               BorderRadius
@@ -802,11 +1074,13 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                                             color: Colors
                                                 .white
                                                 .withValues(
-                                              alpha: 0.65,
+                                              alpha:
+                                                  0.65,
                                             ),
                                           ),
                                         ),
-                                        child: Text(
+                                        child:
+                                            Text(
                                           _overlayText,
                                           style:
                                               TextStyle(
@@ -816,8 +1090,7 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                                                 _textFontSize
                                                     .toDouble(),
                                             fontWeight:
-                                                FontWeight
-                                                    .bold,
+                                                FontWeight.bold,
                                           ),
                                         ),
                                       ),
@@ -849,44 +1122,63 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
             if (_isProcessing)
               Positioned.fill(
-                child: Container(
-                  color: Colors.black.withValues(
+                child:
+                    Container(
+                  color: Colors.black
+                      .withValues(
                     alpha: 0.45,
                   ),
-                  child: Center(
-                    child: Container(
+                  child:
+                      Center(
+                    child:
+                        Container(
                       padding:
-                          const EdgeInsets.symmetric(
-                        horizontal: 24,
-                        vertical: 20,
+                          const EdgeInsets
+                              .symmetric(
+                        horizontal:
+                            24,
+                        vertical:
+                            20,
                       ),
-                      decoration: BoxDecoration(
+                      decoration:
+                          BoxDecoration(
                         color: isDark
-                            ? AppTheme.cardDark
+                            ? AppTheme
+                                .cardDark
                             : Colors.white,
                         borderRadius:
-                            BorderRadius.circular(20),
+                            BorderRadius
+                                .circular(
+                          20,
+                        ),
                       ),
-                      child: Column(
+                      child:
+                          Column(
                         mainAxisSize:
-                            MainAxisSize.min,
+                            MainAxisSize
+                                .min,
                         children: [
                           const SizedBox(
                             width: 30,
                             height: 30,
                             child:
                                 CircularProgressIndicator(
-                              strokeWidth: 3,
-                              color:
-                                  AppTheme.primaryColor,
+                              strokeWidth:
+                                  3,
+                              color: AppTheme
+                                  .primaryColor,
                             ),
                           ),
-                          const SizedBox(height: 14),
+                          const SizedBox(
+                            height: 14,
+                          ),
                           Text(
                             'Processing...',
-                            style: TextStyle(
+                            style:
+                                TextStyle(
                               fontWeight:
-                                  FontWeight.w700,
+                                  FontWeight
+                                      .w700,
                               color: colorScheme
                                   .onSurface,
                             ),
@@ -912,31 +1204,43 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     required VoidCallback onTap,
   }) {
     final isDark =
-        Theme.of(context).brightness ==
+        Theme.of(context)
+                .brightness ==
             Brightness.dark;
 
     return Material(
       color: Colors.transparent,
-      child: InkWell(
+      child:
+          InkWell(
         onTap: onTap,
         borderRadius:
-            BorderRadius.circular(13),
-        child: Container(
+            BorderRadius.circular(
+          13,
+        ),
+        child:
+            Container(
           width: 42,
           height: 42,
-          decoration: BoxDecoration(
+          decoration:
+              BoxDecoration(
             color: isDark
                 ? AppTheme.cardDark
                 : Colors.white,
             borderRadius:
-                BorderRadius.circular(13),
-            border: Border.all(
+                BorderRadius.circular(
+              13,
+            ),
+            border:
+                Border.all(
               color: isDark
-                  ? AppTheme.dividerDark
-                  : AppTheme.dividerColor,
+                  ? AppTheme
+                      .dividerDark
+                  : AppTheme
+                      .dividerColor,
             ),
           ),
-          child: Icon(
+          child:
+              Icon(
             icon,
             size: 22,
             color: Theme.of(context)
@@ -957,56 +1261,89 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     ColorScheme colorScheme,
   ) {
     return Container(
-      width: double.infinity,
-      decoration: BoxDecoration(
+      width:
+          double.infinity,
+      decoration:
+          BoxDecoration(
         color: isDark
-            ? AppTheme.surfaceDark
+            ? AppTheme
+                .surfaceDark
             : Colors.white,
-        borderRadius: const BorderRadius.vertical(
-          top: Radius.circular(28),
+        borderRadius:
+            const BorderRadius
+                .vertical(
+          top: Radius.circular(
+            28,
+          ),
         ),
-        border: Border(
-          top: BorderSide(
+        border:
+            Border(
+          top:
+              BorderSide(
             color: isDark
-                ? AppTheme.dividerDark
-                : AppTheme.dividerColor,
+                ? AppTheme
+                    .dividerDark
+                : AppTheme
+                    .dividerColor,
           ),
         ),
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withValues(
-              alpha: isDark ? 0.22 : 0.06,
+            color: Colors.black
+                .withValues(
+              alpha:
+                  isDark
+                      ? 0.22
+                      : 0.06,
             ),
             blurRadius: 20,
-            offset: const Offset(0, -6),
+            offset:
+                const Offset(
+              0,
+              -6,
+            ),
           ),
         ],
       ),
-      child: SafeArea(
+      child:
+          SafeArea(
         top: false,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+        child:
+            Column(
+          mainAxisSize:
+              MainAxisSize.min,
           children: [
             // ======================================================
             // ACTIVE TOOL CONTROLS
             // ======================================================
 
             if (_activeMode ==
-                EditorMode.rotate)
-              _buildRotateControls(isDark),
+                EditorMode
+                    .rotate)
+              _buildRotateControls(
+                isDark,
+              ),
 
             if (_activeMode ==
                 EditorMode.crop)
-              _buildCropControls(isDark),
+              _buildCropControls(
+                isDark,
+              ),
 
             if (_activeMode ==
                 EditorMode.filters)
-              _buildFilterControls(isDark),
+              _buildFilterControls(
+                isDark,
+              ),
 
             if (_activeMode ==
-                    EditorMode.text &&
-                _overlayText.isNotEmpty)
-              _buildTextControls(isDark),
+                    EditorMode
+                        .text &&
+                _overlayText
+                    .isNotEmpty)
+              _buildTextControls(
+                isDark,
+              ),
 
             // ======================================================
             // TOOL BAR
@@ -1014,47 +1351,71 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
             Container(
               padding:
-                  const EdgeInsets.fromLTRB(
+                  const EdgeInsets
+                      .fromLTRB(
                 12,
                 12,
                 12,
                 12,
               ),
-              child: Row(
+              child:
+                  Row(
                 children: [
                   Expanded(
-                    child: _buildToolItem(
-                      icon: Icons.crop_rounded,
-                      label: 'Crop',
-                      mode: EditorMode.crop,
+                    child:
+                        _buildToolItem(
+                      icon:
+                          Icons
+                              .crop_rounded,
+                      label:
+                          'Crop',
+                      mode:
+                          EditorMode
+                              .crop,
                     ),
                   ),
 
                   Expanded(
-                    child: _buildToolItem(
+                    child:
+                        _buildToolItem(
                       icon:
-                          Icons.rotate_right_rounded,
-                      label: 'Rotate',
-                      mode: EditorMode.rotate,
+                          Icons
+                              .rotate_right_rounded,
+                      label:
+                          'Rotate',
+                      mode:
+                          EditorMode
+                              .rotate,
                     ),
                   ),
 
                   Expanded(
-                    child: _buildToolItem(
+                    child:
+                        _buildToolItem(
                       icon:
-                          Icons.text_fields_rounded,
-                      label: 'Text',
-                      mode: EditorMode.text,
-                      onTap: _openTextDialog,
+                          Icons
+                              .text_fields_rounded,
+                      label:
+                          'Text',
+                      mode:
+                          EditorMode
+                              .text,
+                      onTap:
+                          _openTextDialog,
                     ),
                   ),
 
                   Expanded(
-                    child: _buildToolItem(
+                    child:
+                        _buildToolItem(
                       icon:
-                          Icons.auto_awesome_rounded,
-                      label: 'Filters',
-                      mode: EditorMode.filters,
+                          Icons
+                              .auto_awesome_rounded,
+                      label:
+                          'Filters',
+                      mode:
+                          EditorMode
+                              .filters,
                     ),
                   ),
                 ],
@@ -1080,11 +1441,13 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
         _activeMode == mode;
 
     final isDark =
-        Theme.of(context).brightness ==
+        Theme.of(context)
+                .brightness ==
             Brightness.dark;
 
     final colorScheme =
-        Theme.of(context).colorScheme;
+        Theme.of(context)
+            .colorScheme;
 
     return GestureDetector(
       onTap: onTap ??
@@ -1096,27 +1459,40 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                       : mode;
             });
           },
-      child: AnimatedContainer(
+      child:
+          AnimatedContainer(
         duration:
-            const Duration(milliseconds: 200),
+            const Duration(
+          milliseconds: 200,
+        ),
         margin:
-            const EdgeInsets.symmetric(
+            const EdgeInsets
+                .symmetric(
           horizontal: 4,
         ),
         padding:
-            const EdgeInsets.symmetric(
+            const EdgeInsets
+                .symmetric(
           vertical: 9,
         ),
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color: isSelected
               ? isDark
-                  ? const Color(0xFF211A4A)
-                  : const Color(0xFFEDE7FF)
+                  ? const Color(
+                      0xFF211A4A,
+                    )
+                  : const Color(
+                      0xFFEDE7FF,
+                    )
               : Colors.transparent,
           borderRadius:
-              BorderRadius.circular(16),
+              BorderRadius.circular(
+            16,
+          ),
         ),
-        child: Column(
+        child:
+            Column(
           mainAxisSize:
               MainAxisSize.min,
           children: [
@@ -1127,41 +1503,56 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
               ),
               width: 42,
               height: 42,
-              decoration: BoxDecoration(
+              decoration:
+                  BoxDecoration(
                 color: isSelected
-                    ? AppTheme.primaryColor
+                    ? AppTheme
+                        .primaryColor
                     : isDark
-                        ? AppTheme.cardDark
-                        : AppTheme.bgLight,
-                shape: BoxShape.circle,
+                        ? AppTheme
+                            .cardDark
+                        : AppTheme
+                            .bgLight,
+                shape:
+                    BoxShape.circle,
               ),
-              child: Icon(
+              child:
+                  Icon(
                 icon,
                 size: 21,
                 color: isSelected
                     ? Colors.white
-                    : colorScheme.onSurface
+                    : colorScheme
+                        .onSurface
                         .withValues(
-                        alpha: 0.65,
-                      ),
+                      alpha: 0.65,
+                    ),
               ),
             ),
 
-            const SizedBox(height: 6),
+            const SizedBox(
+              height: 6,
+            ),
 
             Text(
               label,
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontSize: 11,
-                fontWeight: isSelected
-                    ? FontWeight.w800
-                    : FontWeight.w600,
+                fontWeight:
+                    isSelected
+                        ? FontWeight
+                            .w800
+                        : FontWeight
+                            .w600,
                 color: isSelected
-                    ? AppTheme.primaryColor
-                    : colorScheme.onSurface
+                    ? AppTheme
+                        .primaryColor
+                    : colorScheme
+                        .onSurface
                         .withValues(
-                        alpha: 0.65,
-                      ),
+                      alpha: 0.65,
+                    ),
               ),
             ),
           ],
@@ -1174,46 +1565,66 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // ROTATE CONTROLS
   // ============================================================
 
-  Widget _buildRotateControls(bool isDark) {
+  Widget _buildRotateControls(
+    bool isDark,
+  ) {
     return _buildSubPanel(
       isDark: isDark,
-      child: Row(
+      child:
+          Row(
         mainAxisAlignment:
-            MainAxisAlignment.spaceEvenly,
+            MainAxisAlignment
+                .spaceEvenly,
         children: [
           _buildActionButton(
             icon:
-                Icons.rotate_left_rounded,
-            label: 'Left',
-            onTap: () =>
-                _handleRotate(270),
-          ),
-
-          _buildActionButton(
-            icon:
-                Icons.rotate_right_rounded,
-            label: 'Right',
-            onTap: () =>
-                _handleRotate(90),
-          ),
-
-          _buildActionButton(
-            icon: Icons.flip_rounded,
-            label: 'Flip H',
-            onTap: () =>
-                _handleFlip(
-              horizontal: true,
+                Icons
+                    .rotate_left_rounded,
+            label:
+                'Left',
+            onTap:
+                () => _handleRotate(
+              270,
             ),
           ),
 
           _buildActionButton(
             icon:
-                Icons.swap_vert_rounded,
-            label: 'Flip V',
-            onTap: () =>
-                _handleFlip(
-              horizontal: false,
-              vertical: true,
+                Icons
+                    .rotate_right_rounded,
+            label:
+                'Right',
+            onTap:
+                () => _handleRotate(
+              90,
+            ),
+          ),
+
+          _buildActionButton(
+            icon:
+                Icons
+                    .flip_rounded,
+            label:
+                'Flip H',
+            onTap:
+                () => _handleFlip(
+              horizontal:
+                  true,
+            ),
+          ),
+
+          _buildActionButton(
+            icon:
+                Icons
+                    .swap_vert_rounded,
+            label:
+                'Flip V',
+            onTap:
+                () => _handleFlip(
+              horizontal:
+                  false,
+              vertical:
+                  true,
             ),
           ),
         ],
@@ -1225,7 +1636,9 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // CROP CONTROLS
   // ============================================================
 
-  Widget _buildCropControls(bool isDark) {
+  Widget _buildCropControls(
+    bool isDark,
+  ) {
     final ratios = [
       'Free',
       '1:1',
@@ -1236,25 +1649,35 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
     return _buildSubPanel(
       isDark: isDark,
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Row(
             children: [
               const Icon(
-                Icons.crop_rounded,
+                Icons
+                    .crop_rounded,
                 size: 19,
-                color: AppTheme.primaryColor,
+                color: AppTheme
+                    .primaryColor,
               ),
-              const SizedBox(width: 7),
+              const SizedBox(
+                width: 7,
+              ),
               Text(
                 'Crop Ratio',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontWeight:
-                      FontWeight.w800,
+                      FontWeight
+                          .w800,
                   color:
-                      Theme.of(context)
+                      Theme.of(
+                    context,
+                  )
                           .colorScheme
                           .onSurface,
                 ),
@@ -1262,14 +1685,17 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
 
           SingleChildScrollView(
             scrollDirection:
                 Axis.horizontal,
             physics:
                 const BouncingScrollPhysics(),
-            child: Row(
+            child:
+                Row(
               children: [
                 ...ratios.map(
                   (ratio) {
@@ -1285,13 +1711,16 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                       ),
                       child:
                           ChoiceChip(
-                        label: Text(
+                        label:
+                            Text(
                           ratio,
                           style:
                               TextStyle(
-                            fontSize: 12,
+                            fontSize:
+                                12,
                             fontWeight:
-                                FontWeight.w700,
+                                FontWeight
+                                    .w700,
                             color: selected
                                 ? Colors
                                     .white
@@ -1324,17 +1753,19 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                                   .colorScheme
                                   .outline
                                   .withValues(
-                                    alpha:
-                                        0.18,
-                                  ),
+                                  alpha:
+                                      0.18,
+                                ),
                         ),
                         onSelected:
                             (value) {
                           if (value) {
-                            setState(() {
-                              _selectedCropRatio =
-                                  ratio;
-                            });
+                            setState(
+                              () {
+                                _selectedCropRatio =
+                                    ratio;
+                              },
+                            );
                           }
                         },
                       ),
@@ -1342,13 +1773,17 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                   },
                 ),
 
-                const SizedBox(width: 4),
+                const SizedBox(
+                  width: 4,
+                ),
 
                 ElevatedButton.icon(
                   onPressed:
                       _handleApplyCrop,
-                  icon: const Icon(
-                    Icons.check_rounded,
+                  icon:
+                      const Icon(
+                    Icons
+                        .check_rounded,
                     size: 18,
                   ),
                   label:
@@ -1361,8 +1796,10 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                     padding:
                         const EdgeInsets
                             .symmetric(
-                      horizontal: 16,
-                      vertical: 10,
+                      horizontal:
+                          16,
+                      vertical:
+                          10,
                     ),
                     shape:
                         RoundedRectangleBorder(
@@ -1386,28 +1823,40 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // FILTER CONTROLS
   // ============================================================
 
-  Widget _buildFilterControls(bool isDark) {
+  Widget _buildFilterControls(
+    bool isDark,
+  ) {
     return _buildSubPanel(
       isDark: isDark,
-      child: Column(
+      child:
+          Column(
         crossAxisAlignment:
-            CrossAxisAlignment.start,
+            CrossAxisAlignment
+                .start,
         children: [
           Row(
             children: [
               const Icon(
-                Icons.auto_awesome_rounded,
+                Icons
+                    .auto_awesome_rounded,
                 size: 19,
-                color: AppTheme.primaryColor,
+                color: AppTheme
+                    .primaryColor,
               ),
-              const SizedBox(width: 7),
+              const SizedBox(
+                width: 7,
+              ),
               Text(
                 'Choose Filter',
-                style: TextStyle(
+                style:
+                    TextStyle(
                   fontWeight:
-                      FontWeight.w800,
+                      FontWeight
+                          .w800,
                   color:
-                      Theme.of(context)
+                      Theme.of(
+                    context,
+                  )
                           .colorScheme
                           .onSurface,
                 ),
@@ -1415,37 +1864,43 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
             ],
           ),
 
-          const SizedBox(height: 12),
+          const SizedBox(
+            height: 12,
+          ),
+
+          // ======================================================
+          // ALL 21 FILTERS
+          // ======================================================
 
           SingleChildScrollView(
             scrollDirection:
                 Axis.horizontal,
             physics:
                 const BouncingScrollPhysics(),
-            child: Row(
+            child:
+                Row(
               children: [
-                _filterButton(
-                  'Original',
-                  ImageFilterType.none,
-                  isDark,
-                ),
-                const SizedBox(width: 8),
-                _filterButton(
-                  'Document',
-                  ImageFilterType.document,
-                  isDark,
-                ),
-                const SizedBox(width: 8),
-                _filterButton(
-                  'Grayscale',
-                  ImageFilterType.grayscale,
-                  isDark,
-                ),
-                const SizedBox(width: 8),
-                _filterButton(
-                  'Enhance',
-                  ImageFilterType.enhance,
-                  isDark,
+                ...ImageFilterType
+                    .values
+                    .map(
+                  (filter) {
+                    return Padding(
+                      padding:
+                          const EdgeInsets
+                              .only(
+                        right: 8,
+                      ),
+                      child:
+                          _filterButton(
+                        ImageEditorService
+                            .label(
+                          filter,
+                        ),
+                        filter,
+                        isDark,
+                      ),
+                    );
+                  },
                 ),
               ],
             ),
@@ -1469,42 +1924,63 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
 
     return GestureDetector(
       onTap: () =>
-          _handleFilter(type),
-      child: AnimatedContainer(
+          _handleFilter(
+        type,
+      ),
+      child:
+          AnimatedContainer(
         duration:
-            const Duration(milliseconds: 180),
+            const Duration(
+          milliseconds: 180,
+        ),
         padding:
-            const EdgeInsets.symmetric(
+            const EdgeInsets
+                .symmetric(
           horizontal: 16,
           vertical: 10,
         ),
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color: selected
-              ? AppTheme.primaryColor
+              ? AppTheme
+                  .primaryColor
               : isDark
-                  ? AppTheme.cardDark
-                  : AppTheme.bgLight,
+                  ? AppTheme
+                      .cardDark
+                  : AppTheme
+                      .bgLight,
           borderRadius:
-              BorderRadius.circular(13),
-          border: Border.all(
+              BorderRadius.circular(
+            13,
+          ),
+          border:
+              Border.all(
             color: selected
-                ? AppTheme.primaryColor
-                : Theme.of(context)
+                ? AppTheme
+                    .primaryColor
+                : Theme.of(
+                    context,
+                  )
                     .colorScheme
                     .outline
                     .withValues(
-                      alpha: 0.16,
-                    ),
+                    alpha: 0.16,
+                  ),
           ),
         ),
-        child: Text(
+        child:
+            Text(
           label,
-          style: TextStyle(
+          style:
+              TextStyle(
             fontSize: 12,
-            fontWeight: FontWeight.w700,
+            fontWeight:
+                FontWeight.w700,
             color: selected
                 ? Colors.white
-                : Theme.of(context)
+                : Theme.of(
+                    context,
+                  )
                     .colorScheme
                     .onSurface,
           ),
@@ -1517,38 +1993,59 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
   // TEXT CONTROLS
   // ============================================================
 
-  Widget _buildTextControls(bool isDark) {
+  Widget _buildTextControls(
+    bool isDark,
+  ) {
     return _buildSubPanel(
       isDark: isDark,
-      child: Row(
+      child:
+          Row(
         children: [
           Container(
             width: 42,
             height: 42,
-            decoration: BoxDecoration(
-              color: AppTheme.primaryColor
-                  .withValues(alpha: 0.12),
-              shape: BoxShape.circle,
+            decoration:
+                BoxDecoration(
+              color: AppTheme
+                  .primaryColor
+                  .withValues(
+                alpha: 0.12,
+              ),
+              shape:
+                  BoxShape.circle,
             ),
-            child: const Icon(
-              Icons.touch_app_rounded,
-              color: AppTheme.primaryColor,
+            child:
+                const Icon(
+              Icons
+                  .touch_app_rounded,
+              color: AppTheme
+                  .primaryColor,
               size: 21,
             ),
           ),
 
-          const SizedBox(width: 10),
+          const SizedBox(
+            width: 10,
+          ),
 
           Expanded(
-            child: Text(
+            child:
+                Text(
               'Drag the text to position it',
-              style: TextStyle(
+              style:
+                  TextStyle(
                 fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: Theme.of(context)
-                    .colorScheme
-                    .onSurface
-                    .withValues(alpha: 0.65),
+                fontWeight:
+                    FontWeight.w600,
+                color:
+                    Theme.of(
+                  context,
+                )
+                        .colorScheme
+                        .onSurface
+                        .withValues(
+                  alpha: 0.65,
+                ),
               ),
             ),
           ),
@@ -1556,14 +2053,19 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
           ElevatedButton.icon(
             onPressed:
                 _handleApplyText,
-            icon: const Icon(
-              Icons.check_rounded,
+            icon:
+                const Icon(
+              Icons
+                  .check_rounded,
               size: 18,
             ),
             label:
-                const Text('Apply'),
+                const Text(
+              'Apply',
+            ),
             style:
-                ElevatedButton.styleFrom(
+                ElevatedButton
+                    .styleFrom(
               padding:
                   const EdgeInsets
                       .symmetric(
@@ -1573,7 +2075,8 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
               shape:
                   RoundedRectangleBorder(
                 borderRadius:
-                    BorderRadius.circular(
+                    BorderRadius
+                        .circular(
                   13,
                 ),
               ),
@@ -1593,24 +2096,36 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     required Widget child,
   }) {
     return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.fromLTRB(
+      width:
+          double.infinity,
+      margin:
+          const EdgeInsets
+              .fromLTRB(
         12,
         10,
         12,
         2,
       ),
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
+      padding:
+          const EdgeInsets.all(
+        12,
+      ),
+      decoration:
+          BoxDecoration(
         color: isDark
             ? AppTheme.cardDark
             : AppTheme.bgLight,
         borderRadius:
-            BorderRadius.circular(18),
-        border: Border.all(
+            BorderRadius.circular(
+          18,
+        ),
+        border:
+            Border.all(
           color: isDark
-              ? AppTheme.dividerDark
-              : AppTheme.dividerColor,
+              ? AppTheme
+                  .dividerDark
+              : AppTheme
+                  .dividerColor,
         ),
       ),
       child: child,
@@ -1627,30 +2142,41 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
     required VoidCallback onTap,
   }) {
     final isDark =
-        Theme.of(context).brightness ==
+        Theme.of(context)
+                .brightness ==
             Brightness.dark;
 
     return GestureDetector(
       onTap: onTap,
-      child: Container(
+      child:
+          Container(
         width: 68,
         padding:
-            const EdgeInsets.symmetric(
+            const EdgeInsets
+                .symmetric(
           vertical: 7,
         ),
-        decoration: BoxDecoration(
+        decoration:
+            BoxDecoration(
           color: isDark
-              ? AppTheme.surfaceDark
+              ? AppTheme
+                  .surfaceDark
               : Colors.white,
           borderRadius:
-              BorderRadius.circular(14),
-          border: Border.all(
+              BorderRadius.circular(
+            14,
+          ),
+          border:
+              Border.all(
             color: isDark
-                ? AppTheme.dividerDark
-                : AppTheme.dividerColor,
+                ? AppTheme
+                    .dividerDark
+                : AppTheme
+                    .dividerColor,
           ),
         ),
-        child: Column(
+        child:
+            Column(
           children: [
             Container(
               width: 36,
@@ -1662,16 +2188,22 @@ class _ImageEditorScreenState extends State<ImageEditorScreen> {
                     .withValues(
                   alpha: 0.10,
                 ),
-                shape: BoxShape.circle,
+                shape:
+                    BoxShape.circle,
               ),
-              child: Icon(
+              child:
+                  Icon(
                 icon,
-                color:
-                    AppTheme.primaryColor,
+                color: AppTheme
+                    .primaryColor,
                 size: 20,
               ),
             ),
-            const SizedBox(height: 4),
+
+            const SizedBox(
+              height: 4,
+            ),
+
             Text(
               label,
               style:
