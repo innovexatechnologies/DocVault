@@ -13,19 +13,12 @@ import '../utils/file_utils.dart';
 class DocxGenerationService {
   DocxGenerationService();
 
-  /// Generates a DOCX file from selected images.
+  /// Generates DOCX from selected images.
   ///
-  /// Every image becomes one Word page.
+  /// Each image becomes exactly one page.
   ///
-  /// IMPORTANT:
-  /// Each Word section gets its own page size based on the
-  /// image aspect ratio.
-  ///
-  /// Therefore:
-  ///
-  ///     image ratio == Word page ratio
-  ///
-  /// No fixed Letter/A4 page is used.
+  /// Page size is calculated from the original image aspect ratio.
+  /// No fixed A4 or Letter page size is used.
   Future<DocumentResult> generateDocxFromImages(
     List<String> imagePaths,
   ) async {
@@ -40,7 +33,7 @@ class DocxGenerationService {
     final paths = List<String>.from(imagePaths);
 
     // ============================================================
-    // BACKGROUND GENERATION
+    // GENERATE DOCX IN BACKGROUND
     // ============================================================
 
     final Uint8List docxBytes = await Isolate.run(
@@ -83,7 +76,7 @@ class DocxGenerationService {
     );
 
     // ============================================================
-    // VERIFY
+    // VERIFY FILE
     // ============================================================
 
     if (!await targetFile.exists()) {
@@ -101,7 +94,7 @@ class DocxGenerationService {
     }
 
     // ============================================================
-    // RESULT
+    // RETURN RESULT
     // ============================================================
 
     return DocumentResult(
@@ -126,16 +119,16 @@ Uint8List _generateDocxInBackground(
   final imageCount = imagePaths.length;
 
   // ==========================================================================
-  // IMAGE PROCESSING SETTINGS
+  // IMAGE SETTINGS
   // ==========================================================================
 
-  const int maxImageWidth = 1800;
-  const int maxImageHeight = 2400;
+  const int maxImageWidth = 2400;
+  const int maxImageHeight = 3200;
 
-  const int jpegQuality = 80;
+  const int jpegQuality = 90;
 
   // ==========================================================================
-  // DOCX BASIC FILES
+  // BASIC DOCX FILES
   // ==========================================================================
 
   _addTextFile(
@@ -169,7 +162,7 @@ Uint8List _generateDocxInBackground(
   );
 
   // ==========================================================================
-  // IMAGE INFORMATION
+  // IMAGE DIMENSIONS
   // ==========================================================================
 
   final dimensions = <_ImageDimension>[];
@@ -223,11 +216,10 @@ Uint8List _generateDocxInBackground(
     }
 
     // ------------------------------------------------------------------------
-    // RESIZE
+    // RESIZE ONLY IF NECESSARY
     // ------------------------------------------------------------------------
 
-    img.Image processedImage =
-        decodedImage;
+    img.Image processedImage = decodedImage;
 
     final bool needsResize =
         decodedImage.width > maxImageWidth ||
@@ -255,12 +247,12 @@ Uint8List _generateDocxInBackground(
         decodedImage,
         width: newWidth,
         height: newHeight,
-        interpolation: img.Interpolation.linear,
+        interpolation: img.Interpolation.cubic,
       );
     }
 
     // ------------------------------------------------------------------------
-    // JPEG
+    // CONVERT TO JPEG
     // ------------------------------------------------------------------------
 
     final List<int> jpegBytes =
@@ -276,34 +268,10 @@ Uint8List _generateDocxInBackground(
     }
 
     // ==========================================================================
-    // IMAGE → WORD PAGE DIMENSIONS
+    // PAGE SIZE CALCULATION
     // ==========================================================================
-    //
-    // Word uses:
-    //
-    //   twips = 1/1440 inch
-    //
-    //   EMU   = 914400 per inch
-    //
-    // We use a fixed physical width of 8.5 inches.
-    //
-    // The height is calculated from the EXACT image aspect ratio.
-    //
-    // Example:
-    //
-    // image = 1080 x 1920
-    //
-    // page width  = 8.5 inch
-    // page height = 8.5 * 1920 / 1080
-    //             = 15.111 inch
-    //
-    // Therefore:
-    //
-    // image ratio == page ratio
-    //
-    // --------------------------------------------------------------------------
 
-    const double pageWidthInches = 8.5;
+    double pageWidthInches = 8.0;
 
     final double imageWidth =
         processedImage.width.toDouble();
@@ -311,13 +279,25 @@ Uint8List _generateDocxInBackground(
     final double imageHeight =
         processedImage.height.toDouble();
 
-    final double pageHeightInches =
+    double pageHeightInches =
         pageWidthInches *
         imageHeight /
         imageWidth;
 
     // ------------------------------------------------------------------------
-    // Convert page size to TWIPS.
+    // MS WORD SAFETY LIMIT
+    // ------------------------------------------------------------------------
+    
+    if (pageHeightInches > 20.0) {
+      pageHeightInches = 20.0;
+      pageWidthInches = pageHeightInches * imageWidth / imageHeight;
+    } else if (pageWidthInches > 20.0) {
+      pageWidthInches = 20.0;
+      pageHeightInches = pageWidthInches * imageHeight / imageWidth;
+    }
+
+    // ------------------------------------------------------------------------
+    // PAGE SIZE
     // ------------------------------------------------------------------------
 
     final int pageWidthTwips =
@@ -327,7 +307,9 @@ Uint8List _generateDocxInBackground(
         _inchesToTwips(pageHeightInches);
 
     // ------------------------------------------------------------------------
-    // Convert page size to EMU.
+    // IMAGE SIZE
+    //
+    // EXACT SAME SIZE AS PAGE
     // ------------------------------------------------------------------------
 
     final int imageWidthEmu =
@@ -348,10 +330,6 @@ Uint8List _generateDocxInBackground(
     // ------------------------------------------------------------------------
     // ADD IMAGE TO DOCX
     // ------------------------------------------------------------------------
-    //
-    // JPEG is already compressed.
-    // Therefore no ZIP compression is applied to the JPEG.
-    //
 
     archive.addFile(
       ArchiveFile.noCompress(
@@ -373,7 +351,7 @@ Uint8List _generateDocxInBackground(
   );
 
   // ==========================================================================
-  // ZIP
+  // CREATE ZIP
   // ==========================================================================
 
   final zipEncoder = ZipEncoder();
@@ -390,9 +368,7 @@ Uint8List _generateDocxInBackground(
     );
   }
 
-  return Uint8List.fromList(
-    encoded,
-  );
+  return Uint8List.fromList(encoded);
 }
 
 // ============================================================================
@@ -524,9 +500,7 @@ String _buildDocumentRelsXml(
     );
   }
 
-  sb.writeln(
-    '</Relationships>',
-  );
+  sb.writeln('</Relationships>');
 
   return sb.toString();
 }
@@ -543,21 +517,17 @@ String _buildStylesXml() {
   <w:docDefaults>
 
     <w:rPrDefault>
-
-      <w:rPr>
-
-        <w:rFonts
-          w:ascii="Calibri"
-          w:hAnsi="Calibri"
-          w:eastAsia="Calibri"
-          w:cs="Calibri"/>
-
-      </w:rPr>
-
+      <w:rPr/>
     </w:rPrDefault>
 
     <w:pPrDefault>
-      <w:pPr/>
+      <w:pPr>
+        <w:spacing
+          w:before="0"
+          w:after="0"
+          w:line="0"
+          w:lineRule="auto"/>
+      </w:pPr>
     </w:pPrDefault>
 
   </w:docDefaults>
@@ -570,6 +540,19 @@ String _buildStylesXml() {
     <w:name w:val="Normal"/>
 
     <w:qFormat/>
+
+    <w:pPr>
+
+      <w:spacing
+        w:before="0"
+        w:after="0"/>
+
+      <w:ind
+        w:left="0"
+        w:right="0"
+        w:firstLine="0"/>
+
+    </w:pPr>
 
   </w:style>
 
@@ -589,15 +572,11 @@ String _buildSettingsXml() {
 
   <w:compat/>
 
-  <w:doNotTrackMoves/>
-
-  <w:doNotTrackFormatting/>
-
 </w:settings>''';
 }
 
 // ============================================================================
-// DOCUMENT XML
+// DOCUMENT XML (UPDATED FOR ABSOLUTE ZERO MARGINS)
 // ============================================================================
 
 String _buildDocumentXml(
@@ -618,12 +597,10 @@ String _buildDocumentXml(
     'xmlns:pic="http://schemas.openxmlformats.org/drawingml/2006/picture">',
   );
 
-  sb.writeln(
-    '<w:body>',
-  );
+  sb.writeln('<w:body>');
 
   // ==========================================================================
-  // EACH IMAGE = ONE WORD SECTION / PAGE
+  // EACH IMAGE = ONE PAGE
   // ==========================================================================
 
   for (int i = 0; i < dimensions.length; i++) {
@@ -641,58 +618,122 @@ String _buildDocumentXml(
     final int docPrId =
         i + 1;
 
-    // ------------------------------------------------------------------------
+    final bool isLast =
+        i == dimensions.length - 1;
+
+    // ========================================================================
     // IMAGE PARAGRAPH
+    // ========================================================================
+
+    sb.writeln('<w:p>');
+
+    sb.writeln('<w:pPr>');
+
     // ------------------------------------------------------------------------
-
-    sb.writeln(
-      '<w:p>',
-    );
-
-    // Remove paragraph spacing.
-    sb.writeln(
-      '<w:pPr>',
-    );
+    // REMOVE ALL SPACING EXACTLY
+    // ------------------------------------------------------------------------
 
     sb.writeln(
       '<w:spacing '
       'w:before="0" '
       'w:after="0" '
-      'w:line="240" '
-      'w:lineRule="auto"/>',
-    );
-
-    sb.writeln(
-      '<w:jc w:val="center"/>',
-    );
-
-    sb.writeln(
-      '</w:pPr>',
+      'w:line="20" '
+      'w:lineRule="exact"/>',
     );
 
     // ------------------------------------------------------------------------
-    // RUN
+    // REMOVE INDENTS
     // ------------------------------------------------------------------------
 
     sb.writeln(
-      '<w:r>',
+      '<w:ind '
+      'w:left="0" '
+      'w:right="0" '
+      'w:firstLine="0"/>',
     );
 
-    sb.writeln(
-      '<w:drawing>',
-    );
-
     // ------------------------------------------------------------------------
-    // INLINE IMAGE
+    // SECTION SIZE
     // ------------------------------------------------------------------------
 
+    if (!isLast) {
+      sb.writeln('<w:sectPr>');
+
+      sb.writeln(
+        '<w:type w:val="nextPage"/>',
+      );
+
+      sb.writeln(
+        '<w:pgSz '
+        'w:w="${dimension.pageWidthTwips}" '
+        'w:h="${dimension.pageHeightTwips}"/>',
+      );
+
+      sb.writeln(
+        '<w:pgMar '
+        'w:top="0" '
+        'w:right="0" '
+        'w:bottom="0" '
+        'w:left="0" '
+        'w:header="0" '
+        'w:footer="0" '
+        'w:gutter="0"/>',
+      );
+
+      sb.writeln('</w:sectPr>');
+    }
+
+    sb.writeln('</w:pPr>');
+
+    // ========================================================================
+    // IMAGE ANCHORED EXACTLY TO PAGE EDGES
+    // ========================================================================
+
+    sb.writeln('<w:r>');
+
+    sb.writeln('<w:drawing>');
+
     sb.writeln(
-      '<wp:inline '
+      '<wp:anchor '
       'distT="0" '
       'distB="0" '
       'distL="0" '
-      'distR="0">',
+      'distR="0" '
+      'simplePos="0" '
+      'relativeHeight="1" '
+      'behindDoc="1" '
+      'locked="0" '
+      'layoutInCell="1" '
+      'allowOverlap="1">',
     );
+
+    sb.writeln(
+      '<wp:simplePos '
+      'x="0" '
+      'y="0"/>',
+    );
+
+    sb.writeln(
+      '<wp:positionH '
+      'relativeFrom="page">',
+    );
+
+    sb.writeln(
+      '<wp:posOffset>0</wp:posOffset>',
+    );
+
+    sb.writeln('</wp:positionH>');
+
+    sb.writeln(
+      '<wp:positionV '
+      'relativeFrom="page">',
+    );
+
+    sb.writeln(
+      '<wp:posOffset>0</wp:posOffset>',
+    );
+
+    sb.writeln('</wp:positionV>');
 
     sb.writeln(
       '<wp:extent '
@@ -707,6 +748,8 @@ String _buildDocumentXml(
       'r="0" '
       'b="0"/>',
     );
+    
+    sb.writeln('<wp:wrapNone/>');
 
     sb.writeln(
       '<wp:docPr '
@@ -714,47 +757,33 @@ String _buildDocumentXml(
       'name="Picture $docPrId"/>',
     );
 
-    sb.writeln(
-      '<wp:cNvGraphicFramePr>',
-    );
+    sb.writeln('<wp:cNvGraphicFramePr>');
 
     sb.writeln(
       '<a:graphicFrameLocks '
       'noChangeAspect="1"/>',
     );
 
-    sb.writeln(
-      '</wp:cNvGraphicFramePr>',
-    );
+    sb.writeln('</wp:cNvGraphicFramePr>');
 
-    // ------------------------------------------------------------------------
+    // ========================================================================
     // GRAPHIC
-    // ------------------------------------------------------------------------
+    // ========================================================================
 
-    sb.writeln(
-      '<a:graphic>',
-    );
+    sb.writeln('<a:graphic>');
 
     sb.writeln(
       '<a:graphicData '
       'uri="http://schemas.openxmlformats.org/drawingml/2006/picture">',
     );
 
-    // ------------------------------------------------------------------------
-    // PICTURE
-    // ------------------------------------------------------------------------
+    sb.writeln('<pic:pic>');
 
-    sb.writeln(
-      '<pic:pic>',
-    );
+    // ========================================================================
+    // IMAGE PROPERTIES
+    // ========================================================================
 
-    // ------------------------------------------------------------------------
-    // NON-VISUAL PROPERTIES
-    // ------------------------------------------------------------------------
-
-    sb.writeln(
-      '<pic:nvPicPr>',
-    );
+    sb.writeln('<pic:nvPicPr>');
 
     sb.writeln(
       '<pic:cNvPr '
@@ -762,9 +791,7 @@ String _buildDocumentXml(
       'name="Image $docPrId.jpeg"/>',
     );
 
-    sb.writeln(
-      '<pic:cNvPicPr>',
-    );
+    sb.writeln('<pic:cNvPicPr>');
 
     sb.writeln(
       '<a:picLocks '
@@ -772,54 +799,35 @@ String _buildDocumentXml(
       'noChangeArrowheads="1"/>',
     );
 
-    sb.writeln(
-      '</pic:cNvPicPr>',
-    );
+    sb.writeln('</pic:cNvPicPr>');
+
+    sb.writeln('</pic:nvPicPr>');
+
+    // ========================================================================
+    // IMAGE DATA
+    // ========================================================================
+
+    sb.writeln('<pic:blipFill>');
 
     sb.writeln(
-      '</pic:nvPicPr>',
+      '<a:blip r:embed="$relId"/>',
     );
 
-    // ------------------------------------------------------------------------
-    // IMAGE FILL
-    // ------------------------------------------------------------------------
+    sb.writeln('<a:stretch>');
 
-    sb.writeln(
-      '<pic:blipFill>',
-    );
+    sb.writeln('<a:fillRect/>');
 
-    sb.writeln(
-      '<a:blip '
-      'r:embed="$relId"/>',
-    );
+    sb.writeln('</a:stretch>');
 
-    sb.writeln(
-      '<a:stretch>',
-    );
+    sb.writeln('</pic:blipFill>');
 
-    sb.writeln(
-      '<a:fillRect/>',
-    );
+    // ========================================================================
+    // IMAGE TRANSFORM
+    // ========================================================================
 
-    sb.writeln(
-      '</a:stretch>',
-    );
+    sb.writeln('<pic:spPr>');
 
-    sb.writeln(
-      '</pic:blipFill>',
-    );
-
-    // ------------------------------------------------------------------------
-    // SHAPE
-    // ------------------------------------------------------------------------
-
-    sb.writeln(
-      '<pic:spPr>',
-    );
-
-    sb.writeln(
-      '<a:xfrm>',
-    );
+    sb.writeln('<a:xfrm>');
 
     sb.writeln(
       '<a:off '
@@ -833,145 +841,47 @@ String _buildDocumentXml(
       'cy="$heightEmu"/>',
     );
 
-    sb.writeln(
-      '</a:xfrm>',
-    );
+    sb.writeln('</a:xfrm>');
 
     sb.writeln(
       '<a:prstGeom '
       'prst="rect">',
     );
 
-    sb.writeln(
-      '<a:avLst/>',
-    );
+    sb.writeln('<a:avLst/>');
 
-    sb.writeln(
-      '</a:prstGeom>',
-    );
+    sb.writeln('</a:prstGeom>');
 
-    sb.writeln(
-      '</pic:spPr>',
-    );
+    sb.writeln('</pic:spPr>');
 
-    // ------------------------------------------------------------------------
+    // ========================================================================
     // CLOSE IMAGE
-    // ------------------------------------------------------------------------
+    // ========================================================================
 
-    sb.writeln(
-      '</pic:pic>',
-    );
+    sb.writeln('</pic:pic>');
 
-    sb.writeln(
-      '</a:graphicData>',
-    );
+    sb.writeln('</a:graphicData>');
 
-    sb.writeln(
-      '</a:graphic>',
-    );
+    sb.writeln('</a:graphic>');
 
-    sb.writeln(
-      '</wp:inline>',
-    );
+    sb.writeln('</wp:anchor>');
 
-    sb.writeln(
-      '</w:drawing>',
-    );
+    sb.writeln('</w:drawing>');
 
-    sb.writeln(
-      '</w:r>',
-    );
+    sb.writeln('</w:r>');
 
-    sb.writeln(
-      '</w:p>',
-    );
-
-    // ==========================================================================
-    // SECTION BREAK
-    // ==========================================================================
-    //
-    // This is the important part.
-    //
-    // Every image gets its own Word section.
-    //
-    // The section has:
-    //
-    //     page width  = image ratio width
-    //     page height = image ratio height
-    //     margins     = 0
-    //
-    // "nextPage" makes the following image start on a new page.
-    //
-    // ==========================================================================
-
-    sb.writeln(
-      '<w:p>',
-    );
-
-    sb.writeln(
-      '<w:pPr>',
-    );
-
-    sb.writeln(
-      '<w:sectPr>',
-    );
-
-    sb.writeln(
-      '<w:type w:val="nextPage"/>',
-    );
-
-    sb.writeln(
-      '<w:pgSz '
-      'w:w="${dimension.pageWidthTwips}" '
-      'w:h="${dimension.pageHeightTwips}"/>',
-    );
-
-    // ------------------------------------------------------------------------
-    // ZERO MARGINS
-    // ------------------------------------------------------------------------
-
-    sb.writeln(
-      '<w:pgMar '
-      'w:top="0" '
-      'w:right="0" '
-      'w:bottom="0" '
-      'w:left="0" '
-      'w:header="0" '
-      'w:footer="0" '
-      'w:gutter="0"/>',
-    );
-
-    sb.writeln(
-      '</w:sectPr>',
-    );
-
-    sb.writeln(
-      '</w:pPr>',
-    );
-
-    sb.writeln(
-      '</w:p>',
-    );
+    sb.writeln('</w:p>');
   }
 
   // ==========================================================================
-  // FINAL SECTION PROPERTIES
+  // FINAL SECTION
   // ==========================================================================
-
-  //
-  // The last section must also have sectPr at body level.
-  //
-  // We repeat the dimensions of the last image here because Word requires
-  // the final section properties to exist at the end of <w:body>.
-  //
 
   if (dimensions.isNotEmpty) {
     final last =
         dimensions.last;
 
-    sb.writeln(
-      '<w:sectPr>',
-    );
+    sb.writeln('<w:sectPr>');
 
     sb.writeln(
       '<w:pgSz '
@@ -990,18 +900,12 @@ String _buildDocumentXml(
       'w:gutter="0"/>',
     );
 
-    sb.writeln(
-      '</w:sectPr>',
-    );
+    sb.writeln('</w:sectPr>');
   }
 
-  sb.writeln(
-    '</w:body>',
-  );
+  sb.writeln('</w:body>');
 
-  sb.writeln(
-    '</w:document>',
-  );
+  sb.writeln('</w:document>');
 
   return sb.toString();
 }
