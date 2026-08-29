@@ -36,7 +36,7 @@ dependencies:
   camera: ^0.10.5+5
   image_picker: ^1.0.7
 
-  document_scan: ^0.3.0
+ # document_scan: ^0.3.0
 
   pdf: ^3.10.5
   printing: ^5.11.0
