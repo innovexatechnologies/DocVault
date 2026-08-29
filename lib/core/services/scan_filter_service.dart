@@ -13,16 +13,33 @@
 //    a scanned photo (right after capture/crop, before saving/exporting).
 
 import 'dart:typed_data';
+import 'dart:math' as math;
 import 'package:image/image.dart' as img;
 
-/// The set of filters available after scanning a document,
-/// similar to CamScanner's "Magic Color / B&W / Gray / Original" options.
+/// The set of filters available after scanning a document —
+/// CamScanner / Adobe Scan style options, expanded to 20.
 enum ScanFilter {
   original,
   grayscale,
-  blackAndWhite, // high-contrast, best for text documents
-  enhance,       // "magic color" — boosts contrast/brightness, keeps color
+  blackAndWhite,
+  enhance,        // "magic color"
   sharpen,
+  vivid,
+  softLight,
+  warmTone,
+  coolTone,
+  highContrastBW,
+  softBW,
+  sepia,
+  noirDramatic,
+  brightWhite,     // whiteboard / bright-paper mode
+  lowLightBoost,
+  matte,
+  vintagePaper,
+  coldSteel,
+  magicColorPro,
+  invertNegative,
+  cleanDocument,   // denoise + sharpen + whitepoint (best default for text)
 }
 
 class ScanFilterService {
@@ -42,23 +59,15 @@ class ScanFilterService {
     final sampleStep = ((image.width + image.height) ~/ 200).clamp(1, 1000);
 
     for (var x = 0; x < image.width; x += sampleStep) {
+      borderSamples.add(img.getLuminance(image.getPixel(x, 0)).toDouble());
       borderSamples.add(
-        img.getLuminance(image.getPixel(x, 0)).toDouble(),
-      );
-      borderSamples.add(
-        img
-            .getLuminance(image.getPixel(x, image.height - 1))
-            .toDouble(),
+        img.getLuminance(image.getPixel(x, image.height - 1)).toDouble(),
       );
     }
     for (var y = 0; y < image.height; y += sampleStep) {
+      borderSamples.add(img.getLuminance(image.getPixel(0, y)).toDouble());
       borderSamples.add(
-        img.getLuminance(image.getPixel(0, y)).toDouble(),
-      );
-      borderSamples.add(
-        img
-            .getLuminance(image.getPixel(image.width - 1, y))
-            .toDouble(),
+        img.getLuminance(image.getPixel(image.width - 1, y)).toDouble(),
       );
     }
 
@@ -122,7 +131,7 @@ class ScanFilterService {
 
   /// Applies [filter] to raw image bytes (jpg/png) and returns new bytes
   /// encoded as JPEG (quality 92). Runs synchronously — for large images,
-  /// call this inside `compute()` to avoid jank on the UI thread (example below).
+  /// call this inside `compute()` to avoid jank on the UI thread.
   static Uint8List apply(ScanFilter filter, Uint8List inputBytes) {
     img.Image? image = img.decodeImage(inputBytes);
     if (image == null) {
@@ -131,7 +140,7 @@ class ScanFilterService {
 
     switch (filter) {
       case ScanFilter.original:
-        break; // no-op
+        break;
 
       case ScanFilter.grayscale:
         image = img.grayscale(image);
@@ -148,31 +157,88 @@ class ScanFilterService {
       case ScanFilter.sharpen:
         image = img.convolution(
           image,
-          filter: [
-            0, -1, 0,
-            -1, 5, -1,
-            0, -1, 0,
-          ],
+          filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
         );
+        break;
+
+      case ScanFilter.vivid:
+        image = _applyVivid(image);
+        break;
+
+      case ScanFilter.softLight:
+        image = _applySoftLight(image);
+        break;
+
+      case ScanFilter.warmTone:
+        image = _applyWarmTone(image);
+        break;
+
+      case ScanFilter.coolTone:
+        image = _applyCoolTone(image);
+        break;
+
+      case ScanFilter.highContrastBW:
+        image = _applyHighContrastBW(image);
+        break;
+
+      case ScanFilter.softBW:
+        image = _applySoftBW(image);
+        break;
+
+      case ScanFilter.sepia:
+        image = _applySepia(image);
+        break;
+
+      case ScanFilter.noirDramatic:
+        image = _applyNoirDramatic(image);
+        break;
+
+      case ScanFilter.brightWhite:
+        image = _applyBrightWhite(image);
+        break;
+
+      case ScanFilter.lowLightBoost:
+        image = _applyLowLightBoost(image);
+        break;
+
+      case ScanFilter.matte:
+        image = _applyMatte(image);
+        break;
+
+      case ScanFilter.vintagePaper:
+        image = _applyVintagePaper(image);
+        break;
+
+      case ScanFilter.coldSteel:
+        image = _applyColdSteel(image);
+        break;
+
+      case ScanFilter.magicColorPro:
+        image = _applyMagicColorPro(image);
+        break;
+
+      case ScanFilter.invertNegative:
+        image = img.invert(image);
+        break;
+
+      case ScanFilter.cleanDocument:
+        image = _applyCleanDocument(image);
         break;
     }
 
     return Uint8List.fromList(img.encodeJpg(image, quality: 92));
   }
 
+  // ---------------------------------------------------------------------
+  // Individual filter implementations
+  // ---------------------------------------------------------------------
+
   /// Black & white "document mode": grayscale + strong contrast boost +
-  /// adaptive-ish threshold, so text becomes crisp black on white.
+  /// global threshold, so text becomes crisp black on white.
   static img.Image _applyBlackAndWhite(img.Image image) {
     img.Image result = img.grayscale(image);
+    result = img.adjustColor(result, contrast: 1.9, brightness: 1.05);
 
-    // Boost contrast heavily so background flattens to white/black.
-    result = img.adjustColor(
-      result,
-      contrast: 1.9,
-      brightness: 1.05,
-    );
-
-    // Simple global threshold pass (tweak 140 to taste, 0-255).
     const threshold = 140;
     for (final pixel in result) {
       final luminance = img.getLuminance(pixel);
@@ -182,7 +248,6 @@ class ScanFilterService {
         ..g = value
         ..b = value;
     }
-
     return result;
   }
 
@@ -195,7 +260,190 @@ class ScanFilterService {
       brightness: 1.08,
       saturation: 1.15,
     );
-    result = img.gaussianBlur(result, radius: 0); // no-op placeholder for future denoise step
+    return result;
+  }
+
+  /// Punchy, saturated look — good for photos of colorful printed material
+  /// (magazines, posters, marketing collateral).
+  static img.Image _applyVivid(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.25,
+      saturation: 1.5,
+      brightness: 1.03,
+    );
+    result = img.convolution(
+      result,
+      filter: [0, -0.5, 0, -0.5, 3, -0.5, 0, -0.5, 0],
+      div: 1,
+    );
+    return result;
+  }
+
+  /// Gentle, low-contrast pastel look — reduces harsh highlights, good for
+  /// glossy paper that reflects light.
+  static img.Image _applySoftLight(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 0.92,
+      brightness: 1.1,
+      saturation: 0.95,
+    );
+    result = img.gaussianBlur(result, radius: 1);
+    return result;
+  }
+
+  /// Warm amber cast — mimics warm indoor lighting / old paper documents.
+  static img.Image _applyWarmTone(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.1,
+      brightness: 1.04,
+      saturation: 1.05,
+    );
+    result = img.colorOffset(result, red: 18, green: 6, blue: -14);
+    return result;
+  }
+
+  /// Cool blue-tinted cast — clean, modern, "scanned in an office" feel.
+  static img.Image _applyCoolTone(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.1,
+      brightness: 1.03,
+      saturation: 1.0,
+    );
+    result = img.colorOffset(result, red: -12, green: -2, blue: 16);
+    return result;
+  }
+
+  /// Very high contrast black & white — for faded receipts, low-ink prints,
+  /// pencil notes.
+  static img.Image _applyHighContrastBW(img.Image image) {
+    img.Image result = img.grayscale(image);
+    result = img.adjustColor(result, contrast: 2.4, brightness: 1.02);
+    return result;
+  }
+
+  /// Grayscale with gentler contrast — keeps subtle shading (good for
+  /// photos, sketches, diagrams inside a document).
+  static img.Image _applySoftBW(img.Image image) {
+    img.Image result = img.grayscale(image);
+    result = img.adjustColor(result, contrast: 1.15, brightness: 1.05);
+    return result;
+  }
+
+  /// Classic sepia tone — brown-toned monochrome, decorative/vintage look.
+  static img.Image _applySepia(img.Image image) {
+    img.Image result = img.grayscale(image);
+    for (final pixel in result) {
+      final l = img.getLuminance(pixel);
+      pixel
+        ..r = (l * 1.07).clamp(0, 255)
+        ..g = (l * 0.86).clamp(0, 255)
+        ..b = (l * 0.63).clamp(0, 255);
+    }
+    return result;
+  }
+
+  /// Dark, moody, heavily-contrasted monochrome — dramatic "film noir" look.
+  static img.Image _applyNoirDramatic(img.Image image) {
+    img.Image result = img.grayscale(image);
+    result = img.adjustColor(result, contrast: 1.7, brightness: 0.85);
+    result = img.vignette(result, start: 0.4, end: 1.1, color: img.ColorRgb8(0, 0, 0));
+    return result;
+  }
+
+  /// Pushes the background toward pure white — great for whiteboards and
+  /// bright printed pages, minimizes yellowing/shadow.
+  static img.Image _applyBrightWhite(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.5,
+      brightness: 1.25,
+      saturation: 0.6,
+    );
+    return result;
+  }
+
+  /// Brightens shadows/underexposed scans without blowing out highlights —
+  /// useful for photos taken in dim rooms.
+  static img.Image _applyLowLightBoost(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      brightness: 1.35,
+      contrast: 1.12,
+      gamma: 0.85,
+    );
+    return result;
+  }
+
+  /// Flattened, low-glare "matte" finish — reduces specular highlights on
+  /// glossy pages.
+  static img.Image _applyMatte(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 0.85,
+      brightness: 1.02,
+      saturation: 0.85,
+    );
+    return result;
+  }
+
+  /// Aged, slightly yellowed paper look with soft grain — decorative filter
+  /// for scanning old letters/books.
+  static img.Image _applyVintagePaper(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 0.95,
+      brightness: 1.02,
+      saturation: 0.7,
+    );
+    result = img.colorOffset(result, red: 20, green: 10, blue: -20);
+    result = img.noise(result, 8, type: img.NoiseType.gaussian);
+    return result;
+  }
+
+  /// Cold, desaturated steel-blue monochrome — clean technical/blueprint feel.
+  static img.Image _applyColdSteel(img.Image image) {
+    img.Image result = img.grayscale(image);
+    result = img.adjustColor(result, contrast: 1.3, brightness: 1.0);
+    for (final pixel in result) {
+      final l = img.getLuminance(pixel);
+      pixel
+        ..r = (l * 0.85).clamp(0, 255)
+        ..g = (l * 0.95).clamp(0, 255)
+        ..b = (l * 1.15).clamp(0, 255);
+    }
+    return result;
+  }
+
+  /// A stronger version of "Enhance" — more aggressive color pop + edge
+  /// sharpening, aimed at making colorful documents look print-ready.
+  static img.Image _applyMagicColorPro(img.Image image) {
+    img.Image result = img.adjustColor(
+      image,
+      contrast: 1.45,
+      brightness: 1.1,
+      saturation: 1.3,
+    );
+    result = img.convolution(
+      result,
+      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
+    );
+    return result;
+  }
+
+  /// The recommended "best default" for text documents: denoise, punch up
+  /// contrast, sharpen edges, and push the page toward white — closest to
+  /// a flatbed-scanner result.
+  static img.Image _applyCleanDocument(img.Image image) {
+    img.Image result = img.gaussianBlur(image, radius: 1);
+    result = img.adjustColor(result, contrast: 1.4, brightness: 1.15, saturation: 0.9);
+    result = img.convolution(
+      result,
+      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
+    );
     return result;
   }
 
@@ -212,6 +460,38 @@ class ScanFilterService {
         return 'Enhance';
       case ScanFilter.sharpen:
         return 'Sharpen';
+      case ScanFilter.vivid:
+        return 'Vivid';
+      case ScanFilter.softLight:
+        return 'Soft Light';
+      case ScanFilter.warmTone:
+        return 'Warm Tone';
+      case ScanFilter.coolTone:
+        return 'Cool Tone';
+      case ScanFilter.highContrastBW:
+        return 'High Contrast B&W';
+      case ScanFilter.softBW:
+        return 'Soft B&W';
+      case ScanFilter.sepia:
+        return 'Sepia';
+      case ScanFilter.noirDramatic:
+        return 'Noir';
+      case ScanFilter.brightWhite:
+        return 'Bright White';
+      case ScanFilter.lowLightBoost:
+        return 'Low Light Boost';
+      case ScanFilter.matte:
+        return 'Matte';
+      case ScanFilter.vintagePaper:
+        return 'Vintage Paper';
+      case ScanFilter.coldSteel:
+        return 'Cold Steel';
+      case ScanFilter.magicColorPro:
+        return 'Magic Color Pro';
+      case ScanFilter.invertNegative:
+        return 'Negative';
+      case ScanFilter.cleanDocument:
+        return 'Clean Document';
     }
   }
 }
