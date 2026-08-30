@@ -127,13 +127,17 @@ Uint8List _generateDocxInBackground(
 
   const int jpegQuality = 90;
 
-  // Standard screen/print DPI assumption used to convert pixels -> inches
-  // when a real page size needs to be derived from BOTH dimensions of the
-  // image instead of forcing one fixed axis.
-  const double assumedDpi = 150.0;
+  // --------------------------------------------------------------------------
+  // AUTO PAGE SIZE
+  //
+  // Page size is NOT fixed to A4.
+  // The image aspect ratio determines the page aspect ratio.
+  //
+  // A reasonable physical base size is used so the DOCX page does not become
+  // unnecessarily huge just because the source image has many pixels.
+  // --------------------------------------------------------------------------
 
-  // Word's own hard page-size limits (in inches). Twips max out at 31680
-  // (22 in) but Word's UI caps at 22in; we stay safely inside that.
+  const double basePageWidthInches = 8.0;
   const double minPageInches = 1.0;
   const double maxPageInches = 22.0;
 
@@ -196,8 +200,7 @@ Uint8List _generateDocxInBackground(
     // READ IMAGE
     // ------------------------------------------------------------------------
 
-    final originalBytes =
-        imageFile.readAsBytesSync();
+    final originalBytes = imageFile.readAsBytesSync();
 
     if (originalBytes.isEmpty) {
       throw Exception(
@@ -209,8 +212,7 @@ Uint8List _generateDocxInBackground(
     // DECODE IMAGE
     // ------------------------------------------------------------------------
 
-    final decodedImage =
-        img.decodeImage(originalBytes);
+    final decodedImage = img.decodeImage(originalBytes);
 
     if (decodedImage == null) {
       throw Exception(
@@ -265,8 +267,7 @@ Uint8List _generateDocxInBackground(
     // CONVERT TO JPEG
     // ------------------------------------------------------------------------
 
-    final List<int> jpegBytes =
-        img.encodeJpg(
+    final List<int> jpegBytes = img.encodeJpg(
       processedImage,
       quality: jpegQuality,
     );
@@ -278,17 +279,21 @@ Uint8List _generateDocxInBackground(
     }
 
     // ==========================================================================
-    // PAGE SIZE CALCULATION (FIXED)
+    // AUTO PAGE SIZE
     //
-    // Previous version always fixed width to 8.0in and derived height from
-    // it. That meant a tiny or a huge image both got forced onto an 8in-wide
-    // page, which is itself a "fixed axis" bug of the same family as forcing
-    // A4 - it just fixes width instead of the whole page.
+    // IMPORTANT:
+    // We use the IMAGE ASPECT RATIO to determine both page dimensions.
     //
-    // Fix: derive BOTH dimensions from the image's actual pixel size at a
-    // fixed DPI, so page size scales proportionally to the image itself in
-    // both directions, then clamp into Word's safe range while preserving
-    // aspect ratio.
+    // We do NOT use A4.
+    // We do NOT force a fixed height.
+    // We do NOT stretch the image.
+    //
+    // Example:
+    //
+    // 1200 x 800  ->  8 x 5.333 inch
+    // 800 x 1200  ->  8 x 12 inch
+    //
+    // The image and page always have the same aspect ratio.
     // ==========================================================================
 
     final double imageWidthPx =
@@ -297,50 +302,61 @@ Uint8List _generateDocxInBackground(
     final double imageHeightPx =
         processedImage.height.toDouble();
 
-    double pageWidthInches = imageWidthPx / assumedDpi;
-    double pageHeightInches = imageHeightPx / assumedDpi;
+    final double aspectRatio =
+        imageWidthPx / imageHeightPx;
 
-    // ------------------------------------------------------------------------
-    // CLAMP TO WORD'S SAFE PAGE-SIZE RANGE (BOTH MIN AND MAX),
-    // ALWAYS PRESERVING ASPECT RATIO
-    // ------------------------------------------------------------------------
+    double pageWidthInches = basePageWidthInches;
 
-    final double aspect = imageWidthPx / imageHeightPx;
+    double pageHeightInches =
+        pageWidthInches / aspectRatio;
 
-    if (pageWidthInches > maxPageInches) {
-      pageWidthInches = maxPageInches;
-      pageHeightInches = pageWidthInches / aspect;
-    }
+    // --------------------------------------------------------------------------
+    // KEEP PAGE SIZE INSIDE WORD'S PRACTICAL RANGE
+    // --------------------------------------------------------------------------
 
     if (pageHeightInches > maxPageInches) {
       pageHeightInches = maxPageInches;
-      pageWidthInches = pageHeightInches * aspect;
+      pageWidthInches =
+          pageHeightInches * aspectRatio;
+    }
+
+    if (pageWidthInches > maxPageInches) {
+      pageWidthInches = maxPageInches;
+      pageHeightInches =
+          pageWidthInches / aspectRatio;
     }
 
     if (pageWidthInches < minPageInches) {
       pageWidthInches = minPageInches;
-      pageHeightInches = pageWidthInches / aspect;
+      pageHeightInches =
+          pageWidthInches / aspectRatio;
     }
 
     if (pageHeightInches < minPageInches) {
       pageHeightInches = minPageInches;
-      pageWidthInches = pageHeightInches * aspect;
+      pageWidthInches =
+          pageHeightInches * aspectRatio;
     }
 
-    // Re-check the other axis after a min-clamp could have pushed it back
-    // above max (happens with extreme aspect ratios, e.g. very thin strips).
+    // --------------------------------------------------------------------------
+    // FINAL SAFETY CHECK
+    // --------------------------------------------------------------------------
+
     if (pageWidthInches > maxPageInches) {
       pageWidthInches = maxPageInches;
-      pageHeightInches = pageWidthInches / aspect;
-    }
-    if (pageHeightInches > maxPageInches) {
-      pageHeightInches = maxPageInches;
-      pageWidthInches = pageHeightInches * aspect;
+      pageHeightInches =
+          pageWidthInches / aspectRatio;
     }
 
-    // ------------------------------------------------------------------------
+    if (pageHeightInches > maxPageInches) {
+      pageHeightInches = maxPageInches;
+      pageWidthInches =
+          pageHeightInches * aspectRatio;
+    }
+
+    // --------------------------------------------------------------------------
     // PAGE SIZE
-    // ------------------------------------------------------------------------
+    // --------------------------------------------------------------------------
 
     final int pageWidthTwips =
         _inchesToTwips(pageWidthInches);
@@ -348,11 +364,11 @@ Uint8List _generateDocxInBackground(
     final int pageHeightTwips =
         _inchesToTwips(pageHeightInches);
 
-    // ------------------------------------------------------------------------
+    // --------------------------------------------------------------------------
     // IMAGE SIZE
     //
-    // EXACT SAME SIZE AS PAGE
-    // ------------------------------------------------------------------------
+    // EXACT SAME PHYSICAL SIZE AS PAGE
+    // --------------------------------------------------------------------------
 
     final int imageWidthEmu =
         _inchesToEmu(pageWidthInches);
@@ -369,9 +385,9 @@ Uint8List _generateDocxInBackground(
       ),
     );
 
-    // ------------------------------------------------------------------------
+    // --------------------------------------------------------------------------
     // ADD IMAGE TO DOCX
-    // ------------------------------------------------------------------------
+    // --------------------------------------------------------------------------
 
     archive.addFile(
       ArchiveFile.noCompress(
@@ -398,8 +414,7 @@ Uint8List _generateDocxInBackground(
 
   final zipEncoder = ZipEncoder();
 
-  final List<int> encoded =
-      zipEncoder.encode(
+  final List<int> encoded = zipEncoder.encode(
     archive,
     level: DeflateLevel.bestSpeed,
   );
@@ -412,6 +427,7 @@ Uint8List _generateDocxInBackground(
 
   return Uint8List.fromList(encoded);
 }
+ 
 
 // ============================================================================
 // UNIT CONVERSION
@@ -663,40 +679,31 @@ String _buildDocumentXml(
   for (int i = 0; i < dimensions.length; i++) {
     final dimension = dimensions[i];
 
-    final String relId =
-        'rId${i + 1}';
+    final String relId = 'rId${i + 1}';
 
-    final int widthEmu =
-        dimension.widthEmu;
+    final int widthEmu = dimension.widthEmu;
+    final int heightEmu = dimension.heightEmu;
 
-    final int heightEmu =
-        dimension.heightEmu;
-
-    final int docPrId =
-        i + 1;
-
-    // Unique z-order per image, instead of a hard-coded "1" for every
-    // drawing (previously all images shared relativeHeight="1").
-    final int relativeHeight =
-        i + 1;
+    final int docPrId = i + 1;
 
     final bool isLast =
         i == dimensions.length - 1;
 
     // ========================================================================
-    // IMAGE PARAGRAPH (image only - no sectPr here anymore)
+    // IMAGE PARAGRAPH
     // ========================================================================
 
     sb.writeln('<w:p>');
 
     sb.writeln('<w:pPr>');
 
+    // Zero spacing.
     sb.writeln(
       '<w:spacing '
       'w:before="0" '
       'w:after="0" '
-      'w:line="20" '
-      'w:lineRule="exact"/>',
+      'w:line="0" '
+      'w:lineRule="auto"/>',
     );
 
     sb.writeln(
@@ -709,7 +716,10 @@ String _buildDocumentXml(
     sb.writeln('</w:pPr>');
 
     // ========================================================================
-    // IMAGE ANCHORED EXACTLY TO PAGE EDGES
+    // INLINE IMAGE
+    //
+    // Inline is intentionally used instead of anchor.
+    // This is more reliable for a simple "one image = one page" DOCX.
     // ========================================================================
 
     sb.writeln('<w:r>');
@@ -717,46 +727,16 @@ String _buildDocumentXml(
     sb.writeln('<w:drawing>');
 
     sb.writeln(
-      '<wp:anchor '
+      '<wp:inline '
       'distT="0" '
       'distB="0" '
       'distL="0" '
-      'distR="0" '
-      'simplePos="0" '
-      'relativeHeight="$relativeHeight" '
-      'behindDoc="1" '
-      'locked="0" '
-      'layoutInCell="1" '
-      'allowOverlap="1">',
+      'distR="0">',
     );
 
-    sb.writeln(
-      '<wp:simplePos '
-      'x="0" '
-      'y="0"/>',
-    );
-
-    sb.writeln(
-      '<wp:positionH '
-      'relativeFrom="page">',
-    );
-
-    sb.writeln(
-      '<wp:posOffset>0</wp:posOffset>',
-    );
-
-    sb.writeln('</wp:positionH>');
-
-    sb.writeln(
-      '<wp:positionV '
-      'relativeFrom="page">',
-    );
-
-    sb.writeln(
-      '<wp:posOffset>0</wp:posOffset>',
-    );
-
-    sb.writeln('</wp:positionV>');
+    // ------------------------------------------------------------------------
+    // IMAGE SIZE
+    // ------------------------------------------------------------------------
 
     sb.writeln(
       '<wp:extent '
@@ -771,8 +751,6 @@ String _buildDocumentXml(
       'r="0" '
       'b="0"/>',
     );
-
-    sb.writeln('<wp:wrapNone/>');
 
     sb.writeln(
       '<wp:docPr '
@@ -822,6 +800,10 @@ String _buildDocumentXml(
 
     sb.writeln('</pic:nvPicPr>');
 
+    // ========================================================================
+    // IMAGE DATA
+    // ========================================================================
+
     sb.writeln('<pic:blipFill>');
 
     sb.writeln(
@@ -835,6 +817,10 @@ String _buildDocumentXml(
     sb.writeln('</a:stretch>');
 
     sb.writeln('</pic:blipFill>');
+
+    // ========================================================================
+    // IMAGE SHAPE
+    // ========================================================================
 
     sb.writeln('<pic:spPr>');
 
@@ -871,7 +857,7 @@ String _buildDocumentXml(
 
     sb.writeln('</a:graphic>');
 
-    sb.writeln('</wp:anchor>');
+    sb.writeln('</wp:inline>');
 
     sb.writeln('</w:drawing>');
 
@@ -880,21 +866,21 @@ String _buildDocumentXml(
     sb.writeln('</w:p>');
 
     // ========================================================================
-    // DEDICATED SECTION-BREAK PARAGRAPH FOR THIS PAGE'S SIZE
+    // SECTION BREAK
     //
-    // This empty paragraph's sectPr closes the section that contains only
-    // the image paragraph above, applying THIS image's page size to THIS
-    // image specifically - regardless of what content (if any) sits
-    // between images in the future.
+    // Every image gets its own page size.
     // ========================================================================
 
     if (!isLast) {
       sb.writeln('<w:p>');
+
       sb.writeln('<w:pPr>');
 
       sb.writeln('<w:sectPr>');
 
-      sb.writeln('<w:type w:val="nextPage"/>');
+      sb.writeln(
+        '<w:type w:val="nextPage"/>',
+      );
 
       sb.writeln(
         '<w:pgSz '
@@ -916,17 +902,19 @@ String _buildDocumentXml(
       sb.writeln('</w:sectPr>');
 
       sb.writeln('</w:pPr>');
+
       sb.writeln('</w:p>');
     }
   }
 
   // ==========================================================================
-  // FINAL SECTION (applies to the last image's paragraph, body-level sectPr)
+  // FINAL SECTION
+  //
+  // Applies the last image's page size to the last page.
   // ==========================================================================
 
   if (dimensions.isNotEmpty) {
-    final last =
-        dimensions.last;
+    final last = dimensions.last;
 
     sb.writeln('<w:sectPr>');
 
@@ -956,7 +944,7 @@ String _buildDocumentXml(
 
   return sb.toString();
 }
-
+ 
 // ============================================================================
 // IMAGE DIMENSION MODEL
 // ============================================================================

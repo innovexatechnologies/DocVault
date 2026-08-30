@@ -113,7 +113,6 @@ class PptxGenerationService {
 // ============================================================================
 // BACKGROUND PPTX GENERATION
 // ============================================================================
-
 Uint8List _generatePptxInBackground(
   List<String> imagePaths,
 ) {
@@ -130,23 +129,14 @@ Uint8List _generatePptxInBackground(
   const int jpegQuality = 85;
 
   // ==========================================================================
-  // READ FIRST IMAGE
-  // ==========================================================================
+  // FIRST IMAGE = PRESENTATION ASPECT RATIO
   //
-  // PowerPoint uses ONE presentation-wide slide size.
+  // PPTX has ONE presentation-wide slide size.
   //
-  // Therefore the first image determines the presentation aspect ratio.
+  // Therefore the first image determines the slide ratio.
   //
-  // Example:
-  //
-  // 1080 x 1920
-  //       ↓
-  // portrait presentation
-  //
-  // 1920 x 1080
-  //       ↓
-  // landscape presentation
-  //
+  // We use a reasonable physical width and automatically calculate height.
+  // No fixed 16:9 and no fixed A4.
   // ==========================================================================
 
   final firstImageFile = File(
@@ -185,48 +175,85 @@ Uint8List _generatePptxInBackground(
   }
 
   // ==========================================================================
-  // PRESENTATION SIZE
-  // ==========================================================================
+  // AUTO PRESENTATION SIZE
   //
-  // We keep a standard physical width of 13.333 inches.
+  // Width is only a physical base size.
+  // Height is calculated from the first image aspect ratio.
   //
-  // Height is calculated from the FIRST IMAGE aspect ratio.
+  // Example:
   //
-  // Therefore:
-  //
-  // presentation ratio = first image ratio
-  //
-  // This avoids forcing every presentation to 16:9.
+  // 1200 x 800  ->  8 x 5.333
+  // 800 x 1200  ->  8 x 12
+  // 1000 x 1000 ->  8 x 8
   //
   // ==========================================================================
 
-  const double presentationWidthInches =
-      13.333333;
+  const double presentationWidthInches = 8.0;
 
   final double firstAspectRatio =
       firstDecoded.width /
           firstDecoded.height;
 
-  final double presentationHeightInches =
+  double presentationHeightInches =
       presentationWidthInches /
           firstAspectRatio;
 
   // ==========================================================================
-  // CONVERT INCHES → EMU
+  // SAFETY LIMIT
+  //
+  // Keep PowerPoint slide dimensions inside a practical range.
+  // Aspect ratio is preserved.
   // ==========================================================================
-  //
-  // 1 inch = 914400 EMU
-  //
+
+  const double minSlideInches = 1.0;
+  const double maxSlideInches = 56.0;
+
+  double presentationWidth =
+      presentationWidthInches;
+
+  double presentationHeight =
+      presentationHeightInches;
+
+  if (presentationWidth > maxSlideInches) {
+    presentationWidth = maxSlideInches;
+
+    presentationHeight =
+        presentationWidth / firstAspectRatio;
+  }
+
+  if (presentationHeight > maxSlideInches) {
+    presentationHeight = maxSlideInches;
+
+    presentationWidth =
+        presentationHeight * firstAspectRatio;
+  }
+
+  if (presentationWidth < minSlideInches) {
+    presentationWidth = minSlideInches;
+
+    presentationHeight =
+        presentationWidth / firstAspectRatio;
+  }
+
+  if (presentationHeight < minSlideInches) {
+    presentationHeight = minSlideInches;
+
+    presentationWidth =
+        presentationHeight * firstAspectRatio;
+  }
+
+  // ==========================================================================
+  // CONVERT TO EMU
   // ==========================================================================
 
   final int slideWidthEmu =
       _inchesToEmu(
-    presentationWidthInches,
+    presentationWidth,
   );
 
   final int slideHeightEmu =
       _inchesToEmu(
-    presentationHeightInches,
+    presentationHeight,
   );
 
   if (slideWidthEmu <= 0 ||
@@ -390,9 +417,9 @@ Uint8List _generatePptxInBackground(
       );
     }
 
-    // ------------------------------------------------------------------------
+    // ==========================================================================
     // IMAGE DIMENSIONS
-    // ------------------------------------------------------------------------
+    // ==========================================================================
 
     final double imageWidth =
         decoded.width.toDouble();
@@ -400,15 +427,9 @@ Uint8List _generatePptxInBackground(
     final double imageHeight =
         decoded.height.toDouble();
 
-    // ------------------------------------------------------------------------
+    // ==========================================================================
     // IMAGE → EMU
-    // ------------------------------------------------------------------------
-    //
-    // We use 96 DPI:
-    //
-    // 1 pixel = 9525 EMU
-    //
-    // ------------------------------------------------------------------------
+    // ==========================================================================
 
     final double imageWidthEmu =
         imageWidth * 9525.0;
@@ -416,17 +437,16 @@ Uint8List _generatePptxInBackground(
     final double imageHeightEmu =
         imageHeight * 9525.0;
 
-    // ------------------------------------------------------------------------
-    // FIT IMAGE INSIDE SLIDE
-    // ------------------------------------------------------------------------
+    // ==========================================================================
+    // FIT IMAGE
     //
     // IMPORTANT:
     //
+    // The image is NEVER cropped.
     // The image is NEVER stretched.
+    // The original aspect ratio is preserved.
     //
-    // Its original aspect ratio is preserved.
-    //
-    // ------------------------------------------------------------------------
+    // ==========================================================================
 
     final double scaleX =
         slideWidthEmu /
@@ -442,16 +462,14 @@ Uint8List _generatePptxInBackground(
             : scaleY;
 
     final int renderedWidthEmu =
-        (imageWidthEmu * scale)
-            .round();
+        (imageWidthEmu * scale).round();
 
     final int renderedHeightEmu =
-        (imageHeightEmu * scale)
-            .round();
+        (imageHeightEmu * scale).round();
 
-    // ------------------------------------------------------------------------
+    // ==========================================================================
     // CENTER IMAGE
-    // ------------------------------------------------------------------------
+    // ==========================================================================
 
     final int offsetX =
         ((slideWidthEmu -
@@ -530,6 +548,7 @@ Uint8List _generatePptxInBackground(
     pptxBytes,
   );
 }
+ 
 
 // ============================================================================
 // UNIT CONVERSION
@@ -824,29 +843,7 @@ String _buildSlideXml({
 
       </p:nvGrpSpPr>
 
-      <p:grpSpPr>
-
-        <a:xfrm>
-
-          <a:off
-            x="0"
-            y="0"/>
-
-          <a:ext
-            cx="0"
-            cy="0"/>
-
-          <a:chOff
-            x="0"
-            y="0"/>
-
-          <a:chExt
-            cx="0"
-            cy="0"/>
-
-        </a:xfrm>
-
-      </p:grpSpPr>
+      <p:grpSpPr/>
 
       <p:pic>
 
@@ -854,7 +851,7 @@ String _buildSlideXml({
 
           <p:cNvPr
             id="2"
-            name="Picture 1"/>
+            name="Image"/>
 
           <p:cNvPicPr>
 
@@ -918,6 +915,7 @@ String _buildSlideXml({
 
 </p:sld>''';
 }
+ 
 
 // ============================================================================
 // SLIDE RELATIONSHIPS
