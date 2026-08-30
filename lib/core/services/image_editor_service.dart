@@ -922,6 +922,20 @@ class ImageEditorService {
       }
     }
 
+    // Second, content-adaptive pass: instead of relying only on a flat
+    // border-color difference (which assumes a fairly uniform background),
+    // also look at where the image's own internal edges are strongest.
+    // This helps on busy backgrounds, low-contrast paper, or documents
+    // that fill nearly the whole frame, where the border-diff method
+    // alone tends to under- or over-crop.
+    final gradientCandidate = _detectDocumentBoundsByGradient(gray);
+
+    if (gradientCandidate != null &&
+        (bestCandidate == null ||
+            gradientCandidate.score > bestCandidate.score)) {
+      bestCandidate = gradientCandidate;
+    }
+
     if (bestCandidate == null) {
       return inputPath;
     }
@@ -1123,6 +1137,165 @@ class ImageEditorService {
     final score =
         (areaScore * 0.7) +
             (coverage * 0.3);
+
+    return _CropCandidate(
+      left: minX,
+      top: minY,
+      right: maxX,
+      bottom: maxY,
+      score: score,
+    );
+  }
+
+  // ============================================================
+  // DOCUMENT DETECTION (edge-gradient, content-adaptive)
+  // ============================================================
+
+  /// Detects the document region by following the image's own strongest
+  /// internal edges rather than assuming a flat, contrasting border.
+  ///
+  /// The threshold used to decide "this row/column has a document edge"
+  /// is relative to that image's own peak edge energy (not a fixed
+  /// constant), so the detector adapts to each photo's lighting,
+  /// background clutter, and contrast instead of using one setting
+  /// for every document.
+  static _CropCandidate? _detectDocumentBoundsByGradient(
+    img.Image gray,
+  ) {
+    final width = gray.width;
+    final height = gray.height;
+
+    final sampleStep = math.max(
+      1,
+      math.min(width, height) ~/ 400,
+    );
+
+    final cols = (width / sampleStep).ceil();
+    final rows = (height / sampleStep).ceil();
+
+    if (cols < 3 || rows < 3) {
+      return null;
+    }
+
+    final lum = List.generate(
+      rows,
+      (_) => List<int>.filled(cols, 0),
+    );
+
+    for (var ry = 0; ry < rows; ry++) {
+      final y = math.min(ry * sampleStep, height - 1);
+
+      for (var rx = 0; rx < cols; rx++) {
+        final x = math.min(rx * sampleStep, width - 1);
+        final pixel = gray.getPixel(x, y);
+
+        lum[ry][rx] =
+            ((pixel.r + pixel.g + pixel.b) / 3).round();
+      }
+    }
+
+    // Row/column edge-energy profiles: how much brightness changes
+    // as you scan across that row / down that column.
+    final rowEnergy = List<double>.filled(rows, 0);
+    final colEnergy = List<double>.filled(cols, 0);
+
+    for (var ry = 0; ry < rows; ry++) {
+      for (var rx = 1; rx < cols; rx++) {
+        rowEnergy[ry] +=
+            (lum[ry][rx] - lum[ry][rx - 1]).abs().toDouble();
+      }
+    }
+
+    for (var rx = 0; rx < cols; rx++) {
+      for (var ry = 1; ry < rows; ry++) {
+        colEnergy[rx] +=
+            (lum[ry][rx] - lum[ry - 1][rx]).abs().toDouble();
+      }
+    }
+
+    final maxRow = rowEnergy.isEmpty
+        ? 0.0
+        : rowEnergy.reduce(math.max);
+
+    final maxCol = colEnergy.isEmpty
+        ? 0.0
+        : colEnergy.reduce(math.max);
+
+    if (maxRow <= 0 || maxCol <= 0) {
+      return null;
+    }
+
+    // Adaptive: relative to THIS image's own peak edge energy, so a
+    // faint document on soft paper and a crisp document on a cluttered
+    // desk both get a sensible cutoff.
+    const relativeThreshold = 0.22;
+
+    var top = 0;
+    var bottom = rows - 1;
+    var left = 0;
+    var right = cols - 1;
+
+    for (var ry = 0; ry < rows; ry++) {
+      if (rowEnergy[ry] / maxRow >= relativeThreshold) {
+        top = ry;
+        break;
+      }
+    }
+
+    for (var ry = rows - 1; ry >= 0; ry--) {
+      if (rowEnergy[ry] / maxRow >= relativeThreshold) {
+        bottom = ry;
+        break;
+      }
+    }
+
+    for (var rx = 0; rx < cols; rx++) {
+      if (colEnergy[rx] / maxCol >= relativeThreshold) {
+        left = rx;
+        break;
+      }
+    }
+
+    for (var rx = cols - 1; rx >= 0; rx--) {
+      if (colEnergy[rx] / maxCol >= relativeThreshold) {
+        right = rx;
+        break;
+      }
+    }
+
+    if (right <= left || bottom <= top) {
+      return null;
+    }
+
+    final minX = left * sampleStep;
+    final maxX = math.min(right * sampleStep, width - 1);
+    final minY = top * sampleStep;
+    final maxY = math.min(bottom * sampleStep, height - 1);
+
+    final detectedWidth = maxX - minX;
+    final detectedHeight = maxY - minY;
+
+    final imageArea = width * height;
+    final detectedArea = detectedWidth * detectedHeight;
+    final areaRatio = detectedArea / imageArea;
+
+    if (areaRatio < 0.20 || areaRatio > 0.98) {
+      return null;
+    }
+
+    final aspectRatio = detectedWidth / detectedHeight;
+
+    if (aspectRatio < 0.25 || aspectRatio > 4.5) {
+      return null;
+    }
+
+    final areaScore =
+        areaRatio < 0.85 ? areaRatio : 1.0 - areaRatio;
+
+    final edgeScore =
+        (((maxRow + maxCol) / 2).clamp(0, 500)) / 500;
+
+    final score = (areaScore * 0.55) + (edgeScore * 0.45);
 
     return _CropCandidate(
       left: minX,

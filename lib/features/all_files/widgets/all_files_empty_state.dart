@@ -71,7 +71,7 @@ class AllFilesEmptyState extends StatelessWidget {
             Text(
               isSearch
                   ? 'Try searching with a different file name or clear your search query.'
-                  : 'All PDFs you create with DocVault will be stored locally and listed right here.',
+                  : 'All PDFs you create with DocScanner will be stored locally and listed right here.',
               textAlign: TextAlign.center,
               style: TextStyle(
                 fontSize: 14,

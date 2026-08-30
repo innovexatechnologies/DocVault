@@ -216,7 +216,7 @@ class PdfManagerProvider extends ChangeNotifier {
   Future<void> sharePdf(PdfDocument doc) async {
     await Share.shareXFiles(
       [XFile(doc.filePath)],
-      text: 'Sharing ${doc.fileName} from DocVault',
+      text: 'Sharing ${doc.fileName} from DocScanner',
     );
   }
 
@@ -230,7 +230,7 @@ class PdfManagerProvider extends ChangeNotifier {
     if (xFiles.isNotEmpty) {
       await Share.shareXFiles(
         xFiles,
-        text: 'Sharing ${xFiles.length} documents from DocVault',
+        text: 'Sharing ${xFiles.length} documents from DocScanner',
       );
     }
   }

@@ -181,7 +181,7 @@ class _ResultScreenState extends State<ResultScreen> {
           XFile(_currentFilePath),
         ],
         text:
-            'Document created with DocVault: $_currentFileName',
+            'Document created with DocScanner: $_currentFileName',
       );
     } catch (e) {
       if (!mounted) return;

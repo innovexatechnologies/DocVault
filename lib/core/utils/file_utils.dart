@@ -10,9 +10,9 @@ import 'package:pdfx/pdfx.dart' as pdfx;
 import '../../models/conversion_type.dart';
 
 class FileUtils {
-  static const String _pdfDirName = 'DocVault/PDFs';
-  static const String _tempDirName = 'DocVault/Temp';
-  static const String _cacheDirName = 'DocVault/Cache';
+  static const String _pdfDirName = 'DocScanner/PDFs';
+  static const String _tempDirName = 'DocScanner/Temp';
+  static const String _cacheDirName = 'DocScanner/Cache';
 
   // ===========================================================================
   // FILE NAME UTILITIES
@@ -32,7 +32,7 @@ class FileUtils {
     var clean = name.trim();
 
     if (clean.isEmpty) {
-      clean = 'DocVault_Document';
+      clean = 'DocScanner_Document';
     }
 
     clean = clean.replaceAll(
@@ -51,7 +51,7 @@ class FileUtils {
     clean = clean.trim();
 
     if (clean.isEmpty) {
-      clean = 'DocVault_Document';
+      clean = 'DocScanner_Document';
     }
 
     return '$clean.${type.extension}';
@@ -1157,7 +1157,7 @@ class FileUtils {
     final timestamp =
         DateTime.now().millisecondsSinceEpoch;
 
-    return 'DocVault_$timestamp.${type.extension}';
+    return 'DocScanner_$timestamp.${type.extension}';
   }
 
   static Future<String> getFullPdfPath(

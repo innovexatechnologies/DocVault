@@ -1,4 +1,4 @@
-# doc_vault
+# DocScanner
 
 A new Flutter project.
 

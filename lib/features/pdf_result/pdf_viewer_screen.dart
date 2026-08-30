@@ -42,7 +42,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   int _currentPage = 1;
 
   bool _isLoading = true;
-  bool _isSavingToDocVault = false;
+  bool _isSavingToDocScanner = false;
 
   String? _errorMessage;
 
@@ -180,7 +180,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           XFile(widget.filePath),
         ],
         text:
-            'Sharing ${widget.fileName} from DocVault',
+            'Sharing ${widget.fileName} from DocScanner',
       );
     } catch (e) {
       if (!mounted) return;
@@ -307,7 +307,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
     if (matchingDocuments.isEmpty) {
       _showSnackBar(
-        'Please save document to DocVault before editing.',
+        'Please save document to DocScanner before editing.',
         isError: true,
       );
       return;
@@ -318,7 +318,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
     if (doc.id.isEmpty) {
       _showSnackBar(
-        'Please save document to DocVault before editing.',
+        'Please save document to DocScanner before editing.',
         isError: true,
       );
       return;
@@ -445,13 +445,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // SAVE EXTERNAL DOCUMENT TO DOCVAULT
   // ============================================================
 
-  Future<void> _saveToDocVaultLibrary() async {
-    if (_isSavingToDocVault) {
+  Future<void> _saveToDocScannerLibrary() async {
+    if (_isSavingToDocScanner) {
       return;
     }
 
     setState(() {
-      _isSavingToDocVault = true;
+      _isSavingToDocScanner = true;
     });
 
     try {
@@ -499,19 +499,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       if (!mounted) return;
 
       _showSnackBar(
-        '"${widget.fileName}" saved to DocVault',
+        '"${widget.fileName}" saved to DocScanner',
       );
     } catch (e) {
       if (!mounted) return;
 
       _showSnackBar(
-        'Failed to save to DocVault: $e',
+        'Failed to save to DocScanner: $e',
         isError: true,
       );
     } finally {
       if (mounted) {
         setState(() {
-          _isSavingToDocVault = false;
+          _isSavingToDocScanner = false;
         });
       }
     }
@@ -1611,17 +1611,17 @@ Widget _buildDocumentCard(
                         Icons
                             .bookmark_add_outlined,
                     title:
-                        'Save to DocVault',
+                        'Save to DocScanner',
                     subtitle:
                         'Keep this document in your library',
                     onTap:
-                        _isSavingToDocVault
+                        _isSavingToDocScanner
                             ? null
                             : () {
                                 Navigator.pop(
                                   sheetContext,
                                 );
-                                _saveToDocVaultLibrary();
+                                _saveToDocScannerLibrary();
                               },
                   ),
 

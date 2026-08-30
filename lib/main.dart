@@ -94,7 +94,7 @@ class _MyAppState extends State<MyApp> {
   Future<void> _checkForInitialDocument() async {
     try {
       debugPrint(
-        'DocVault: checking initial external document...',
+        'DocScanner: checking initial external document...',
       );
 
       final result =
@@ -109,7 +109,7 @@ class _MyAppState extends State<MyApp> {
 
         if (uri != null && uri.isNotEmpty) {
           debugPrint(
-            'DocVault: external document found: $uri',
+            'DocScanner: external document found: $uri',
           );
 
           if (!mounted) return;
@@ -124,11 +124,11 @@ class _MyAppState extends State<MyApp> {
       }
 
       debugPrint(
-        'DocVault: no external document found.',
+        'DocScanner: no external document found.',
       );
     } catch (e) {
       debugPrint(
-        'DocVault: initial document error: $e',
+        'DocScanner: initial document error: $e',
       );
     }
 
@@ -156,7 +156,7 @@ class _MyAppState extends State<MyApp> {
     try {
       if (call.arguments == null) {
         debugPrint(
-          'DocVault: native document arguments are null.',
+          'DocScanner: native document arguments are null.',
         );
         return;
       }
@@ -169,19 +169,19 @@ class _MyAppState extends State<MyApp> {
 
       if (uri == null || uri.isEmpty) {
         debugPrint(
-          'DocVault: received empty document URI.',
+          'DocScanner: received empty document URI.',
         );
         return;
       }
 
       debugPrint(
-        'DocVault: new external document received: $uri',
+        'DocScanner: new external document received: $uri',
       );
 
       await _openIncomingDocument(uri);
     } catch (e) {
       debugPrint(
-        'DocVault: new document handling error: $e',
+        'DocScanner: new document handling error: $e',
       );
     }
   }
@@ -197,14 +197,14 @@ class _MyAppState extends State<MyApp> {
 
     if (_isOpeningExternalDocument) {
       debugPrint(
-        'DocVault: document is already opening.',
+        'DocScanner: document is already opening.',
       );
       return;
     }
 
     if (_lastProcessedUri == uri) {
       debugPrint(
-        'DocVault: document already processed.',
+        'DocScanner: document already processed.',
       );
       return;
     }
@@ -213,7 +213,7 @@ class _MyAppState extends State<MyApp> {
 
     try {
       debugPrint(
-        'DocVault: importing external document...',
+        'DocScanner: importing external document...',
       );
 
       final result =
@@ -244,11 +244,11 @@ class _MyAppState extends State<MyApp> {
       }
 
       debugPrint(
-        'DocVault: imported path = $savedPath',
+        'DocScanner: imported path = $savedPath',
       );
 
       debugPrint(
-        'DocVault: imported name = $fileName',
+        'DocScanner: imported name = $fileName',
       );
 
       _lastProcessedUri = uri;
@@ -277,11 +277,11 @@ class _MyAppState extends State<MyApp> {
       );
 
       debugPrint(
-        'DocVault: external document viewer opened.',
+        'DocScanner: external document viewer opened.',
       );
     } catch (e) {
       debugPrint(
-        'DocVault: external document import failed: $e',
+        'DocScanner: external document import failed: $e',
       );
 
       MyApp.scaffoldMessengerKey.currentState?.showSnackBar(
@@ -330,7 +330,7 @@ class _MyAppState extends State<MyApp> {
             scaffoldMessengerKey:
                 MyApp.scaffoldMessengerKey,
 
-            title: 'DocVault',
+            title: 'DocScanner',
 
             debugShowCheckedModeBanner: false,
 
@@ -361,7 +361,7 @@ class _MyAppState extends State<MyApp> {
 
               '/source-selection': (context) {
                 debugPrint(
-                  'DocVault: starting NEW conversion - clearing old images.',
+                  'DocScanner: starting NEW conversion - clearing old images.',
                 );
 
                 context
@@ -399,7 +399,7 @@ class _MyAppState extends State<MyApp> {
 
             onUnknownRoute: (settings) {
               debugPrint(
-                'DocVault: ignored unknown route: ${settings.name}',
+                'DocScanner: ignored unknown route: ${settings.name}',
               );
 
               return MaterialPageRoute(
@@ -503,7 +503,7 @@ class _MyAppState extends State<MyApp> {
     // ========================================================================
 
     debugPrint(
-      'DocVault: unknown route ignored: ${settings.name}',
+      'DocScanner: unknown route ignored: ${settings.name}',
     );
 
     return MaterialPageRoute(
