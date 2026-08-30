@@ -95,7 +95,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   void _navigate() {
     Future.delayed(
-      const Duration(milliseconds: 7400),
+      const Duration(milliseconds: 5400),
       () {
         if (!mounted) return;
 
