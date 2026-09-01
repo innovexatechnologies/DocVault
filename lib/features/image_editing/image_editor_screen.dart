@@ -1,4 +1,5 @@
  import 'dart:io';
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -66,14 +67,64 @@ class _ImageEditorScreenState
 
   String _selectedCropRatio = 'Free';
 
-  // Normalized crop rectangle.
-  // x/y/width/height are 0.0 -> 1.0.
-  Rect _cropRect = const Rect.fromLTWH(
-    0.08,
-    0.08,
-    0.84,
-    0.84,
-  );
+  // Four independently-movable corners, each normalized (0.0 -> 1.0)
+  // against the *actual image bounds* (not the canvas/letterbox).
+  // This is what makes real perspective correction possible: the
+  // user can drag any corner onto a skewed document edge instead of
+  // being limited to an axis-aligned rectangle.
+  Offset _cropTopLeft = const Offset(0.08, 0.08);
+  Offset _cropTopRight = const Offset(0.92, 0.08);
+  Offset _cropBottomLeft = const Offset(0.08, 0.92);
+  Offset _cropBottomRight = const Offset(0.92, 0.92);
+
+  static const Offset _defaultCropTopLeft = Offset(0.08, 0.08);
+  static const Offset _defaultCropTopRight = Offset(0.92, 0.08);
+  static const Offset _defaultCropBottomLeft = Offset(0.08, 0.92);
+  static const Offset _defaultCropBottomRight = Offset(0.92, 0.92);
+
+  void _resetCropCorners() {
+    _cropTopLeft = _defaultCropTopLeft;
+    _cropTopRight = _defaultCropTopRight;
+    _cropBottomLeft = _defaultCropBottomLeft;
+    _cropBottomRight = _defaultCropBottomRight;
+  }
+
+  /// Bounding rect of the current quad, used for the ratio presets
+  /// (which still behave as an axis-aligned rectangle) and for
+  /// backwards-compatible ratio math.
+  Rect get _cropBoundingRect => Rect.fromLTRB(
+        [
+          _cropTopLeft.dx,
+          _cropTopRight.dx,
+          _cropBottomLeft.dx,
+          _cropBottomRight.dx,
+        ].reduce(math.min),
+        [
+          _cropTopLeft.dy,
+          _cropTopRight.dy,
+          _cropBottomLeft.dy,
+          _cropBottomRight.dy,
+        ].reduce(math.min),
+        [
+          _cropTopLeft.dx,
+          _cropTopRight.dx,
+          _cropBottomLeft.dx,
+          _cropBottomRight.dx,
+        ].reduce(math.max),
+        [
+          _cropTopLeft.dy,
+          _cropTopRight.dy,
+          _cropBottomLeft.dy,
+          _cropBottomRight.dy,
+        ].reduce(math.max),
+      );
+
+  void _setCropFromRect(Rect rect) {
+    _cropTopLeft = Offset(rect.left, rect.top);
+    _cropTopRight = Offset(rect.right, rect.top);
+    _cropBottomLeft = Offset(rect.left, rect.bottom);
+    _cropBottomRight = Offset(rect.right, rect.bottom);
+  }
 
   Size? _imageSize;
 
@@ -297,13 +348,7 @@ class _ImageEditorScreenState
         _selectedCropRatio =
             'Free';
 
-        _cropRect =
-            const Rect.fromLTWH(
-          0.08,
-          0.08,
-          0.84,
-          0.84,
-        );
+        _resetCropCorners();
       });
 
       await _loadImageSize();
@@ -438,63 +483,18 @@ class _ImageEditorScreenState
     });
 
     try {
-      final imageWidth =
-          _imageSize!.width;
-
-      final imageHeight =
-          _imageSize!.height;
-
-      final x =
-          (_cropRect.left *
-                  imageWidth)
-              .round();
-
-      final y =
-          (_cropRect.top *
-                  imageHeight)
-              .round();
-
-      final width =
-          (_cropRect.width *
-                  imageWidth)
-              .round();
-
-      final height =
-          (_cropRect.height *
-                  imageHeight)
-              .round();
-
-      final safeX =
-          x.clamp(
-        0,
-        imageWidth.toInt() - 1,
-      );
-
-      final safeY =
-          y.clamp(
-        0,
-        imageHeight.toInt() - 1,
-      );
-
-      final safeWidth =
-          width.clamp(
-        1,
-        imageWidth.toInt() - safeX,
-      );
-
-      final safeHeight =
-          height.clamp(
-        1,
-        imageHeight.toInt() - safeY,
-      );
-
+      // Corners are already normalized against the real image bounds
+      // (see _resizeCrop / _moveCrop), so they can be handed straight
+      // to the perspective-transform pipeline. This is a genuine
+      // 4-point warp, not a rectangular crop: a skewed/angled quad
+      // gets flattened just like the auto-detector's result.
       final newPath =
-          await _editorService.cropImage(
+          await _editorService.perspectiveCropQuad(
         _currentWorkingPath,
-        x: safeX,
-        y: safeY,
-        width: safeWidth,
-        height: safeHeight,
+        topLeft: _cropTopLeft,
+        topRight: _cropTopRight,
+        bottomLeft: _cropBottomLeft,
+        bottomRight: _cropBottomRight,
       );
 
       if (!mounted) return;
@@ -548,9 +548,10 @@ class _ImageEditorScreenState
         return;
       }
 
-      _cropRect =
-          _createCenteredCropRect(
-        targetRatio,
+      _setCropFromRect(
+        _createCenteredCropRect(
+          targetRatio,
+        ),
       );
     });
   }
@@ -654,44 +655,60 @@ class _ImageEditorScreenState
   // CROP DRAG
   // ============================================================
 
+  /// Converts a screen-space drag delta (pixels within the crop
+  /// canvas) into a delta in normalized image-fraction space, using
+  /// the *actual displayed image rect* (i.e. accounting for the
+  /// BoxFit.contain letterboxing), not the raw canvas size. Without
+  /// this, dragging on an image whose aspect ratio doesn't match the
+  /// canvas would move the corners at the wrong rate / direction.
+  Offset _screenDeltaToImageFraction(
+    Offset delta,
+    Size canvasSize,
+  ) {
+    final displayedRect =
+        _displayedImageRect(canvasSize);
+
+    if (displayedRect.width <= 0 ||
+        displayedRect.height <= 0) {
+      return Offset.zero;
+    }
+
+    return Offset(
+      delta.dx / displayedRect.width,
+      delta.dy / displayedRect.height,
+    );
+  }
+
   void _moveCrop(
     Offset delta,
     Size canvasSize,
   ) {
-    final dx =
-        delta.dx /
-            canvasSize.width;
-
-    final dy =
-        delta.dy /
-            canvasSize.height;
-
-    var left =
-        _cropRect.left + dx;
-
-    var top =
-        _cropRect.top + dy;
-
-    left =
-        left.clamp(
-      0.0,
-      1.0 - _cropRect.width,
+    final d =
+        _screenDeltaToImageFraction(
+      delta,
+      canvasSize,
     );
 
-    top =
-        top.clamp(
-      0.0,
-      1.0 - _cropRect.height,
-    );
+    final rect = _cropBoundingRect;
+
+    // Only translate if every corner would remain within [0, 1]
+    // after the move, so the whole quad shifts together without
+    // ever sliding off the source image.
+    final minDx = -rect.left;
+    final maxDx = 1.0 - rect.right;
+    final minDy = -rect.top;
+    final maxDy = 1.0 - rect.bottom;
+
+    final clampedDx =
+        d.dx.clamp(minDx, maxDx);
+    final clampedDy =
+        d.dy.clamp(minDy, maxDy);
 
     setState(() {
-      _cropRect =
-          Rect.fromLTWH(
-        left,
-        top,
-        _cropRect.width,
-        _cropRect.height,
-      );
+      _cropTopLeft += Offset(clampedDx, clampedDy);
+      _cropTopRight += Offset(clampedDx, clampedDy);
+      _cropBottomLeft += Offset(clampedDx, clampedDy);
+      _cropBottomRight += Offset(clampedDx, clampedDy);
     });
   }
 
@@ -700,165 +717,204 @@ class _ImageEditorScreenState
     Offset delta,
     Size canvasSize,
   ) {
-    final dx =
-        delta.dx /
-            canvasSize.width;
+    final d =
+        _screenDeltaToImageFraction(
+      delta,
+      canvasSize,
+    );
 
-    final dy =
-        delta.dy /
-            canvasSize.height;
+    final ratio = _ratioValue(_selectedCropRatio);
 
-    var left =
-        _cropRect.left;
+    if (ratio == null) {
+      // FREE MODE: each corner is fully independent, which is what
+      // makes true perspective correction possible (e.g. matching a
+      // document photographed at an angle). Bounds keep the corner
+      // on the image and keep the quad from collapsing into a line.
+      setState(() {
+        switch (handle) {
+          case _CropHandle.topLeft:
+            _cropTopLeft = _clampCorner(
+              _cropTopLeft + d,
+              minX: 0.0,
+              maxX: _cropTopRight.dx - _minCornerGap,
+              minY: 0.0,
+              maxY: _cropBottomLeft.dy - _minCornerGap,
+            );
+            break;
 
-    var top =
-        _cropRect.top;
+          case _CropHandle.topRight:
+            _cropTopRight = _clampCorner(
+              _cropTopRight + d,
+              minX: _cropTopLeft.dx + _minCornerGap,
+              maxX: 1.0,
+              minY: 0.0,
+              maxY: _cropBottomRight.dy - _minCornerGap,
+            );
+            break;
 
-    var right =
-        _cropRect.right;
+          case _CropHandle.bottomLeft:
+            _cropBottomLeft = _clampCorner(
+              _cropBottomLeft + d,
+              minX: 0.0,
+              maxX: _cropBottomRight.dx - _minCornerGap,
+              minY: _cropTopLeft.dy + _minCornerGap,
+              maxY: 1.0,
+            );
+            break;
 
-    var bottom =
-        _cropRect.bottom;
+          case _CropHandle.bottomRight:
+            _cropBottomRight = _clampCorner(
+              _cropBottomRight + d,
+              minX: _cropBottomLeft.dx + _minCornerGap,
+              maxX: 1.0,
+              minY: _cropTopRight.dy + _minCornerGap,
+              maxY: 1.0,
+            );
+            break;
+        }
+      });
+
+      return;
+    }
+
+    // FIXED RATIO MODE: behave like a classic axis-aligned resize,
+    // same feel as before, just re-expressed through the 4 corners.
+    final rect = _cropBoundingRect;
+
+    var left = rect.left;
+    var top = rect.top;
+    var right = rect.right;
+    var bottom = rect.bottom;
 
     switch (handle) {
       case _CropHandle.topLeft:
-        left += dx;
-        top += dy;
+        left += d.dx;
+        top += d.dy;
         break;
 
       case _CropHandle.topRight:
-        right += dx;
-        top += dy;
+        right += d.dx;
+        top += d.dy;
         break;
 
       case _CropHandle.bottomLeft:
-        left += dx;
-        bottom += dy;
+        left += d.dx;
+        bottom += d.dy;
         break;
 
       case _CropHandle.bottomRight:
-        right += dx;
-        bottom += dy;
+        right += d.dx;
+        bottom += d.dy;
         break;
     }
 
     const minSize = 0.08;
 
-    left =
-        left.clamp(
-      0.0,
-      right - minSize,
-    );
+    left = left.clamp(0.0, right - minSize);
+    right = right.clamp(left + minSize, 1.0);
+    top = top.clamp(0.0, bottom - minSize);
+    bottom = bottom.clamp(top + minSize, 1.0);
 
-    right =
-        right.clamp(
-      left + minSize,
-      1.0,
-    );
+    final newWidth = right - left;
+    final newHeight = bottom - top;
 
-    top =
-        top.clamp(
-      0.0,
-      bottom - minSize,
-    );
+    final pixelRatio =
+        _imageSize!.width / _imageSize!.height;
 
-    bottom =
-        bottom.clamp(
-      top + minSize,
-      1.0,
-    );
+    final currentRatio =
+        (newWidth * pixelRatio) / newHeight;
 
-    // Keep fixed aspect ratio for all ratio modes.
-    final ratio =
-        _ratioValue(
-      _selectedCropRatio,
-    );
+    if ((currentRatio - ratio).abs() > 0.001) {
+      if (currentRatio > ratio) {
+        final correctedWidth =
+            newHeight * ratio / pixelRatio;
 
-    if (ratio != null) {
-      final newWidth =
-          right - left;
-
-      final newHeight =
-          bottom - top;
-
-      final pixelRatio =
-          _imageSize!.width /
-              _imageSize!.height;
-
-      final currentRatio =
-          (newWidth * pixelRatio) /
-              newHeight;
-
-      if ((currentRatio - ratio)
-              .abs() >
-          0.001) {
-        if (currentRatio > ratio) {
-          final correctedWidth =
-              newHeight *
-                  ratio /
-                  pixelRatio;
-
-          if (handle ==
-                  _CropHandle.topLeft ||
-              handle ==
-                  _CropHandle.bottomLeft) {
-            left =
-                right -
-                    correctedWidth;
-          } else {
-            right =
-                left +
-                    correctedWidth;
-          }
+        if (handle == _CropHandle.topLeft ||
+            handle == _CropHandle.bottomLeft) {
+          left = right - correctedWidth;
         } else {
-          final correctedHeight =
-              newWidth *
-                  pixelRatio /
-                  ratio;
+          right = left + correctedWidth;
+        }
+      } else {
+        final correctedHeight =
+            newWidth * pixelRatio / ratio;
 
-          if (handle ==
-                  _CropHandle.topLeft ||
-              handle ==
-                  _CropHandle.topRight) {
-            top =
-                bottom -
-                    correctedHeight;
-          } else {
-            bottom =
-                top +
-                    correctedHeight;
-          }
+        if (handle == _CropHandle.topLeft ||
+            handle == _CropHandle.topRight) {
+          top = bottom - correctedHeight;
+        } else {
+          bottom = top + correctedHeight;
         }
       }
     }
 
-    left =
-        left.clamp(0.0, 0.92);
-
-    top =
-        top.clamp(0.0, 0.92);
-
-    right =
-        right.clamp(
-      left + minSize,
-      1.0,
-    );
-
-    bottom =
-        bottom.clamp(
-      top + minSize,
-      1.0,
-    );
+    left = left.clamp(0.0, 0.92);
+    top = top.clamp(0.0, 0.92);
+    right = right.clamp(left + minSize, 1.0);
+    bottom = bottom.clamp(top + minSize, 1.0);
 
     setState(() {
-      _cropRect =
-          Rect.fromLTRB(
-        left,
-        top,
-        right,
-        bottom,
+      _setCropFromRect(
+        Rect.fromLTRB(left, top, right, bottom),
       );
     });
+  }
+
+  static const double _minCornerGap = 0.08;
+
+  Offset _clampCorner(
+    Offset corner, {
+    required double minX,
+    required double maxX,
+    required double minY,
+    required double maxY,
+  }) {
+    // Guard against inverted bounds (which would otherwise throw)
+    // when two corners have been dragged very close together.
+    final safeMaxX = math.max(minX, maxX);
+    final safeMaxY = math.max(minY, maxY);
+
+    return Offset(
+      corner.dx.clamp(minX, safeMaxX),
+      corner.dy.clamp(minY, safeMaxY),
+    );
+  }
+
+  /// The rect (in canvas-local pixels) where the image is actually
+  /// drawn, given BoxFit.contain letterboxing. Returns the full
+  /// canvas as a fallback if the image size isn't known yet.
+  Rect _displayedImageRect(Size canvasSize) {
+    final imageSize = _imageSize;
+
+    if (imageSize == null ||
+        imageSize.width <= 0 ||
+        imageSize.height <= 0) {
+      return Offset.zero & canvasSize;
+    }
+
+    final canvasRatio =
+        canvasSize.width / canvasSize.height;
+
+    final imageRatio =
+        imageSize.width / imageSize.height;
+
+    double width;
+    double height;
+
+    if (imageRatio > canvasRatio) {
+      // Image is relatively wider: letterboxed top/bottom.
+      width = canvasSize.width;
+      height = width / imageRatio;
+    } else {
+      // Image is relatively taller: letterboxed left/right.
+      height = canvasSize.height;
+      width = height * imageRatio;
+    }
+
+    final left = (canvasSize.width - width) / 2;
+    final top = (canvasSize.height - height) / 2;
+
+    return Rect.fromLTWH(left, top, width, height);
   }
 
   // ============================================================
@@ -1649,8 +1705,12 @@ class _ImageEditorScreenState
                     CustomPaint(
                   painter:
                       _CropPainter(
-                    cropRect:
-                        _cropRect,
+                    topLeft: _cropTopLeft,
+                    topRight: _cropTopRight,
+                    bottomLeft: _cropBottomLeft,
+                    bottomRight: _cropBottomRight,
+                    displayedImageRect:
+                        _displayedImageRect(size),
                     primaryColor:
                         AppTheme
                             .primaryColor,
@@ -1766,38 +1826,33 @@ class _ImageEditorScreenState
     _CropHandle handle,
     Size size,
   ) {
-    double left =
-        _cropRect.left *
-            size.width;
+    final displayedRect =
+        _displayedImageRect(size);
 
-    double top =
-        _cropRect.top *
-            size.height;
+    Offset corner;
 
-    if (handle ==
-        _CropHandle.topRight) {
-      left =
-          _cropRect.right *
-              size.width;
+    switch (handle) {
+      case _CropHandle.topLeft:
+        corner = _cropTopLeft;
+        break;
+      case _CropHandle.topRight:
+        corner = _cropTopRight;
+        break;
+      case _CropHandle.bottomLeft:
+        corner = _cropBottomLeft;
+        break;
+      case _CropHandle.bottomRight:
+        corner = _cropBottomRight;
+        break;
     }
 
-    if (handle ==
-        _CropHandle.bottomLeft) {
-      top =
-          _cropRect.bottom *
-              size.height;
-    }
+    final left =
+        displayedRect.left +
+            corner.dx * displayedRect.width;
 
-    if (handle ==
-        _CropHandle.bottomRight) {
-      left =
-          _cropRect.right *
-              size.width;
-
-      top =
-          _cropRect.bottom *
-              size.height;
-    }
+    final top =
+        displayedRect.top +
+            corner.dy * displayedRect.height;
 
     return Positioned(
       left: left - 17,
@@ -2070,13 +2125,7 @@ class _ImageEditorScreenState
                 _selectedCropRatio =
                     'Free';
 
-                _cropRect =
-                    const Rect.fromLTWH(
-                  0.08,
-                  0.08,
-                  0.84,
-                  0.84,
-                );
+                _resetCropCorners();
               }
             });
           },
@@ -2868,30 +2917,52 @@ enum _CropHandle {
 
 class _CropPainter
     extends CustomPainter {
-  final Rect cropRect;
+  final Offset topLeft;
+  final Offset topRight;
+  final Offset bottomLeft;
+  final Offset bottomRight;
+
+  /// The rect (in this painter's local canvas space) where the
+  /// image is actually drawn, so the quad lines up with the image
+  /// even when it's letterboxed by BoxFit.contain.
+  final Rect displayedImageRect;
+
   final Color primaryColor;
 
   const _CropPainter({
-    required this.cropRect,
+    required this.topLeft,
+    required this.topRight,
+    required this.bottomLeft,
+    required this.bottomRight,
+    required this.displayedImageRect,
     required this.primaryColor,
   });
+
+  Offset _toCanvas(Offset normalized) {
+    return Offset(
+      displayedImageRect.left +
+          normalized.dx * displayedImageRect.width,
+      displayedImageRect.top +
+          normalized.dy * displayedImageRect.height,
+    );
+  }
 
   @override
   void paint(
     Canvas canvas,
     Size size,
   ) {
-    final rect =
-        Rect.fromLTWH(
-      cropRect.left *
-          size.width,
-      cropRect.top *
-          size.height,
-      cropRect.width *
-          size.width,
-      cropRect.height *
-          size.height,
-    );
+    final pTopLeft = _toCanvas(topLeft);
+    final pTopRight = _toCanvas(topRight);
+    final pBottomLeft = _toCanvas(bottomLeft);
+    final pBottomRight = _toCanvas(bottomRight);
+
+    final quad = Path()
+      ..moveTo(pTopLeft.dx, pTopLeft.dy)
+      ..lineTo(pTopRight.dx, pTopRight.dy)
+      ..lineTo(pBottomRight.dx, pBottomRight.dy)
+      ..lineTo(pBottomLeft.dx, pBottomLeft.dy)
+      ..close();
 
     final overlayPaint =
         Paint()
@@ -2907,16 +2978,12 @@ class _CropPainter
                 size,
           );
 
-    final selected =
-        Path()
-          ..addRect(rect);
-
     final outside =
         Path.combine(
       PathOperation
           .difference,
       full,
-      selected,
+      quad,
     );
 
     canvas.drawPath(
@@ -2932,11 +2999,14 @@ class _CropPainter
               PaintingStyle.stroke
           ..strokeWidth = 2.5;
 
-    canvas.drawRect(
-      rect,
+    canvas.drawPath(
+      quad,
       borderPaint,
     );
 
+    // Third-line guides, interpolated along the quad's edges so they
+    // stay correct even when the quad is skewed (not just an
+    // axis-aligned rectangle).
     final guidePaint =
         Paint()
           ..color = Colors.white
@@ -2945,55 +3015,69 @@ class _CropPainter
           )
           ..strokeWidth = 1;
 
-    final thirdX =
-        rect.width / 3;
-
-    final thirdY =
-        rect.height / 3;
+    Offset lerp(Offset a, Offset b, double t) =>
+        Offset.lerp(a, b, t)!;
 
     for (var i = 1; i <= 2; i++) {
-      final x =
-          rect.left +
-              thirdX * i;
+      final t = i / 3;
 
-      canvas.drawLine(
-        Offset(
-          x,
-          rect.top,
-        ),
-        Offset(
-          x,
-          rect.bottom,
-        ),
-        guidePaint,
-      );
+      // Vertical-ish guide line: between a point on the top edge
+      // and the corresponding point on the bottom edge.
+      final topPoint = lerp(pTopLeft, pTopRight, t);
+      final bottomPoint = lerp(pBottomLeft, pBottomRight, t);
 
-      final y =
-          rect.top +
-              thirdY * i;
+      canvas.drawLine(topPoint, bottomPoint, guidePaint);
 
-      canvas.drawLine(
-        Offset(
-          rect.left,
-          y,
-        ),
-        Offset(
-          rect.right,
-          y,
-        ),
-        guidePaint,
-      );
+      // Horizontal-ish guide line: between a point on the left edge
+      // and the corresponding point on the right edge.
+      final leftPoint = lerp(pTopLeft, pBottomLeft, t);
+      final rightPoint = lerp(pTopRight, pBottomRight, t);
+
+      canvas.drawLine(leftPoint, rightPoint, guidePaint);
     }
+
+    // Corner accents so a skewed quad still reads clearly as
+    // "these four points are the document corners".
+    final cornerPaint =
+        Paint()
+          ..color = primaryColor
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 3;
+
+    const cornerLen = 16.0;
+
+    void drawCornerMark(Offset p, Offset toA, Offset toB) {
+      final dirA = (toA - p);
+      final dirB = (toB - p);
+
+      final lenA = dirA.distance;
+      final lenB = dirB.distance;
+
+      if (lenA == 0 || lenB == 0) return;
+
+      final unitA = dirA / lenA;
+      final unitB = dirB / lenB;
+
+      canvas.drawLine(p, p + unitA * cornerLen, cornerPaint);
+      canvas.drawLine(p, p + unitB * cornerLen, cornerPaint);
+    }
+
+    drawCornerMark(pTopLeft, pTopRight, pBottomLeft);
+    drawCornerMark(pTopRight, pTopLeft, pBottomRight);
+    drawCornerMark(pBottomLeft, pTopLeft, pBottomRight);
+    drawCornerMark(pBottomRight, pTopRight, pBottomLeft);
   }
 
   @override
   bool shouldRepaint(
     covariant _CropPainter oldDelegate,
   ) {
-    return oldDelegate.cropRect !=
-            cropRect ||
-        oldDelegate.primaryColor !=
-            primaryColor;
+    return oldDelegate.topLeft != topLeft ||
+        oldDelegate.topRight != topRight ||
+        oldDelegate.bottomLeft != bottomLeft ||
+        oldDelegate.bottomRight != bottomRight ||
+        oldDelegate.displayedImageRect != displayedImageRect ||
+        oldDelegate.primaryColor != primaryColor;
   }
 }
  

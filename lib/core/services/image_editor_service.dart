@@ -182,6 +182,88 @@ class ImageEditorService {
   }
 
   // ============================================================
+  // PERSPECTIVE CROP (4-POINT / QUAD)
+  // ============================================================
+
+  /// Crops and flattens an image using four independently-placed
+  /// corners instead of an axis-aligned rectangle.
+  ///
+  /// Each corner is given as a fraction (0.0 -> 1.0) of the source
+  /// image's width/height, so callers don't need to know the pixel
+  /// dimensions up front.
+  ///
+  /// If the four corners already form an axis-aligned rectangle
+  /// (e.g. a fixed-ratio crop that the user never skewed), this
+  /// still produces a correct result: `img.copyRectify` degrades
+  /// gracefully to a plain crop/resample in that case.
+  Future<String> perspectiveCropQuad(
+    String inputPath, {
+    required Offset topLeft,
+    required Offset topRight,
+    required Offset bottomLeft,
+    required Offset bottomRight,
+  }) async {
+    final bytes = await File(inputPath).readAsBytes();
+
+    final image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Unable to decode image.');
+    }
+
+    img.Point toPixel(Offset normalized) {
+      final px = (normalized.dx * image.width)
+          .round()
+          .clamp(0, image.width - 1);
+
+      final py = (normalized.dy * image.height)
+          .round()
+          .clamp(0, image.height - 1);
+
+      return img.Point(px, py);
+    }
+
+    final pTopLeft = toPixel(topLeft);
+    final pTopRight = toPixel(topRight);
+    final pBottomLeft = toPixel(bottomLeft);
+    final pBottomRight = toPixel(bottomRight);
+
+    // Guard against a degenerate/collapsed quad (e.g. all four
+    // corners dragged to nearly the same point) before we ask the
+    // image library to rectify it.
+    final minSpanX = math.max(
+      (pTopRight.x - pTopLeft.x).abs(),
+      (pBottomRight.x - pBottomLeft.x).abs(),
+    );
+
+    final minSpanY = math.max(
+      (pBottomLeft.y - pTopLeft.y).abs(),
+      (pBottomRight.y - pTopRight.y).abs(),
+    );
+
+    if (minSpanX < 10 || minSpanY < 10) {
+      throw Exception(
+        'Crop area is too small. Drag the corners further apart.',
+      );
+    }
+
+    final rectified = img.copyRectify(
+      image,
+      topLeft: pTopLeft,
+      topRight: pTopRight,
+      bottomLeft: pBottomLeft,
+      bottomRight: pBottomRight,
+      interpolation: img.Interpolation.cubic,
+    );
+
+    if (rectified.width < 10 || rectified.height < 10) {
+      throw Exception('Crop result is too small.');
+    }
+
+    return _saveImage(rectified);
+  }
+
+  // ============================================================
   // APPLY FILTER
   // ============================================================
 
