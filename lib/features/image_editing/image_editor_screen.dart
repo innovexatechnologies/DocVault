@@ -43,6 +43,14 @@ class _ImageEditorScreenState
 
   late String _currentWorkingPath;
 
+  // The "source" image that all filters are computed from. This is
+  // updated by structural edits (rotate/flip/crop/text) since those
+  // are meant to be permanent, but it is NEVER updated by applying a
+  // filter. Every filter switch re-applies the newly selected filter
+  // to THIS path, so filters never stack on top of each other and
+  // "Original" always has an untouched image to fall back to.
+  late String _baseImagePath;
+
   bool _isProcessing = false;
   bool _hasUnsavedEdits = false;
 
@@ -135,6 +143,26 @@ class _ImageEditorScreenState
   ImageFilterType _activeFilter =
       ImageFilterType.none;
 
+  /// Produces the preview path for [basePath] under the currently
+  /// active filter. Used both by the filter picker itself and by
+  /// every structural edit (rotate/flip/crop/text), so that after a
+  /// structural edit the on-screen preview still reflects whatever
+  /// filter was selected -- without ever baking that filter into
+  /// `_baseImagePath`.
+  Future<String> _applyActiveFilterTo(
+    String basePath,
+  ) async {
+    if (_activeFilter ==
+        ImageFilterType.none) {
+      return basePath;
+    }
+
+    return _editorService.applyFilter(
+      basePath,
+      _activeFilter,
+    );
+  }
+
   // ============================================================
   // INIT
   // ============================================================
@@ -144,6 +172,9 @@ class _ImageEditorScreenState
     super.initState();
 
     _currentWorkingPath =
+        widget.imagePath;
+
+    _baseImagePath =
         widget.imagePath;
 
     _loadImageSize();
@@ -189,16 +220,22 @@ class _ImageEditorScreenState
     });
 
     try {
-      final newPath =
+      final newBasePath =
           await _editorService.rotateImage(
-        _currentWorkingPath,
+        _baseImagePath,
         degrees,
+      );
+
+      final preview =
+          await _applyActiveFilterTo(
+        newBasePath,
       );
 
       if (!mounted) return;
 
       setState(() {
-        _currentWorkingPath = newPath;
+        _baseImagePath = newBasePath;
+        _currentWorkingPath = preview;
         _hasUnsavedEdits = true;
       });
 
@@ -231,17 +268,23 @@ class _ImageEditorScreenState
     });
 
     try {
-      final newPath =
+      final newBasePath =
           await _editorService.flipImage(
-        _currentWorkingPath,
+        _baseImagePath,
         horizontal: horizontal,
         vertical: vertical,
+      );
+
+      final preview =
+          await _applyActiveFilterTo(
+        newBasePath,
       );
 
       if (!mounted) return;
 
       setState(() {
-        _currentWorkingPath = newPath;
+        _baseImagePath = newBasePath;
+        _currentWorkingPath = preview;
         _hasUnsavedEdits = true;
       });
     } catch (e) {
@@ -270,6 +313,13 @@ class _ImageEditorScreenState
       setState(() {
         _activeFilter =
             ImageFilterType.none;
+
+        // Restore the untouched (pre-filter) source instead of
+        // leaving whatever the last filter produced on screen.
+        _currentWorkingPath =
+            _baseImagePath;
+
+        _hasUnsavedEdits = true;
       });
       return;
     }
@@ -283,9 +333,13 @@ class _ImageEditorScreenState
     });
 
     try {
+      // Always filter the original/base image, never the current
+      // (possibly already-filtered) preview -- otherwise switching
+      // B/W -> Grayscale would apply grayscale on top of B/W instead
+      // of computing grayscale fresh from the source.
       final newPath =
           await _editorService.applyFilter(
-        _currentWorkingPath,
+        _baseImagePath,
         filter,
       );
 
@@ -322,7 +376,7 @@ class _ImageEditorScreenState
 
     try {
       final file =
-          File(_currentWorkingPath);
+          File(_baseImagePath);
 
       final bytes =
           await file.readAsBytes();
@@ -334,11 +388,19 @@ class _ImageEditorScreenState
         croppedBytes,
       );
 
+      final preview =
+          await _applyActiveFilterTo(
+        tempFile.path,
+      );
+
       if (!mounted) return;
 
       setState(() {
-        _currentWorkingPath =
+        _baseImagePath =
             tempFile.path;
+
+        _currentWorkingPath =
+            preview;
 
         _hasUnsavedEdits = true;
 
@@ -444,6 +506,13 @@ class _ImageEditorScreenState
         _currentWorkingPath =
             newPath;
 
+        // Text is burned into the pixels (as it already was before
+        // this fix), so it must also become the new base -- otherwise
+        // selecting "Original" afterwards would silently erase text
+        // the user explicitly committed to the image.
+        _baseImagePath =
+            newPath;
+
         _overlayText = '';
 
         _hasUnsavedEdits = true;
@@ -488,20 +557,25 @@ class _ImageEditorScreenState
       // to the perspective-transform pipeline. This is a genuine
       // 4-point warp, not a rectangular crop: a skewed/angled quad
       // gets flattened just like the auto-detector's result.
-      final newPath =
+      final newBasePath =
           await _editorService.perspectiveCropQuad(
-        _currentWorkingPath,
+        _baseImagePath,
         topLeft: _cropTopLeft,
         topRight: _cropTopRight,
         bottomLeft: _cropBottomLeft,
         bottomRight: _cropBottomRight,
       );
 
+      final preview =
+          await _applyActiveFilterTo(
+        newBasePath,
+      );
+
       if (!mounted) return;
 
       setState(() {
-        _currentWorkingPath =
-            newPath;
+        _baseImagePath = newBasePath;
+        _currentWorkingPath = preview;
 
         _hasUnsavedEdits = true;
 
