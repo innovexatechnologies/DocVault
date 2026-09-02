@@ -1,6 +1,5 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-```
 <!-- Permissions -->
 <uses-permission android:name="android.permission.CAMERA" />
 <uses-permission android:name="android.permission.INTERNET" />
@@ -120,6 +119,15 @@
         android:name="flutterEmbedding"
         android:value="2" />
 
+    <!-- ================================ -->
+    <!-- GOOGLE CODE SCANNER: let Play services pre-download the -->
+    <!-- scanner module at install time instead of on first scan. -->
+    <!-- https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner -->
+    <!-- ================================ -->
+    <meta-data
+        android:name="com.google.mlkit.vision.DEPENDENCIES"
+        android:value="barcode_ui" />
+
 </application>
 
 
@@ -133,6 +141,5 @@
     </intent>
 
 </queries>
-```
 
 </manifest>

@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/utils/responsive_helper.dart';
 import '../../core/providers/theme_provider.dart';
+import '../../core/services/code_scanner_service.dart';
+import '../../core/widgets/code_scan_result_dialog.dart';
 import '../../models/conversion_type.dart';
 import 'source_selection_screen.dart';
 
@@ -28,6 +30,47 @@ class HomeScreen extends StatelessWidget {
         builder: (_) => SourceSelectionScreen(
           conversionType: conversionType,
         ),
+      ),
+    );
+  }
+
+  // ===========================================================================
+  // QR / BARCODE SCAN
+  // ===========================================================================
+
+  Future<void> _handleScanCode(BuildContext context) async {
+    if (!CodeScannerService.isSupported) {
+      _showScannerMessage(
+        context,
+        'QR/barcode scanning uses Google Play services and is '
+        'currently available on Android only.',
+      );
+      return;
+    }
+
+    try {
+      final result = await CodeScannerService.scan();
+
+      if (result == null) {
+        // User backed out of the scanner -- nothing to do.
+        return;
+      }
+
+      if (context.mounted) {
+        await CodeScanResultDialog.show(context, result);
+      }
+    } on CodeScannerException catch (e) {
+      if (context.mounted) {
+        _showScannerMessage(context, e.message);
+      }
+    }
+  }
+
+  void _showScannerMessage(BuildContext context, String message) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(message),
+        behavior: SnackBarBehavior.floating,
       ),
     );
   }
@@ -327,6 +370,31 @@ class HomeScreen extends StatelessWidget {
                       context,
                       ConversionType.ppt,
                     );
+                  },
+                ),
+
+                const SizedBox(height: 12),
+
+                // =================================================================
+                // QR / BARCODE SCAN
+                // =================================================================
+
+                _buildConversionCard(
+                  context,
+                  isDark: isDark,
+                  isMobile: isMobile,
+                  title: 'Scan QR / Barcode',
+                  description:
+                      'Scan a QR code or barcode using your camera.',
+                  buttonText: 'Scan Code',
+                  icon: Icons.qr_code_scanner_rounded,
+                  iconLetter: 'QR',
+                  gradient: const [
+                    Color(0xFF00C6AE),
+                    Color(0xFF00A896),
+                  ],
+                  onTap: () {
+                    _handleScanCode(context);
                   },
                 ),
 
