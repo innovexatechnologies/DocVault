@@ -187,74 +187,36 @@ Uint8List _generatePptxInBackground(
   // 1000 x 1000 ->  8 x 8
   //
   // ==========================================================================
+// ==========================================================================
+// STANDARD POWERPOINT WIDESCREEN 16:9
+// ==========================================================================
+//
+// PowerPoint ki proper horizontal/landscape slide.
+// Ye portrait/document style nahi hogi.
+//
+// ==========================================================================
 
-  const double presentationWidthInches = 8.0;
+const double presentationWidth = 13.333333;
+const double presentationHeight = 7.5;
 
-  final double firstAspectRatio =
-      firstDecoded.width /
-          firstDecoded.height;
+// Standard 16:9 PowerPoint dimensions.
+final int slideWidthEmu =
+    _inchesToEmu(presentationWidth);
 
-  double presentationHeightInches =
-      presentationWidthInches /
-          firstAspectRatio;
+final int slideHeightEmu =
+    _inchesToEmu(presentationHeight);
 
-  // ==========================================================================
-  // SAFETY LIMIT
-  //
-  // Keep PowerPoint slide dimensions inside a practical range.
-  // Aspect ratio is preserved.
-  // ==========================================================================
-
-  const double minSlideInches = 1.0;
-  const double maxSlideInches = 56.0;
-
-  double presentationWidth =
-      presentationWidthInches;
-
-  double presentationHeight =
-      presentationHeightInches;
-
-  if (presentationWidth > maxSlideInches) {
-    presentationWidth = maxSlideInches;
-
-    presentationHeight =
-        presentationWidth / firstAspectRatio;
-  }
-
-  if (presentationHeight > maxSlideInches) {
-    presentationHeight = maxSlideInches;
-
-    presentationWidth =
-        presentationHeight * firstAspectRatio;
-  }
-
-  if (presentationWidth < minSlideInches) {
-    presentationWidth = minSlideInches;
-
-    presentationHeight =
-        presentationWidth / firstAspectRatio;
-  }
-
-  if (presentationHeight < minSlideInches) {
-    presentationHeight = minSlideInches;
-
-    presentationWidth =
-        presentationHeight * firstAspectRatio;
-  }
-
+if (slideWidthEmu <= 0 ||
+    slideHeightEmu <= 0) {
+  throw Exception(
+    'Invalid PowerPoint slide dimensions.',
+  );
+}
   // ==========================================================================
   // CONVERT TO EMU
   // ==========================================================================
 
-  final int slideWidthEmu =
-      _inchesToEmu(
-    presentationWidth,
-  );
-
-  final int slideHeightEmu =
-      _inchesToEmu(
-    presentationHeight,
-  );
+ 
 
   if (slideWidthEmu <= 0 ||
       slideHeightEmu <= 0) {
@@ -455,34 +417,24 @@ Uint8List _generatePptxInBackground(
     final double scaleY =
         slideHeightEmu /
             imageHeightEmu;
+final double scale =
+    scaleX < scaleY
+        ? scaleX
+        : scaleY;
 
-    final double scale =
-        scaleX < scaleY
-            ? scaleX
-            : scaleY;
+final int renderedWidthEmu =
+    (imageWidthEmu * scale).round();
 
-    final int renderedWidthEmu =
-        (imageWidthEmu * scale).round();
+final int renderedHeightEmu =
+    (imageHeightEmu * scale).round();
 
-    final int renderedHeightEmu =
-        (imageHeightEmu * scale).round();
+final int offsetX =
+    ((slideWidthEmu - renderedWidthEmu) / 2)
+        .round();
 
-    // ==========================================================================
-    // CENTER IMAGE
-    // ==========================================================================
-
-    final int offsetX =
-        ((slideWidthEmu -
-                    renderedWidthEmu) /
-                2)
-            .round();
-
-    final int offsetY =
-        ((slideHeightEmu -
-                    renderedHeightEmu) /
-                2)
-            .round();
-
+final int offsetY =
+    ((slideHeightEmu - renderedHeightEmu) / 2)
+        .round();
     // ==========================================================================
     // ADD IMAGE
     // ==========================================================================
@@ -695,10 +647,6 @@ String _buildPresentationXml(
     'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">',
   );
 
-  // --------------------------------------------------------------------------
-  // Slide Master
-  // --------------------------------------------------------------------------
-
   sb.writeln(
     '<p:sldMasterIdLst>',
   );
@@ -713,21 +661,14 @@ String _buildPresentationXml(
     '</p:sldMasterIdLst>',
   );
 
-  // --------------------------------------------------------------------------
-  // Slides
-  // --------------------------------------------------------------------------
-
   sb.writeln(
     '<p:sldIdLst>',
   );
 
   for (int i = 1; i <= slideCount; i++) {
-    final int slideId =
-        255 + i;
-
     sb.writeln(
       '<p:sldId '
-      'id="$slideId" '
+      'id="${255 + i}" '
       'r:id="rIdSlide$i"/>',
     );
   }
@@ -736,24 +677,44 @@ String _buildPresentationXml(
     '</p:sldIdLst>',
   );
 
-  // --------------------------------------------------------------------------
-  // EXACT PRESENTATION SIZE
-  // --------------------------------------------------------------------------
+  // Exact slide size
+ sb.writeln(
+  '<p:sldSz '
+  'cx="$slideWidthEmu" '
+  'cy="$slideHeightEmu" '
+  'type="screen16x9"/>',
+);
 
-  sb.writeln(
-    '<p:sldSz '
-    'cx="$slideWidthEmu" '
-    'cy="$slideHeightEmu"/>',
-  );
-
-  // --------------------------------------------------------------------------
-  // Notes
-  // --------------------------------------------------------------------------
-
+  // Notes page size
   sb.writeln(
     '<p:notesSz '
     'cx="6858000" '
     'cy="9144000"/>',
+  );
+
+  // Default text style
+  sb.writeln(
+    '<p:defaultTextStyle>',
+  );
+
+  sb.writeln(
+    '<a:defPPr/>',
+  );
+
+  sb.writeln(
+    '<a:lvl1pPr marL="0" algn="l">',
+  );
+
+  sb.writeln(
+    '<a:defRPr sz="1800"/>',
+  );
+
+  sb.writeln(
+    '</a:lvl1pPr>',
+  );
+
+  sb.writeln(
+    '</p:defaultTextStyle>',
   );
 
   sb.writeln(
@@ -762,7 +723,6 @@ String _buildPresentationXml(
 
   return sb.toString();
 }
-
 // ============================================================================
 // PRESENTATION RELATIONSHIPS
 // ============================================================================
@@ -827,12 +787,10 @@ String _buildSlideXml({
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
   xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 
-  <p:cSld>
-
+  <p:cSld name="">
     <p:spTree>
 
       <p:nvGrpSpPr>
-
         <p:cNvPr
           id="1"
           name=""/>
@@ -840,10 +798,16 @@ String _buildSlideXml({
         <p:cNvGrpSpPr/>
 
         <p:nvPr/>
-
       </p:nvGrpSpPr>
 
-      <p:grpSpPr/>
+      <p:grpSpPr>
+        <a:xfrm>
+          <a:off x="0" y="0"/>
+          <a:ext cx="0" cy="0"/>
+          <a:chOff x="0" y="0"/>
+          <a:chExt cx="0" cy="0"/>
+        </a:xfrm>
+      </p:grpSpPr>
 
       <p:pic>
 
@@ -854,11 +818,9 @@ String _buildSlideXml({
             name="Image"/>
 
           <p:cNvPicPr>
-
             <a:picLocks
               noChangeAspect="1"
               noChangeArrowheads="1"/>
-
           </p:cNvPicPr>
 
           <p:nvPr/>
@@ -871,9 +833,7 @@ String _buildSlideXml({
             r:embed="rIdImage"/>
 
           <a:stretch>
-
             <a:fillRect/>
-
           </a:stretch>
 
         </p:blipFill>
@@ -892,11 +852,8 @@ String _buildSlideXml({
 
           </a:xfrm>
 
-          <a:prstGeom
-            prst="rect">
-
+          <a:prstGeom prst="rect">
             <a:avLst/>
-
           </a:prstGeom>
 
         </p:spPr>
@@ -904,18 +861,14 @@ String _buildSlideXml({
       </p:pic>
 
     </p:spTree>
-
   </p:cSld>
 
   <p:clrMapOvr>
-
     <a:masterClrMapping/>
-
   </p:clrMapOvr>
 
 </p:sld>''';
-}
- 
+} 
 
 // ============================================================================
 // SLIDE RELATIONSHIPS
