@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 import '../services/code_scanner_service.dart';
 import '../theme/app_theme.dart';
 
-/// Shows the decoded value from [CodeScannerService.scan] with Copy
-/// and Share actions. Visual style matches [UnsavedChangesDialog] so
-/// it reads as part of the same app, not a bolted-on component.
+/// Shows the decoded value from [CodeScannerService.scan] with
+/// Copy/Share/Open actions. Visual style matches
+/// [UnsavedChangesDialog] so it reads as part of the same app, not a
+/// bolted-on component.
 class CodeScanResultDialog extends StatelessWidget {
   final ScannedCode code;
 
@@ -72,6 +74,73 @@ class CodeScanResultDialog extends StatelessWidget {
         return Icons.contact_page_rounded;
       default:
         return Icons.qr_code_rounded;
+    }
+  }
+
+  /// The URI to hand to the OS for "Open" -- launches the actual
+  /// content (webpage, dialer, mail composer, SMS composer) instead
+  /// of just showing the raw scanned text.
+  Uri? get _openableUri {
+    switch (code.type) {
+      case ScannedCodeType.url:
+        final url = code.url ?? code.rawValue;
+        if (url == null || url.isEmpty) return null;
+        return Uri.tryParse(url);
+
+      case ScannedCodeType.phone:
+        final number = code.phoneNumber;
+        if (number == null || number.isEmpty) return null;
+        return Uri(scheme: 'tel', path: number);
+
+      case ScannedCodeType.email:
+        final address = code.email;
+        if (address == null || address.isEmpty) return null;
+        final subject = code.details['subject'] as String?;
+        final body = code.details['body'] as String?;
+        return Uri(
+          scheme: 'mailto',
+          path: address,
+          queryParameters: {
+            if (subject != null && subject.isNotEmpty)
+              'subject': subject,
+            if (body != null && body.isNotEmpty) 'body': body,
+          },
+        );
+
+      case ScannedCodeType.sms:
+        final number = code.phoneNumber ?? '';
+        final message = code.smsMessage;
+        return Uri(
+          scheme: 'sms',
+          path: number,
+          queryParameters: {
+            if (message != null && message.isNotEmpty)
+              'body': message,
+          },
+        );
+
+      default:
+        return null;
+    }
+  }
+
+  Future<void> _openContent(BuildContext context) async {
+    final uri = _openableUri;
+
+    if (uri == null) return;
+
+    final launched = await launchUrl(
+      uri,
+      mode: LaunchMode.externalApplication,
+    );
+
+    if (!launched && context.mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('No app found to open this content.'),
+          behavior: SnackBarBehavior.floating,
+        ),
+      );
     }
   }
 
@@ -197,7 +266,13 @@ class CodeScanResultDialog extends StatelessWidget {
         ElevatedButton(
           onPressed: value.isEmpty
               ? null
-              : () => Share.share(value),
+              : () {
+                  if (_openableUri != null) {
+                    _openContent(context);
+                  } else {
+                    Share.share(value);
+                  }
+                },
           style: ElevatedButton.styleFrom(
             backgroundColor: AppTheme.primaryColor,
             foregroundColor: Colors.white,
@@ -210,9 +285,9 @@ class CodeScanResultDialog extends StatelessWidget {
               borderRadius: BorderRadius.circular(12),
             ),
           ),
-          child: const Text(
-            'Share',
-            style: TextStyle(fontWeight: FontWeight.w700),
+          child: Text(
+            _openableUri != null ? 'Open' : 'Share',
+            style: const TextStyle(fontWeight: FontWeight.w700),
           ),
         ),
       ],
