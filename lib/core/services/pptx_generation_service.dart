@@ -15,12 +15,17 @@ class PptxGenerationService {
 
   /// Generates a PowerPoint presentation from images.
   ///
-  /// IMPORTANT:
+  /// FEATURES:
   /// - Every image becomes one slide.
-  /// - The presentation aspect ratio is based on the first image.
-  /// - The image aspect ratio is always preserved.
-  /// - Images are centered without stretching.
+  /// - 4:3 landscape presentation.
+  /// - Images are fitted inside the slide.
+  /// - Images are NEVER stretched.
+  /// - Images are NEVER cropped.
+  /// - Original aspect ratio is preserved.
+  /// - Images are centered.
+  /// - White slide background is used.
   /// - Large images are resized for performance.
+  /// - JPEG quality is optimized for PPTX size/quality.
   /// - Heavy processing runs in a background isolate.
   Future<DocumentResult> generatePptxFromImages(
     List<String> imagePaths,
@@ -75,7 +80,7 @@ class PptxGenerationService {
 
     await targetFile.writeAsBytes(
       pptxBytes,
-      flush: false,
+      flush: true,
     );
 
     // ============================================================
@@ -113,12 +118,19 @@ class PptxGenerationService {
 // ============================================================================
 // BACKGROUND PPTX GENERATION
 // ============================================================================
+
 Uint8List _generatePptxInBackground(
   List<String> imagePaths,
 ) {
+  if (imagePaths.isEmpty) {
+    throw Exception(
+      'No images were provided for PowerPoint generation.',
+    );
+  }
+
   final archive = Archive();
 
-  final slideCount = imagePaths.length;
+  final int slideCount = imagePaths.length;
 
   // ==========================================================================
   // IMAGE OPTIMIZATION
@@ -126,97 +138,31 @@ Uint8List _generatePptxInBackground(
 
   const int maxImageDimension = 2400;
 
-  const int jpegQuality = 85;
+  const int jpegQuality = 90;
 
   // ==========================================================================
-  // FIRST IMAGE = PRESENTATION ASPECT RATIO
+  // POWERPOINT SLIDE SIZE
   //
-  // PPTX has ONE presentation-wide slide size.
+  // 4:3 LANDSCAPE
   //
-  // Therefore the first image determines the slide ratio.
+  // 10 x 7.5 inches
   //
-  // We use a reasonable physical width and automatically calculate height.
-  // No fixed 16:9 and no fixed A4.
+  // This gives:
+  //
+  // 10 / 7.5 = 1.333333...
+  //
+  // Same aspect ratio as the screenshot/view the user wants.
   // ==========================================================================
 
-  final firstImageFile = File(
-    imagePaths.first,
-  );
+  const double presentationWidth = 10.0;
 
-  if (!firstImageFile.existsSync()) {
-    throw Exception(
-      'Image file not found: ${imagePaths.first}',
-    );
-  }
+  const double presentationHeight = 7.5;
 
-  final firstBytes =
-      firstImageFile.readAsBytesSync();
+  final int slideWidthEmu =
+      _inchesToEmu(presentationWidth);
 
-  if (firstBytes.isEmpty) {
-    throw Exception(
-      'First image is empty.',
-    );
-  }
-
-  final firstDecoded =
-      img.decodeImage(firstBytes);
-
-  if (firstDecoded == null) {
-    throw Exception(
-      'Failed to decode first image.',
-    );
-  }
-
-  if (firstDecoded.width <= 0 ||
-      firstDecoded.height <= 0) {
-    throw Exception(
-      'Invalid first image dimensions.',
-    );
-  }
-
-  // ==========================================================================
-  // AUTO PRESENTATION SIZE
-  //
-  // Width is only a physical base size.
-  // Height is calculated from the first image aspect ratio.
-  //
-  // Example:
-  //
-  // 1200 x 800  ->  8 x 5.333
-  // 800 x 1200  ->  8 x 12
-  // 1000 x 1000 ->  8 x 8
-  //
-  // ==========================================================================
-// ==========================================================================
-// STANDARD POWERPOINT WIDESCREEN 16:9
-// ==========================================================================
-//
-// PowerPoint ki proper horizontal/landscape slide.
-// Ye portrait/document style nahi hogi.
-//
-// ==========================================================================
-
-const double presentationWidth = 13.333333;
-const double presentationHeight = 7.5;
-
-// Standard 16:9 PowerPoint dimensions.
-final int slideWidthEmu =
-    _inchesToEmu(presentationWidth);
-
-final int slideHeightEmu =
-    _inchesToEmu(presentationHeight);
-
-if (slideWidthEmu <= 0 ||
-    slideHeightEmu <= 0) {
-  throw Exception(
-    'Invalid PowerPoint slide dimensions.',
-  );
-}
-  // ==========================================================================
-  // CONVERT TO EMU
-  // ==========================================================================
-
- 
+  final int slideHeightEmu =
+      _inchesToEmu(presentationHeight);
 
   if (slideWidthEmu <= 0 ||
       slideHeightEmu <= 0) {
@@ -272,7 +218,7 @@ if (slideWidthEmu <= 0 ||
   );
 
   // ==========================================================================
-  // POWERPOINT BOILERPLATE
+  // POWERPOINT MASTER / LAYOUT / THEME
   // ==========================================================================
 
   _addPptTemplateBoilerplate(
@@ -284,11 +230,15 @@ if (slideWidthEmu <= 0 ||
   // ==========================================================================
 
   for (int i = 0; i < slideCount; i++) {
-    final slideNumber = i + 1;
+    final int slideNumber = i + 1;
 
-    final imagePath = imagePaths[i];
+    final String imagePath = imagePaths[i];
 
-    final imageFile = File(imagePath);
+    final File imageFile = File(imagePath);
+
+    // ------------------------------------------------------------------------
+    // CHECK FILE
+    // ------------------------------------------------------------------------
 
     if (!imageFile.existsSync()) {
       throw Exception(
@@ -297,10 +247,14 @@ if (slideWidthEmu <= 0 ||
     }
 
     // ------------------------------------------------------------------------
-    // READ
+    // READ IMAGE
+    //
+    // File.readAsBytesSync() returns Uint8List.
+    // We explicitly keep the type as Uint8List because image package
+    // decodeImage/decodeNamedImage expects Uint8List.
     // ------------------------------------------------------------------------
 
-    final bytes =
+    final Uint8List bytes =
         imageFile.readAsBytesSync();
 
     if (bytes.isEmpty) {
@@ -310,17 +264,43 @@ if (slideWidthEmu <= 0 ||
     }
 
     // ------------------------------------------------------------------------
-    // DECODE
+    // DECODE IMAGE
+    //
+    // decodeNamedImage() uses the file extension to select the decoder.
+    //
+    // Example:
+    // .jpg  -> JPEG decoder
+    // .png  -> PNG decoder
+    // .webp -> WebP decoder
+    //
+    // This avoids the List<int> vs Uint8List problem.
     // ------------------------------------------------------------------------
 
     img.Image? decoded =
-        img.decodeImage(bytes);
+        img.decodeNamedImage(
+      imagePath,
+      bytes,
+    );
+
+    // ------------------------------------------------------------------------
+    // FALLBACK DECODER
+    // ------------------------------------------------------------------------
+
+    if (decoded == null) {
+      decoded = img.decodeImage(
+        bytes,
+      );
+    }
 
     if (decoded == null) {
       throw Exception(
         'Failed to decode image: $imagePath',
       );
     }
+
+    // ------------------------------------------------------------------------
+    // VALIDATE DIMENSIONS
+    // ------------------------------------------------------------------------
 
     if (decoded.width <= 0 ||
         decoded.height <= 0) {
@@ -329,9 +309,13 @@ if (slideWidthEmu <= 0 ||
       );
     }
 
-    // ------------------------------------------------------------------------
+    // ==========================================================================
     // RESIZE LARGE IMAGE
-    // ------------------------------------------------------------------------
+    //
+    // SAME SCALE FOR WIDTH + HEIGHT
+    //
+    // This preserves the original aspect ratio.
+    // ==========================================================================
 
     if (decoded.width > maxImageDimension ||
         decoded.height > maxImageDimension) {
@@ -343,16 +327,18 @@ if (slideWidthEmu <= 0 ||
           maxImageDimension /
               decoded.height;
 
-      final double scale =
+      final double resizeScale =
           widthScale < heightScale
               ? widthScale
               : heightScale;
 
       final int newWidth =
-          (decoded.width * scale).round();
+          (decoded.width * resizeScale)
+              .round();
 
       final int newHeight =
-          (decoded.height * scale).round();
+          (decoded.height * resizeScale)
+              .round();
 
       decoded = img.copyResize(
         decoded,
@@ -363,11 +349,11 @@ if (slideWidthEmu <= 0 ||
       );
     }
 
-    // ------------------------------------------------------------------------
+    // ==========================================================================
     // JPEG ENCODE
-    // ------------------------------------------------------------------------
+    // ==========================================================================
 
-    final List<int> jpegBytes =
+    final Uint8List jpegBytes =
         img.encodeJpg(
       decoded,
       quality: jpegQuality,
@@ -383,31 +369,55 @@ if (slideWidthEmu <= 0 ||
     // IMAGE DIMENSIONS
     // ==========================================================================
 
-    final double imageWidth =
+    final double imageWidthPx =
         decoded.width.toDouble();
 
-    final double imageHeight =
+    final double imageHeightPx =
         decoded.height.toDouble();
 
+    if (imageWidthPx <= 0 ||
+        imageHeightPx <= 0) {
+      throw Exception(
+        'Invalid image size: $imagePath',
+      );
+    }
+
     // ==========================================================================
-    // IMAGE → EMU
+    // PIXELS -> EMU
+    //
+    // 96 DPI:
+    //
+    // 1 inch = 96 pixels
+    // 1 inch = 914400 EMU
+    //
+    // Therefore:
+    //
+    // 1 pixel = 9525 EMU
     // ==========================================================================
 
     final double imageWidthEmu =
-        imageWidth * 9525.0;
+        imageWidthPx * 9525.0;
 
     final double imageHeightEmu =
-        imageHeight * 9525.0;
+        imageHeightPx * 9525.0;
+
+    if (imageWidthEmu <= 0 ||
+        imageHeightEmu <= 0) {
+      throw Exception(
+        'Invalid image EMU dimensions: $imagePath',
+      );
+    }
 
     // ==========================================================================
-    // FIT IMAGE
+    // CONTAIN / FIT
     //
     // IMPORTANT:
     //
-    // The image is NEVER cropped.
-    // The image is NEVER stretched.
-    // The original aspect ratio is preserved.
+    // NO CROP
+    // NO STRETCH
+    // NO DISTORTION
     //
+    // The smaller scale is selected so the COMPLETE image remains visible.
     // ==========================================================================
 
     final double scaleX =
@@ -417,26 +427,63 @@ if (slideWidthEmu <= 0 ||
     final double scaleY =
         slideHeightEmu /
             imageHeightEmu;
-final double scale =
-    scaleX < scaleY
-        ? scaleX
-        : scaleY;
 
-final int renderedWidthEmu =
-    (imageWidthEmu * scale).round();
+    final double scale =
+        scaleX < scaleY
+            ? scaleX
+            : scaleY;
 
-final int renderedHeightEmu =
-    (imageHeightEmu * scale).round();
+    if (scale <= 0) {
+      throw Exception(
+        'Invalid image scale: $imagePath',
+      );
+    }
 
-final int offsetX =
-    ((slideWidthEmu - renderedWidthEmu) / 2)
-        .round();
+    final int renderedWidthEmu =
+        (imageWidthEmu * scale)
+            .round();
 
-final int offsetY =
-    ((slideHeightEmu - renderedHeightEmu) / 2)
-        .round();
+    final int renderedHeightEmu =
+        (imageHeightEmu * scale)
+            .round();
+
+    if (renderedWidthEmu <= 0 ||
+        renderedHeightEmu <= 0) {
+      throw Exception(
+        'Invalid rendered image dimensions: $imagePath',
+      );
+    }
+
     // ==========================================================================
-    // ADD IMAGE
+    // CENTER IMAGE
+    // ==========================================================================
+
+    final int offsetX =
+        ((slideWidthEmu -
+                    renderedWidthEmu) /
+                2)
+            .round();
+
+    final int offsetY =
+        ((slideHeightEmu -
+                    renderedHeightEmu) /
+                2)
+            .round();
+
+    // ==========================================================================
+    // SAFETY CHECK
+    //
+    // Keep image completely inside slide.
+    // ==========================================================================
+
+    final int safeOffsetX =
+        offsetX < 0 ? 0 : offsetX;
+
+    final int safeOffsetY =
+        offsetY < 0 ? 0 : offsetY;
+
+    // ==========================================================================
+    // ADD IMAGE TO PPTX
     // ==========================================================================
 
     final String mediaPath =
@@ -458,10 +505,12 @@ final int offsetY =
       archive,
       'ppt/slides/slide$slideNumber.xml',
       _buildSlideXml(
-        widthEmu: renderedWidthEmu,
-        heightEmu: renderedHeightEmu,
-        offsetX: offsetX,
-        offsetY: offsetY,
+        slideWidthEmu: slideWidthEmu,
+        slideHeightEmu: slideHeightEmu,
+        imageWidthEmu: renderedWidthEmu,
+        imageHeightEmu: renderedHeightEmu,
+        offsetX: safeOffsetX,
+        offsetY: safeOffsetY,
       ),
     );
 
@@ -479,28 +528,28 @@ final int offsetY =
   }
 
   // ==========================================================================
-  // ENCODE PPTX
+  // ZIP / PPTX ENCODE
   // ==========================================================================
 
-  final zipEncoder = ZipEncoder();
+  final ZipEncoder zipEncoder =
+      ZipEncoder();
 
-  final List<int> pptxBytes =
+  final List<int> encodedBytes =
       zipEncoder.encode(
     archive,
     level: DeflateLevel.bestSpeed,
   );
 
-  if (pptxBytes.isEmpty) {
+  if (encodedBytes.isEmpty) {
     throw Exception(
       'Failed to encode PowerPoint archive.',
     );
   }
 
   return Uint8List.fromList(
-    pptxBytes,
+    encodedBytes,
   );
 }
- 
 
 // ============================================================================
 // UNIT CONVERSION
@@ -513,7 +562,7 @@ int _inchesToEmu(
 }
 
 // ============================================================================
-// ADD TEXT FILE
+// ADD TEXT FILE TO ARCHIVE
 // ============================================================================
 
 void _addTextFile(
@@ -521,7 +570,7 @@ void _addTextFile(
   String path,
   String content,
 ) {
-  final bytes =
+  final List<int> bytes =
       utf8.encode(content);
 
   archive.addFile(
@@ -551,11 +600,19 @@ String _buildContentTypesXml(
     'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
   );
 
+  // --------------------------------------------------------------------------
+  // RELATIONSHIPS
+  // --------------------------------------------------------------------------
+
   sb.writeln(
     '<Default '
     'Extension="rels" '
     'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
   );
+
+  // --------------------------------------------------------------------------
+  // XML
+  // --------------------------------------------------------------------------
 
   sb.writeln(
     '<Default '
@@ -563,11 +620,19 @@ String _buildContentTypesXml(
     'ContentType="application/xml"/>',
   );
 
+  // --------------------------------------------------------------------------
+  // JPEG
+  // --------------------------------------------------------------------------
+
   sb.writeln(
     '<Default '
     'Extension="jpeg" '
     'ContentType="image/jpeg"/>',
   );
+
+  // --------------------------------------------------------------------------
+  // PRESENTATION
+  // --------------------------------------------------------------------------
 
   sb.writeln(
     '<Override '
@@ -575,11 +640,19 @@ String _buildContentTypesXml(
     'ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>',
   );
 
+  // --------------------------------------------------------------------------
+  // SLIDE MASTER
+  // --------------------------------------------------------------------------
+
   sb.writeln(
     '<Override '
     'PartName="/ppt/slideMasters/slideMaster1.xml" '
     'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>',
   );
+
+  // --------------------------------------------------------------------------
+  // SLIDE LAYOUT
+  // --------------------------------------------------------------------------
 
   sb.writeln(
     '<Override '
@@ -587,11 +660,19 @@ String _buildContentTypesXml(
     'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>',
   );
 
+  // --------------------------------------------------------------------------
+  // THEME
+  // --------------------------------------------------------------------------
+
   sb.writeln(
     '<Override '
     'PartName="/ppt/theme/theme1.xml" '
     'ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>',
   );
+
+  // --------------------------------------------------------------------------
+  // SLIDES
+  // --------------------------------------------------------------------------
 
   for (int i = 1; i <= slideCount; i++) {
     sb.writeln(
@@ -647,6 +728,10 @@ String _buildPresentationXml(
     'xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">',
   );
 
+  // ==========================================================================
+  // SLIDE MASTER LIST
+  // ==========================================================================
+
   sb.writeln(
     '<p:sldMasterIdLst>',
   );
@@ -660,6 +745,10 @@ String _buildPresentationXml(
   sb.writeln(
     '</p:sldMasterIdLst>',
   );
+
+  // ==========================================================================
+  // SLIDE LIST
+  // ==========================================================================
 
   sb.writeln(
     '<p:sldIdLst>',
@@ -677,22 +766,31 @@ String _buildPresentationXml(
     '</p:sldIdLst>',
   );
 
-  // Exact slide size
- sb.writeln(
-  '<p:sldSz '
-  'cx="$slideWidthEmu" '
-  'cy="$slideHeightEmu" '
-  'type="screen16x9"/>',
-);
+  // ==========================================================================
+  // 4:3 LANDSCAPE SLIDE SIZE
+  // ==========================================================================
 
-  // Notes page size
+  sb.writeln(
+    '<p:sldSz '
+    'cx="$slideWidthEmu" '
+    'cy="$slideHeightEmu" '
+    'type="screen4x3"/>',
+  );
+
+  // ==========================================================================
+  // NOTES SIZE
+  // ==========================================================================
+
   sb.writeln(
     '<p:notesSz '
     'cx="6858000" '
     'cy="9144000"/>',
   );
 
-  // Default text style
+  // ==========================================================================
+  // DEFAULT TEXT STYLE
+  // ==========================================================================
+
   sb.writeln(
     '<p:defaultTextStyle>',
   );
@@ -702,11 +800,14 @@ String _buildPresentationXml(
   );
 
   sb.writeln(
-    '<a:lvl1pPr marL="0" algn="l">',
+    '<a:lvl1pPr '
+    'marL="0" '
+    'algn="l">',
   );
 
   sb.writeln(
-    '<a:defRPr sz="1800"/>',
+    '<a:defRPr '
+    'sz="1800"/>',
   );
 
   sb.writeln(
@@ -723,6 +824,7 @@ String _buildPresentationXml(
 
   return sb.toString();
 }
+
 // ============================================================================
 // PRESENTATION RELATIONSHIPS
 // ============================================================================
@@ -741,6 +843,10 @@ String _buildPresentationRelsXml(
     'xmlns="http://schemas.openxmlformats.org/package/2006/relationships">',
   );
 
+  // ==========================================================================
+  // MASTER
+  // ==========================================================================
+
   sb.writeln(
     '<Relationship '
     'Id="rIdMaster1" '
@@ -748,12 +854,20 @@ String _buildPresentationRelsXml(
     'Target="slideMasters/slideMaster1.xml"/>',
   );
 
+  // ==========================================================================
+  // THEME
+  // ==========================================================================
+
   sb.writeln(
     '<Relationship '
     'Id="rIdTheme1" '
     'Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme" '
     'Target="theme/theme1.xml"/>',
   );
+
+  // ==========================================================================
+  // SLIDES
+  // ==========================================================================
 
   for (int i = 1; i <= slideCount; i++) {
     sb.writeln(
@@ -776,8 +890,10 @@ String _buildPresentationRelsXml(
 // ============================================================================
 
 String _buildSlideXml({
-  required int widthEmu,
-  required int heightEmu,
+  required int slideWidthEmu,
+  required int slideHeightEmu,
+  required int imageWidthEmu,
+  required int imageHeightEmu,
   required int offsetX,
   required int offsetY,
 }) {
@@ -788,9 +904,15 @@ String _buildSlideXml({
   xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
 
   <p:cSld name="">
+
     <p:spTree>
 
+      <!-- ================================================================ -->
+      <!-- GROUP PROPERTIES                                                -->
+      <!-- ================================================================ -->
+
       <p:nvGrpSpPr>
+
         <p:cNvPr
           id="1"
           name=""/>
@@ -798,29 +920,107 @@ String _buildSlideXml({
         <p:cNvGrpSpPr/>
 
         <p:nvPr/>
+
       </p:nvGrpSpPr>
 
       <p:grpSpPr>
+
         <a:xfrm>
-          <a:off x="0" y="0"/>
-          <a:ext cx="0" cy="0"/>
-          <a:chOff x="0" y="0"/>
-          <a:chExt cx="0" cy="0"/>
+
+          <a:off
+            x="0"
+            y="0"/>
+
+          <a:ext
+            cx="0"
+            cy="0"/>
+
+          <a:chOff
+            x="0"
+            y="0"/>
+
+          <a:chExt
+            cx="0"
+            cy="0"/>
+
         </a:xfrm>
+
       </p:grpSpPr>
+
+      <!-- ================================================================ -->
+      <!-- WHITE BACKGROUND                                                -->
+      <!-- ================================================================ -->
+
+      <p:sp>
+
+        <p:nvSpPr>
+
+          <p:cNvPr
+            id="2"
+            name="Background"/>
+
+          <p:cNvSpPr/>
+
+          <p:nvPr/>
+
+        </p:nvSpPr>
+
+        <p:spPr>
+
+          <a:xfrm>
+
+            <a:off
+              x="0"
+              y="0"/>
+
+            <a:ext
+              cx="$slideWidthEmu"
+              cy="$slideHeightEmu"/>
+
+          </a:xfrm>
+
+          <a:prstGeom
+            prst="rect">
+
+            <a:avLst/>
+
+          </a:prstGeom>
+
+          <a:solidFill>
+
+            <a:srgbClr
+              val="FFFFFF"/>
+
+          </a:solidFill>
+
+          <a:ln>
+
+            <a:noFill/>
+
+          </a:ln>
+
+        </p:spPr>
+
+      </p:sp>
+
+      <!-- ================================================================ -->
+      <!-- IMAGE                                                           -->
+      <!-- ================================================================ -->
 
       <p:pic>
 
         <p:nvPicPr>
 
           <p:cNvPr
-            id="2"
+            id="3"
             name="Image"/>
 
           <p:cNvPicPr>
+
             <a:picLocks
               noChangeAspect="1"
               noChangeArrowheads="1"/>
+
           </p:cNvPicPr>
 
           <p:nvPr/>
@@ -833,7 +1033,9 @@ String _buildSlideXml({
             r:embed="rIdImage"/>
 
           <a:stretch>
+
             <a:fillRect/>
+
           </a:stretch>
 
         </p:blipFill>
@@ -847,13 +1049,16 @@ String _buildSlideXml({
               y="$offsetY"/>
 
             <a:ext
-              cx="$widthEmu"
-              cy="$heightEmu"/>
+              cx="$imageWidthEmu"
+              cy="$imageHeightEmu"/>
 
           </a:xfrm>
 
-          <a:prstGeom prst="rect">
+          <a:prstGeom
+            prst="rect">
+
             <a:avLst/>
+
           </a:prstGeom>
 
         </p:spPr>
@@ -861,14 +1066,21 @@ String _buildSlideXml({
       </p:pic>
 
     </p:spTree>
+
   </p:cSld>
 
+  <!-- ================================================================ -->
+  <!-- COLOR MAP                                                       -->
+  <!-- ================================================================ -->
+
   <p:clrMapOvr>
+
     <a:masterClrMapping/>
+
   </p:clrMapOvr>
 
 </p:sld>''';
-} 
+}
 
 // ============================================================================
 // SLIDE RELATIONSHIPS
@@ -881,10 +1093,18 @@ String _buildSlideRelsXml(
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
+  <!-- ================================================================ -->
+  <!-- SLIDE LAYOUT                                                     -->
+  <!-- ================================================================ -->
+
   <Relationship
     Id="rIdLayout"
     Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/slideLayout"
     Target="../slideLayouts/slideLayout1.xml"/>
+
+  <!-- ================================================================ -->
+  <!-- IMAGE                                                             -->
+  <!-- ================================================================ -->
 
   <Relationship
     Id="rIdImage"
@@ -905,7 +1125,8 @@ void _addPptTemplateBoilerplate(
   // SLIDE LAYOUT
   // ==========================================================================
 
-  const slideLayoutXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const String slideLayoutXml =
+      '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldLayout
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
@@ -954,7 +1175,8 @@ void _addPptTemplateBoilerplate(
   // SLIDE LAYOUT RELATIONSHIPS
   // ==========================================================================
 
-  const slideLayoutRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const String slideLayoutRelsXml =
+      '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
@@ -975,11 +1197,17 @@ void _addPptTemplateBoilerplate(
   // SLIDE MASTER
   // ==========================================================================
 
-  const slideMasterXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const String slideMasterXml =
+      '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <p:sldMaster
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"
-  xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main">
+  xmlns:p="http://schemas.openxmlformats.org/presentationml/2006/main"
+  preserve="1">
+
+  <!-- ================================================================ -->
+  <!-- COMMON SLIDE DATA                                                -->
+  <!-- ================================================================ -->
 
   <p:cSld>
 
@@ -1003,6 +1231,10 @@ void _addPptTemplateBoilerplate(
 
   </p:cSld>
 
+  <!-- ================================================================ -->
+  <!-- COLOR MAP                                                        -->
+  <!-- ================================================================ -->
+
   <p:clrMap
     bg1="lt1"
     tx1="dk1"
@@ -1017,6 +1249,10 @@ void _addPptTemplateBoilerplate(
     hlink="hlink"
     folHlink="folHlink"/>
 
+  <!-- ================================================================ -->
+  <!-- SLIDE LAYOUT LIST                                                -->
+  <!-- ================================================================ -->
+
   <p:sldLayoutIdLst>
 
     <p:sldLayoutId
@@ -1024,6 +1260,46 @@ void _addPptTemplateBoilerplate(
       r:id="rIdLayout1"/>
 
   </p:sldLayoutIdLst>
+
+  <!-- ================================================================ -->
+  <!-- TEXT STYLES                                                       -->
+  <!-- ================================================================ -->
+
+  <p:txStyles>
+
+    <p:titleStyle>
+
+      <a:lvl1pPr
+        marL="0"
+        algn="l">
+
+        <a:defRPr
+          sz="4400"/>
+
+      </a:lvl1pPr>
+
+    </p:titleStyle>
+
+    <p:bodyStyle>
+
+      <a:lvl1pPr
+        marL="0"
+        algn="l">
+
+        <a:defRPr
+          sz="2400"/>
+
+      </a:lvl1pPr>
+
+    </p:bodyStyle>
+
+    <p:otherStyle>
+
+      <a:defPPr/>
+
+    </p:otherStyle>
+
+  </p:txStyles>
 
 </p:sldMaster>''';
 
@@ -1037,7 +1313,8 @@ void _addPptTemplateBoilerplate(
   // SLIDE MASTER RELATIONSHIPS
   // ==========================================================================
 
-  const slideMasterRelsXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const String slideMasterRelsXml =
+      '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <Relationships
   xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
 
@@ -1063,12 +1340,17 @@ void _addPptTemplateBoilerplate(
   // THEME
   // ==========================================================================
 
-  const themeXml = '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+  const String themeXml =
+      '''<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <a:theme
   xmlns:a="http://schemas.openxmlformats.org/drawingml/2006/main"
   name="Office Theme">
 
   <a:themeElements>
+
+    <!-- ============================================================ -->
+    <!-- COLOR SCHEME                                                 -->
+    <!-- ============================================================ -->
 
     <a:clrScheme
       name="Office">
@@ -1137,6 +1419,10 @@ void _addPptTemplateBoilerplate(
 
     </a:clrScheme>
 
+    <!-- ============================================================ -->
+    <!-- FONT SCHEME                                                   -->
+    <!-- ============================================================ -->
+
     <a:fontScheme
       name="Office">
 
@@ -1145,6 +1431,12 @@ void _addPptTemplateBoilerplate(
         <a:latin
           typeface="Calibri"/>
 
+        <a:ea
+          typeface=""/>
+
+        <a:cs
+          typeface=""/>
+
       </a:majorFont>
 
       <a:minorFont>
@@ -1152,20 +1444,256 @@ void _addPptTemplateBoilerplate(
         <a:latin
           typeface="Calibri"/>
 
+        <a:ea
+          typeface=""/>
+
+        <a:cs
+          typeface=""/>
+
       </a:minorFont>
 
     </a:fontScheme>
 
+    <!-- ============================================================ -->
+    <!-- FORMAT SCHEME                                                 -->
+    <!-- ============================================================ -->
+
     <a:fmtScheme
       name="Office">
 
-      <a:fillStyleLst/>
+      <!-- ---------------------------------------------------------- -->
+      <!-- FILL STYLES                                                -->
+      <!-- ---------------------------------------------------------- -->
 
-      <a:lnStyleLst/>
+      <a:fillStyleLst>
 
-      <a:effectStyleLst/>
+        <a:solidFill>
 
-      <a:bgFillStyleLst/>
+          <a:schemeClr
+            val="phClr"/>
+
+        </a:solidFill>
+
+        <a:gradFill
+          rotWithShape="1">
+
+          <a:gsLst>
+
+            <a:gs
+              pos="0">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+            <a:gs
+              pos="100000">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+          </a:gsLst>
+
+          <a:lin
+            ang="5400000"
+            scaled="1"/>
+
+        </a:gradFill>
+
+        <a:gradFill
+          rotWithShape="1">
+
+          <a:gsLst>
+
+            <a:gs
+              pos="0">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+            <a:gs
+              pos="100000">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+          </a:gsLst>
+
+          <a:lin
+            ang="5400000"
+            scaled="1"/>
+
+        </a:gradFill>
+
+      </a:fillStyleLst>
+
+      <!-- ---------------------------------------------------------- -->
+      <!-- LINE STYLES                                                 -->
+      <!-- ---------------------------------------------------------- -->
+
+      <a:lnStyleLst>
+
+        <a:ln
+          w="9525"
+          cap="flat"
+          cmpd="sng"
+          algn="ctr">
+
+          <a:solidFill>
+
+            <a:schemeClr
+              val="phClr"/>
+
+          </a:solidFill>
+
+          <a:prstDash
+            val="solid"/>
+
+        </a:ln>
+
+        <a:ln
+          w="25400"
+          cap="flat"
+          cmpd="sng"
+          algn="ctr">
+
+          <a:solidFill>
+
+            <a:schemeClr
+              val="phClr"/>
+
+          </a:solidFill>
+
+          <a:prstDash
+            val="solid"/>
+
+        </a:ln>
+
+        <a:ln
+          w="38100"
+          cap="flat"
+          cmpd="sng"
+          algn="ctr">
+
+          <a:solidFill>
+
+            <a:schemeClr
+              val="phClr"/>
+
+          </a:solidFill>
+
+          <a:prstDash
+            val="solid"/>
+
+        </a:ln>
+
+      </a:lnStyleLst>
+
+      <!-- ---------------------------------------------------------- -->
+      <!-- EFFECT STYLES                                               -->
+      <!-- ---------------------------------------------------------- -->
+
+      <a:effectStyleLst>
+
+        <a:effectStyle>
+
+          <a:effectLst/>
+
+        </a:effectStyle>
+
+        <a:effectStyle>
+
+          <a:effectLst/>
+
+        </a:effectStyle>
+
+        <a:effectStyle>
+
+          <a:effectLst/>
+
+        </a:effectStyle>
+
+      </a:effectStyleLst>
+
+      <!-- ---------------------------------------------------------- -->
+      <!-- BACKGROUND FILL STYLES                                      -->
+      <!-- ---------------------------------------------------------- -->
+
+      <a:bgFillStyleLst>
+
+        <a:solidFill>
+
+          <a:schemeClr
+            val="phClr"/>
+
+        </a:solidFill>
+
+        <a:gradFill
+          rotWithShape="1">
+
+          <a:gsLst>
+
+            <a:gs
+              pos="0">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+            <a:gs
+              pos="100000">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+          </a:gsLst>
+
+          <a:lin
+            ang="5400000"
+            scaled="1"/>
+
+        </a:gradFill>
+
+        <a:gradFill
+          rotWithShape="1">
+
+          <a:gsLst>
+
+            <a:gs
+              pos="0">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+            <a:gs
+              pos="100000">
+
+              <a:schemeClr
+                val="phClr"/>
+
+            </a:gs>
+
+          </a:gsLst>
+
+          <a:lin
+            ang="5400000"
+            scaled="1"/>
+
+        </a:gradFill>
+
+      </a:bgFillStyleLst>
 
     </a:fmtScheme>
 
