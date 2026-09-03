@@ -17,13 +17,16 @@ class PptxGenerationService {
   ///
   /// FEATURES:
   /// - Every image becomes one slide.
-  /// - 4:3 landscape presentation.
-  /// - Images are fitted inside the slide.
-  /// - Images are NEVER stretched.
-  /// - Images are NEVER cropped.
-  /// - Original aspect ratio is preserved.
-  /// - Images are centered.
-  /// - White slide background is used.
+  /// - STANDARD WIDESCREEN 16:9 slides - a real PowerPoint deck that
+  ///   fills the screen when presenting (the CamScanner / MS Office
+  ///   "scan to slides" look), NOT a PDF-style portrait page.
+  /// - Images fill the COMPLETE slide edge-to-edge (full-bleed).
+  /// - No white bars / letterboxing around the image.
+  /// - Images are NEVER stretched or distorted.
+  /// - When the image ratio matches the slide (16:9) it is placed with
+  ///   ZERO cropping.
+  /// - For other ratios a centered cover-crop keeps the full-bleed look.
+  /// - White slide background is used behind the full-bleed image.
   /// - Large images are resized for performance.
   /// - JPEG quality is optimized for PPTX size/quality.
   /// - Heavy processing runs in a background isolate.
@@ -143,33 +146,16 @@ Uint8List _generatePptxInBackground(
   // ==========================================================================
   // POWERPOINT SLIDE SIZE
   //
-  // 4:3 LANDSCAPE
+  // STANDARD WIDESCREEN 16:9 (12192000 x 6858000 EMU).
   //
-  // 10 x 7.5 inches
-  //
-  // This gives:
-  //
-  // 10 / 7.5 = 1.333333...
-  //
-  // Same aspect ratio as the screenshot/view the user wants.
+  // This is the default modern PowerPoint slide size. The generated deck is
+  // a real PPT (slides), not a PDF-style portrait page. Every image fills
+  // the complete slide edge-to-edge, so there are no white margins.
   // ==========================================================================
 
-  const double presentationWidth = 10.0;
+  const int slideWidthEmu = 12192000;
 
-  const double presentationHeight = 7.5;
-
-  final int slideWidthEmu =
-      _inchesToEmu(presentationWidth);
-
-  final int slideHeightEmu =
-      _inchesToEmu(presentationHeight);
-
-  if (slideWidthEmu <= 0 ||
-      slideHeightEmu <= 0) {
-    throw Exception(
-      'Invalid PowerPoint slide dimensions.',
-    );
-  }
+  const int slideHeightEmu = 6858000;
 
   // ==========================================================================
   // CONTENT TYPES
@@ -286,11 +272,9 @@ Uint8List _generatePptxInBackground(
     // FALLBACK DECODER
     // ------------------------------------------------------------------------
 
-    if (decoded == null) {
-      decoded = img.decodeImage(
-        bytes,
-      );
-    }
+    decoded ??= img.decodeImage(
+      bytes,
+    );
 
     if (decoded == null) {
       throw Exception(
@@ -409,78 +393,105 @@ Uint8List _generatePptxInBackground(
     }
 
     // ==========================================================================
-    // CONTAIN / FIT
+    // FULL-PAGE PLACEMENT
     //
-    // IMPORTANT:
+    // The image ALWAYS fills the complete slide (CamScanner / MS Office view).
     //
-    // NO CROP
-    // NO STRETCH
-    // NO DISTORTION
+    // - If the image matches the 16:9 slide aspect ratio it exactly covers the
+    //   slide: NO crop and NO gap.
+    // - If the ratio differs (e.g. a portrait document), a centered cover-fit
+    //   is used instead: the image is scaled up until the whole slide is
+    //   covered. The overflow extending past the slide edges is clipped by the
+    //   slide boundary, so no white bar can ever appear.
     //
-    // The smaller scale is selected so the COMPLETE image remains visible.
+    // The image is NEVER stretched or distorted.
     // ==========================================================================
 
-    final double scaleX =
+    final double slideAspect =
         slideWidthEmu /
-            imageWidthEmu;
+            slideHeightEmu;
 
-    final double scaleY =
-        slideHeightEmu /
+    final double imageAspect =
+        imageWidthEmu /
             imageHeightEmu;
 
-    final double scale =
-        scaleX < scaleY
-            ? scaleX
-            : scaleY;
+    const double ratioTolerance = 0.01;
 
-    if (scale <= 0) {
-      throw Exception(
-        'Invalid image scale: $imagePath',
-      );
+    final double aspectDifference =
+        (imageAspect - slideAspect)
+                .abs() /
+            slideAspect;
+
+    int renderedWidthEmu;
+    int renderedHeightEmu;
+    int offsetX;
+    int offsetY;
+
+    if (aspectDifference <= ratioTolerance) {
+      // ----------------------------------------------------------------------
+      // FULL-PAGE MATCH
+      //
+      // Image covers the slide exactly - same look as CamScanner / MS Office.
+      // ----------------------------------------------------------------------
+
+      renderedWidthEmu = slideWidthEmu;
+      renderedHeightEmu = slideHeightEmu;
+      offsetX = 0;
+      offsetY = 0;
+    } else {
+      // ----------------------------------------------------------------------
+      // COVER-FIT
+      //
+      // Image is scaled so the complete slide stays covered. The overflow
+      // outside the slide is clipped, so no white bar can appear.
+      // ----------------------------------------------------------------------
+
+      final double scaleX =
+          slideWidthEmu /
+              imageWidthEmu;
+
+      final double scaleY =
+          slideHeightEmu /
+              imageHeightEmu;
+
+      final double coverScale =
+          scaleX > scaleY
+              ? scaleX
+              : scaleY;
+
+      if (coverScale <= 0) {
+        throw Exception(
+          'Invalid image scale: $imagePath',
+        );
+      }
+
+      renderedWidthEmu =
+          (imageWidthEmu * coverScale)
+              .round();
+
+      renderedHeightEmu =
+          (imageHeightEmu * coverScale)
+              .round();
+
+      if (renderedWidthEmu <= 0 ||
+          renderedHeightEmu <= 0) {
+        throw Exception(
+          'Invalid rendered image dimensions: $imagePath',
+        );
+      }
+
+      offsetX =
+          ((slideWidthEmu -
+                      renderedWidthEmu) /
+                  2)
+              .round();
+
+      offsetY =
+          ((slideHeightEmu -
+                      renderedHeightEmu) /
+                  2)
+              .round();
     }
-
-    final int renderedWidthEmu =
-        (imageWidthEmu * scale)
-            .round();
-
-    final int renderedHeightEmu =
-        (imageHeightEmu * scale)
-            .round();
-
-    if (renderedWidthEmu <= 0 ||
-        renderedHeightEmu <= 0) {
-      throw Exception(
-        'Invalid rendered image dimensions: $imagePath',
-      );
-    }
-
-    // ==========================================================================
-    // CENTER IMAGE
-    // ==========================================================================
-
-    final int offsetX =
-        ((slideWidthEmu -
-                    renderedWidthEmu) /
-                2)
-            .round();
-
-    final int offsetY =
-        ((slideHeightEmu -
-                    renderedHeightEmu) /
-                2)
-            .round();
-
-    // ==========================================================================
-    // SAFETY CHECK
-    //
-    // Keep image completely inside slide.
-    // ==========================================================================
-
-    final int safeOffsetX =
-        offsetX < 0 ? 0 : offsetX;
-
-    final int safeOffsetY =
-        offsetY < 0 ? 0 : offsetY;
 
     // ==========================================================================
     // ADD IMAGE TO PPTX
@@ -509,8 +520,8 @@ Uint8List _generatePptxInBackground(
         slideHeightEmu: slideHeightEmu,
         imageWidthEmu: renderedWidthEmu,
         imageHeightEmu: renderedHeightEmu,
-        offsetX: safeOffsetX,
-        offsetY: safeOffsetY,
+        offsetX: offsetX,
+        offsetY: offsetY,
       ),
     );
 
@@ -549,16 +560,6 @@ Uint8List _generatePptxInBackground(
   return Uint8List.fromList(
     encodedBytes,
   );
-}
-
-// ============================================================================
-// UNIT CONVERSION
-// ============================================================================
-
-int _inchesToEmu(
-  double inches,
-) {
-  return (inches * 914400).round();
 }
 
 // ============================================================================
@@ -767,14 +768,16 @@ String _buildPresentationXml(
   );
 
   // ==========================================================================
-  // 4:3 LANDSCAPE SLIDE SIZE
+  // SLIDE SIZE
+  //
+  // Standard widescreen 16:9 (the default modern PowerPoint slide size).
   // ==========================================================================
 
   sb.writeln(
     '<p:sldSz '
     'cx="$slideWidthEmu" '
     'cy="$slideHeightEmu" '
-    'type="screen4x3"/>',
+    'type="screen16x9"/>',
   );
 
   // ==========================================================================
