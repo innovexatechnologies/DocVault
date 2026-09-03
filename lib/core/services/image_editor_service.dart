@@ -214,11 +214,13 @@ class ImageEditorService {
     img.Point toPixel(Offset normalized) {
       final px = (normalized.dx * image.width)
           .round()
-          .clamp(0, image.width - 1);
+          .clamp(0, image.width - 1)
+          .toInt();
 
       final py = (normalized.dy * image.height)
           .round()
-          .clamp(0, image.height - 1);
+          .clamp(0, image.height - 1)
+          .toInt();
 
       return img.Point(px, py);
     }

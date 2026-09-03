@@ -1,9 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:camera/camera.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
 import '../../core/services/camera_service.dart';
+import '../../core/services/document_edge_detector.dart';
 import '../../core/services/gallery_service.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
@@ -31,9 +33,25 @@ class _CameraScreenState extends State<CameraScreen> {
   int _captureCount = 0;
   bool _isCapturing = false;
 
+  // Live document-edge overlay (drawn while the camera is pointed at
+  // the document, before capture). `null` means nothing confident
+  // enough has been detected in the most recent frame.
+  LiveDetectedQuad? _liveQuad;
+
   @override
   void initState() {
     super.initState();
+
+    // The live-detection rotation math (see CameraService /
+    // _rotateNormalizedCW) assumes a fixed portrait sensor
+    // orientation. Scanner apps conventionally shoot in portrait
+    // anyway, so this locks orientation only for the lifetime of
+    // this screen -- the smallest change that makes the overlay
+    // math well-defined, per the "don't change existing UX" rule
+    // this only constrains an already-camera-specific screen.
+    SystemChrome.setPreferredOrientations([
+      DeviceOrientation.portraitUp,
+    ]);
 
     _cameraService = CameraService();
 
@@ -52,6 +70,16 @@ class _CameraScreenState extends State<CameraScreen> {
         setState(() {
           _isInitializing = false;
         });
+
+        _cameraService.startLiveDetection(
+          onQuadDetected: (quad) {
+            if (!mounted) return;
+
+            setState(() {
+              _liveQuad = quad;
+            });
+          },
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -75,8 +103,26 @@ class _CameraScreenState extends State<CameraScreen> {
         _isCapturing = true;
       });
 
+      // Some camera-plugin versions don't support taking a still
+      // photo while an image stream is active. Pausing/resuming
+      // around the capture keeps the (already working) capture flow
+      // exactly as reliable as before this feature was added.
+      await _cameraService.stopLiveDetection();
+
       final image =
           await _cameraService.capturePhoto();
+
+      if (mounted) {
+        _cameraService.startLiveDetection(
+          onQuadDetected: (quad) {
+            if (!mounted) return;
+
+            setState(() {
+              _liveQuad = quad;
+            });
+          },
+        );
+      }
 
       if (image != null && mounted) {
         context
@@ -132,6 +178,18 @@ class _CameraScreenState extends State<CameraScreen> {
         setState(() {
           _isCapturing = false;
         });
+
+        // Capture failed -- make sure the live overlay comes back
+        // instead of staying frozen from the pre-capture pause.
+        _cameraService.startLiveDetection(
+          onQuadDetected: (quad) {
+            if (!mounted) return;
+
+            setState(() {
+              _liveQuad = quad;
+            });
+          },
+        );
 
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
@@ -261,7 +319,53 @@ class _CameraScreenState extends State<CameraScreen> {
   void dispose() {
     _cameraService.dispose();
 
+    // Restore the device's normal orientation behavior once this
+    // screen is gone.
+    SystemChrome.setPreferredOrientations(
+      DeviceOrientation.values,
+    );
+
     super.dispose();
+  }
+
+  // ==========================================================
+  // LIVE DOCUMENT-EDGE OVERLAY
+  // ==========================================================
+  //
+  // Draws whatever quad the background detector most recently found
+  // (see CameraService.startLiveDetection), mapped through the same
+  // BoxFit.cover math `_buildCameraPreview` uses so the outline
+  // lines up with what's actually visible on screen.
+
+  Widget _buildLiveDetectionOverlay() {
+    final controller = _cameraService.controller;
+
+    if (!controller.value.isInitialized) {
+      return const SizedBox.shrink();
+    }
+
+    final previewSize = controller.value.previewSize;
+
+    // Matches the width/height swap in _buildCameraPreview.
+    final double sourceWidth = previewSize?.height ?? 1.0;
+    final double sourceHeight = previewSize?.width ?? 1.0;
+
+    final quad = _liveQuad;
+
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: CustomPaint(
+          painter: _LiveQuadPainter(
+            quad: quad,
+            sourceWidth: sourceWidth,
+            sourceHeight: sourceHeight,
+            color: quad != null && quad.score >= 0.55
+                ? const Color(0xFF00E5A0)
+                : Colors.white,
+          ),
+        ),
+      ),
+    );
   }
 
   // ==========================================================
@@ -603,6 +707,12 @@ class _CameraScreenState extends State<CameraScreen> {
               StackFit.expand,
           children: [
             _buildCameraPreview(),
+
+            // ==================================================
+            // LIVE DOCUMENT-EDGE OVERLAY
+            // ==================================================
+
+            _buildLiveDetectionOverlay(),
 
             // ==================================================
             // DARK OVERLAY
@@ -1065,5 +1175,107 @@ class _CameraScreenState extends State<CameraScreen> {
         ),
       ),
     );
+  }
+}
+
+// ============================================================
+// LIVE QUAD PAINTER
+// ============================================================
+
+class _LiveQuadPainter extends CustomPainter {
+  final LiveDetectedQuad? quad;
+  final double sourceWidth;
+  final double sourceHeight;
+  final Color color;
+
+  const _LiveQuadPainter({
+    required this.quad,
+    required this.sourceWidth,
+    required this.sourceHeight,
+    required this.color,
+  });
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final q = quad;
+
+    if (q == null ||
+        sourceWidth <= 0 ||
+        sourceHeight <= 0 ||
+        size.width <= 0 ||
+        size.height <= 0) {
+      return;
+    }
+
+    // Reproduce the same BoxFit.cover crop `_buildCameraPreview`
+    // renders with, so the outline lines up with the visible image
+    // instead of the full (partly off-screen) sensor frame.
+    final srcAspect = sourceWidth / sourceHeight;
+    final dstAspect = size.width / size.height;
+
+    var uMin = 0.0, uMax = 1.0, vMin = 0.0, vMax = 1.0;
+
+    if (srcAspect > dstAspect) {
+      final visibleFraction = dstAspect / srcAspect;
+      uMin = (1 - visibleFraction) / 2;
+      uMax = 1 - uMin;
+    } else if (srcAspect < dstAspect) {
+      final visibleFraction = srcAspect / dstAspect;
+      vMin = (1 - visibleFraction) / 2;
+      vMax = 1 - vMin;
+    }
+
+    Offset toCanvas(EdgePoint p) {
+      final u = uMax > uMin ? (p.x - uMin) / (uMax - uMin) : p.x;
+      final v = vMax > vMin ? (p.y - vMin) / (vMax - vMin) : p.y;
+
+      return Offset(u * size.width, v * size.height);
+    }
+
+    final topLeft = toCanvas(q.topLeft);
+    final topRight = toCanvas(q.topRight);
+    final bottomRight = toCanvas(q.bottomRight);
+    final bottomLeft = toCanvas(q.bottomLeft);
+
+    final path = Path()
+      ..moveTo(topLeft.dx, topLeft.dy)
+      ..lineTo(topRight.dx, topRight.dy)
+      ..lineTo(bottomRight.dx, bottomRight.dy)
+      ..lineTo(bottomLeft.dx, bottomLeft.dy)
+      ..close();
+
+    final fillPaint = Paint()
+      ..color = color.withValues(alpha: 0.12)
+      ..style = PaintingStyle.fill;
+
+    final strokePaint = Paint()
+      ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 3
+      ..strokeJoin = StrokeJoin.round;
+
+    canvas.drawPath(path, fillPaint);
+    canvas.drawPath(path, strokePaint);
+
+    final dotPaint = Paint()..color = color;
+
+    for (final corner in [
+      topLeft,
+      topRight,
+      bottomRight,
+      bottomLeft,
+    ]) {
+      canvas.drawCircle(corner, 6, dotPaint);
+    }
+  }
+
+  @override
+  bool shouldRepaint(
+    covariant _LiveQuadPainter oldDelegate,
+  ) {
+    return oldDelegate.quad != quad ||
+        oldDelegate.color != color ||
+        oldDelegate.sourceWidth != sourceWidth ||
+        oldDelegate.sourceHeight != sourceHeight;
   }
 }
