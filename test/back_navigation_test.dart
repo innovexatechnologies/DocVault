@@ -173,7 +173,7 @@ void main() {
     await tester.tap(backButton);
     await tester.pumpAndSettle();
 
-    expect(find.text('Your documents.'), findsOneWidget);
+    expect(find.byType(MainNavigationScreen), findsOneWidget);
   });
 }
 

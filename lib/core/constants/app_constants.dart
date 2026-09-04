@@ -1,6 +1,6 @@
 class AppConstants {
   // App Info
-  static const String appName = 'DocVault';
+  static const String appName = 'DocScanner';
   static const String appTagline = 'Your Documents. Secured.';
 
   // Common strings

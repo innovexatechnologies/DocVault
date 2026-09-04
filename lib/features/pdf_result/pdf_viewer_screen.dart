@@ -1,15 +1,18 @@
+import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
+import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
 import 'package:pdfx/pdfx.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/file_utils.dart';
 import '../../models/conversion_type.dart';
-import '../../models/pdf_document.dart' as model;
 import '../pdf_generation/review_screen.dart';
 
 class PdfViewerScreen extends StatefulWidget {
@@ -30,24 +33,50 @@ class PdfViewerScreen extends StatefulWidget {
 
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   late final ConversionType _docType;
-  PdfControllerPinch? _pdfController;
-  final PageController _pageController = PageController();
 
-  List<String> _extractedPagePaths = [];
+  PdfControllerPinch? _pdfController;
+  WebViewController? _webViewController;
+  late final PageController _pageController;
+
   int _actualPageCount = 0;
   int _currentPage = 1;
+
   bool _isLoading = true;
-  bool _isSavingToDocVault = false;
+  bool _isSavingToDocScanner = false;
+
+  final List<String> _fallbackImagePaths = [];
+  bool _usingFallbackView = false;
+  Timer? _renderTimeoutTimer;
+
   String? _errorMessage;
+
+  bool get _isPdf => _docType == ConversionType.pdf;
+
+  bool get _isPpt => _docType == ConversionType.ppt;
+
+  String get _itemUnit => _isPpt ? 'Slide' : 'Page';
+
+  Color get _accentColor => _docType.badgeColor;
+
+  // ============================================================
+  // INIT
+  // ============================================================
 
   @override
   void initState() {
     super.initState();
-    _docType = ConversionType.fromFileName(widget.fileName);
+
+    _docType = ConversionType.fromFileName(
+      widget.fileName,
+    );
+
+    _pageController = PageController();
 
     final file = File(widget.filePath);
+
     if (!file.existsSync()) {
-      _errorMessage = 'Document file not found on device';
+      _errorMessage =
+          'Document file not found on device.';
       _isLoading = false;
       return;
     }
@@ -55,133 +84,345 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     _initializeViewer();
   }
 
+  // ============================================================
+  // INITIALIZE
+  // ============================================================
+
   Future<void> _initializeViewer() async {
-    if (_docType == ConversionType.pdf) {
-      try {
+    try {
+      if (_isPdf) {
         _pdfController = PdfControllerPinch(
-          document: PdfDocument.openFile(widget.filePath),
+          document: PdfDocument.openFile(
+            widget.filePath,
+          ),
         );
-      } catch (e) {
+
         if (mounted) {
           setState(() {
-            _errorMessage = 'Failed to load PDF: $e';
-            _isLoading = false;
+            _isLoading = true;
           });
         }
+
+        return;
       }
-    } else {
-      // For DOCX and PPTX, extract page/slide images
-      try {
-        final pages = await FileUtils.extractPagesFromDocument(widget.filePath);
-        if (mounted) {
-          setState(() {
-            _extractedPagePaths = pages;
-            _actualPageCount = pages.length;
-            _isLoading = false;
-          });
+
+      // DOCX / PPTX -> WebView-based rendering with native extraction fallback
+      _renderTimeoutTimer?.cancel();
+      _renderTimeoutTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted && _isLoading && !_usingFallbackView) {
+          debugPrint(
+            'WebView render timed out for ${widget.fileName}. Falling back to native page extraction...',
+          );
+          _tryFallbackNativeRendering(
+            error: 'WebView preview took too long. Switched to slide/page view.',
+          );
         }
-      } catch (e) {
-        if (mounted) {
-          setState(() {
-            _errorMessage = 'Failed to preview ${_docType.shortName}: $e';
-            _isLoading = false;
-          });
-        }
+      });
+
+      _webViewController = WebViewController()
+        ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..addJavaScriptChannel(
+          'DocumentBridge',
+          onMessageReceived: _handleBridgeMessage,
+        )
+        ..setNavigationDelegate(
+          NavigationDelegate(
+            onPageFinished: (_) => _renderOfficeDocument(),
+            onWebResourceError: (error) {
+              debugPrint('WebView web resource error: ${error.description}');
+            },
+          ),
+        )
+        ..loadFlutterAsset('assets/webview/index.html');
+
+      if (mounted) {
+        setState(() {
+          _isLoading = true;
+        });
+      }
+    } catch (e) {
+      debugPrint('WebView initialization error: $e. Attempting fallback...');
+      await _tryFallbackNativeRendering(error: e.toString());
+    }
+  }
+
+  // ============================================================
+  // RENDER DOCX/PPTX INSIDE WEBVIEW
+  // ============================================================
+
+  Future<void> _renderOfficeDocument() async {
+    try {
+      final file = File(widget.filePath);
+      if (!await file.exists()) {
+        throw Exception('File does not exist: ${widget.filePath}');
+      }
+
+      final bytes = await file.readAsBytes();
+      final base64Data = base64Encode(bytes);
+      final jsFunction = _isPpt ? 'renderPptx' : 'renderDocx';
+
+      await _webViewController!.runJavaScript(
+        "$jsFunction('$base64Data')",
+      );
+    } catch (e) {
+      debugPrint('WebView script error: $e. Attempting native fallback...');
+      await _tryFallbackNativeRendering(error: e.toString());
+    }
+  }
+
+  // ============================================================
+  // WEBVIEW <-> FLUTTER BRIDGE
+  // ============================================================
+
+  void _handleBridgeMessage(JavaScriptMessage message) {
+    if (!mounted) return;
+
+    final data = message.message;
+
+    if (data == 'success') {
+      _renderTimeoutTimer?.cancel();
+      setState(() {
+        _isLoading = false;
+        _errorMessage = null;
+      });
+    } else if (data.startsWith('error:')) {
+      _renderTimeoutTimer?.cancel();
+      debugPrint('DocumentBridge error: ${data.substring(6)}. Trying native extraction...');
+      _tryFallbackNativeRendering(error: data.substring(6));
+    } else if (data.startsWith('pagecount:')) {
+      final count = int.tryParse(data.substring(10)) ?? 0;
+      if (count > 0) {
+        setState(() {
+          _actualPageCount = count;
+          _currentPage = 1;
+        });
       }
     }
   }
 
-  @override
-  void dispose() {
-    _pdfController?.dispose();
-    _pageController.dispose();
-    super.dispose();
+  // ============================================================
+  // FALLBACK NATIVE IMAGE RENDERING FOR DOCX / PPTX
+  // ============================================================
+
+  Future<void> _tryFallbackNativeRendering({String? error}) async {
+    _renderTimeoutTimer?.cancel();
+    try {
+      final pages = await FileUtils.extractPagesFromDocument(widget.filePath);
+      if (pages.isNotEmpty && mounted) {
+        setState(() {
+          _fallbackImagePaths.clear();
+          _fallbackImagePaths.addAll(pages);
+          _actualPageCount = pages.length;
+          _currentPage = 1;
+          _usingFallbackView = true;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('Fallback native page extraction failed: $e');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _errorMessage =
+          'Failed to render ${widget.fileName}:\n${error ?? 'Unsupported document format'}';
+      _isLoading = false;
+    });
   }
+
+  // ============================================================
+  // BACK / CLOSE VIEWER
+  // ============================================================
+
+  Future<void> _closeViewer() async {
+    if (!mounted) return;
+
+    final navigator = Navigator.of(context);
+
+    // External document was opened using pushReplacement.
+    // So safely return to home instead of popping into
+    // an empty route stack.
+    if (widget.isExternal) {
+      navigator.pushNamedAndRemoveUntil(
+        '/home',
+        (route) => false,
+      );
+      return;
+    }
+
+    if (navigator.canPop()) {
+      navigator.pop();
+      return;
+    }
+
+    navigator.pushNamedAndRemoveUntil(
+      '/home',
+      (route) => false,
+    );
+  }
+
+  // ============================================================
+  // SHARE
+  // ============================================================
 
   Future<void> _shareDocument() async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
+      final file = File(widget.filePath);
+
+      if (!await file.exists()) {
+        throw Exception('Document file not found.');
+      }
+
       await Share.shareXFiles(
-        [XFile(widget.filePath)],
-        text: 'Sharing ${widget.fileName} from DocVault',
+        [
+          XFile(widget.filePath),
+        ],
+        text:
+            'Sharing ${widget.fileName} from DocScanner',
       );
     } catch (e) {
-      messenger.showSnackBar(
-        const SnackBar(
-          content: Text('Failed to share document'),
-          backgroundColor: AppTheme.errorColor,
-          behavior: SnackBarBehavior.floating,
-        ),
+      if (!mounted) return;
+
+      _showSnackBar(
+        'Failed to share document: $e',
+        isError: true,
       );
     }
   }
+
+  // ============================================================
+  // EXPORT / SAVE TO DEVICE
+  // ============================================================
 
   Future<void> _exportDocument() async {
-    final messenger = ScaffoldMessenger.of(context);
     try {
-      final provider = context.read<PdfManagerProvider>();
-      final doc = provider.documents.firstWhere(
-        (d) => d.filePath == widget.filePath || d.fileName == widget.fileName,
-        orElse: () => model.PdfDocument(
-          id: '',
-          fileName: widget.fileName,
-          filePath: widget.filePath,
-          fileSizeBytes: 0,
-          pageCount: _actualPageCount > 0 ? _actualPageCount : 1,
-          createdAt: DateTime.now(),
-          modifiedAt: DateTime.now(),
-        ),
+      final sourceFile = File(widget.filePath);
+
+      if (!await sourceFile.exists()) {
+        throw Exception(
+          'Document file not found.',
+        );
+      }
+
+      // ==========================================================
+      // EXTERNAL DOCUMENT
+      //
+      // External files may not exist in PdfManagerProvider yet.
+      // Use system sharing/save flow instead of provider export.
+      // ==========================================================
+
+      if (widget.isExternal) {
+        await Share.shareXFiles(
+          [
+            XFile(widget.filePath),
+          ],
+          text: 'Save ${widget.fileName}',
+        );
+
+        return;
+      }
+
+      // ==========================================================
+      // INTERNAL DOCVAULT DOCUMENT
+      // ==========================================================
+
+      if (!mounted) return;
+
+      final provider =
+          context.read<PdfManagerProvider>();
+
+      final matchingDocuments =
+          provider.documents.where(
+        (d) =>
+            d.filePath == widget.filePath ||
+            d.fileName == widget.fileName,
       );
 
-      final exportedPath = await provider.exportPdf(doc.id);
-      if (exportedPath != null && mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Saved to $exportedPath'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppTheme.successColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
+      if (matchingDocuments.isEmpty) {
+        // Fallback for files not registered in provider.
+        await Share.shareXFiles(
+          [
+            XFile(widget.filePath),
+          ],
+          text: 'Save ${widget.fileName}',
+        );
+
+        return;
+      }
+
+      final doc =
+          matchingDocuments.first;
+
+      if (doc.id.isEmpty) {
+        await Share.shareXFiles(
+          [
+            XFile(widget.filePath),
+          ],
+          text: 'Save ${widget.fileName}',
+        );
+
+        return;
+      }
+
+      final exportedPath =
+          await provider.exportPdf(doc.id);
+
+      if (!mounted) return;
+
+      if (exportedPath != null &&
+          exportedPath.isNotEmpty) {
+        _showSnackBar(
+          'Saved successfully',
+        );
+      } else {
+        _showSnackBar(
+          'Unable to export document',
+          isError: true,
         );
       }
     } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Export failed: $e'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppTheme.errorColor,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(10),
-            ),
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      _showSnackBar(
+        'Export failed: $e',
+        isError: true,
+      );
     }
   }
 
+  // ============================================================
+  // EDIT
+  // ============================================================
+
   Future<void> _editDocument() async {
-    final provider = context.read<PdfManagerProvider>();
-    final doc = provider.documents.firstWhere(
-      (d) => d.filePath == widget.filePath || d.fileName == widget.fileName,
-      orElse: () => model.PdfDocument(
-        id: '',
-        fileName: widget.fileName,
-        filePath: widget.filePath,
-        fileSizeBytes: 0,
-        pageCount: _actualPageCount > 0 ? _actualPageCount : 1,
-        createdAt: DateTime.now(),
-        modifiedAt: DateTime.now(),
-      ),
+    final provider =
+        context.read<PdfManagerProvider>();
+
+    final matchingDocuments =
+        provider.documents.where(
+      (d) =>
+          d.filePath == widget.filePath ||
+          d.fileName == widget.fileName,
     );
 
+    if (matchingDocuments.isEmpty) {
+      _showSnackBar(
+        'Please save document to DocScanner before editing.',
+        isError: true,
+      );
+      return;
+    }
+
+    final doc =
+        matchingDocuments.first;
+
     if (doc.id.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Please save document to DocVault before editing.'),
-        ),
+      _showSnackBar(
+        'Please save document to DocScanner before editing.',
+        isError: true,
       );
       return;
     }
@@ -189,39 +430,58 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) => const PopScope(
-        canPop: false,
-        child: Center(
-          child: Card(
-            child: Padding(
-              padding: EdgeInsets.all(24.0),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  CircularProgressIndicator(color: AppTheme.primaryColor),
-                  SizedBox(height: 16),
-                  Text(
-                    'Loading document for editing...',
-                    style: TextStyle(fontWeight: FontWeight.w600),
-                  ),
-                ],
+      builder: (_) {
+        return const PopScope(
+          canPop: false,
+          child: Center(
+            child: Card(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CircularProgressIndicator(),
+                    SizedBox(height: 16),
+                    Text(
+                      'Loading document for editing...',
+                      style: TextStyle(
+                        fontWeight:
+                            FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-      ),
+        );
+      },
     );
 
     try {
-      final imagePaths = await FileUtils.extractPagesFromDocument(doc.filePath);
+      final imagePaths =
+          await FileUtils.extractPagesFromDocument(
+        doc.filePath,
+      );
+
       if (!mounted) return;
-      Navigator.of(context).pop(); // Close loading
 
-      final imageSelectionProvider = context.read<ImageSelectionProvider>();
-      imageSelectionProvider.clearAllImages();
-      imageSelectionProvider.addImages(imagePaths, 'existing_doc', markUnsaved: false);
+      Navigator.of(context).pop();
 
-      final result = await Navigator.of(context).push<bool>(
+      final imageProvider =
+          context.read<ImageSelectionProvider>();
+
+      imageProvider.clearAllImages();
+
+      imageProvider.addImages(
+        imagePaths,
+        'existing_doc',
+        markUnsaved: false,
+      );
+
+      final result =
+          await Navigator.of(context)
+              .push<bool>(
         MaterialPageRoute(
           builder: (_) => ReviewScreen(
             existingDocument: doc,
@@ -231,310 +491,635 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
 
       if (result == true && mounted) {
-        Navigator.of(context).pop(); // Close viewer to reload updated document
+        Navigator.of(context).pop();
       }
     } catch (e) {
-      if (mounted) {
-        Navigator.of(context).pop();
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to load document: $e'),
-            backgroundColor: AppTheme.errorColor,
-          ),
-        );
-      }
+      if (!mounted) return;
+
+      Navigator.of(context).pop();
+
+      _showSnackBar(
+        'Failed to load document: $e',
+        isError: true,
+      );
     }
   }
+
+  // ============================================================
+  // OPEN EXTERNAL APP
+  // ============================================================
 
   Future<void> _openWithExternalApp() async {
     try {
-      await OpenFile.open(widget.filePath);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text('Failed to open file: $e'),
-            backgroundColor: AppTheme.errorColor,
-          ),
+      final file = File(widget.filePath);
+
+      if (!await file.exists()) {
+        throw Exception(
+          'Document file not found.',
         );
       }
-    }
-  }
 
-  Future<void> _saveToDocVaultLibrary() async {
-    if (_isSavingToDocVault) return;
-    setState(() => _isSavingToDocVault = true);
-
-    final messenger = ScaffoldMessenger.of(context);
-    try {
-      final srcFile = File(widget.filePath);
-      if (!await srcFile.exists()) {
-        throw Exception('Source file not found');
-      }
-
-      final destPath = await FileUtils.getFullPdfPath(widget.fileName);
-      final destFile = File(destPath);
-      await destFile.parent.create(recursive: true);
-      await srcFile.copy(destPath);
-
-      if (!mounted) return;
-      final provider = context.read<PdfManagerProvider>();
-      await provider.registerGeneratedPdf(
-        filePath: destPath,
-        fileName: widget.fileName,
-        pageCount: _actualPageCount > 0 ? _actualPageCount : 1,
+      final result =
+          await OpenFile.open(
+        widget.filePath,
       );
 
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Saved "${widget.fileName}" to DocVault'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppTheme.successColor,
-          ),
+      if (!mounted) return;
+
+      if (result.type != ResultType.done) {
+        _showSnackBar(
+          result.message.isNotEmpty
+              ? result.message
+              : 'Unable to open file.',
+          isError: true,
         );
       }
     } catch (e) {
-      if (mounted) {
-        messenger.showSnackBar(
-          SnackBar(
-            content: Text('Failed to save to DocVault: $e'),
-            behavior: SnackBarBehavior.floating,
-            backgroundColor: AppTheme.errorColor,
-          ),
+      if (!mounted) return;
+
+      _showSnackBar(
+        'Failed to open file: $e',
+        isError: true,
+      );
+    }
+  }
+
+  // ============================================================
+  // SAVE EXTERNAL DOCUMENT TO DOCVAULT
+  // ============================================================
+
+  Future<void> _saveToDocScannerLibrary() async {
+    if (_isSavingToDocScanner) {
+      return;
+    }
+
+    setState(() {
+      _isSavingToDocScanner = true;
+    });
+
+    try {
+      final sourceFile =
+          File(widget.filePath);
+
+      if (!await sourceFile.exists()) {
+        throw Exception(
+          'Source file not found.',
         );
       }
+
+      final destinationPath =
+          await FileUtils.getFullPdfPath(
+        widget.fileName,
+      );
+
+      final destinationFile =
+          File(destinationPath);
+
+      await destinationFile.parent.create(
+        recursive: true,
+      );
+
+      if (sourceFile.path !=
+          destinationFile.path) {
+        await sourceFile.copy(
+          destinationPath,
+        );
+      }
+
+      if (!mounted) return;
+
+      final provider =
+          context.read<PdfManagerProvider>();
+
+      await provider.registerGeneratedPdf(
+        filePath: destinationPath,
+        fileName: widget.fileName,
+        pageCount: _actualPageCount > 0
+            ? _actualPageCount
+            : 1,
+      );
+
+      if (!mounted) return;
+
+      _showSnackBar(
+        '"${widget.fileName}" saved to DocScanner',
+      );
+    } catch (e) {
+      if (!mounted) return;
+
+      _showSnackBar(
+        'Failed to save to DocScanner: $e',
+        isError: true,
+      );
     } finally {
       if (mounted) {
-        setState(() => _isSavingToDocVault = false);
+        setState(() {
+          _isSavingToDocScanner = false;
+        });
       }
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final isDark = theme.brightness == Brightness.dark;
-    final itemUnit = _docType == ConversionType.ppt ? 'Slide' : 'Page';
+  // ============================================================
+  // SNACKBAR
+  // ============================================================
 
-    return Scaffold(
-      backgroundColor: isDark ? AppTheme.bgDark : const Color(0xFFE8ECEB),
-      appBar: AppBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back_rounded),
-          onPressed: () => Navigator.of(context).maybePop(),
-          tooltip: 'Back',
-        ),
-        backgroundColor: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-        foregroundColor: colorScheme.onSurface,
-        elevation: 0,
-        title: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+  void _showSnackBar(
+    String message, {
+    bool isError = false,
+  }) {
+    ScaffoldMessenger.of(context)
+        .showSnackBar(
+      SnackBar(
+        content: Row(
           children: [
-            Text(
-              widget.fileName,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w700,
-              ),
+            Icon(
+              isError
+                  ? Icons.error_outline_rounded
+                  : Icons
+                      .check_circle_outline_rounded,
+              color: Colors.white,
             ),
-            if (_actualPageCount > 0)
-              Text(
-                '$itemUnit $_currentPage of $_actualPageCount',
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w500,
-                  color: colorScheme.onSurface.withValues(alpha: 0.6),
-                ),
-              ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Text(message),
+            ),
           ],
         ),
-        actions: [
-          if (!widget.isExternal)
-            IconButton(
-              icon: const Icon(Icons.tune_rounded),
-              onPressed: _editDocument,
-              tooltip: 'Edit Document',
-            ),
-          if (widget.isExternal)
-            IconButton(
-              icon: _isSavingToDocVault
-                  ? const SizedBox(
-                      width: 18,
-                      height: 18,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: AppTheme.primaryColor,
-                      ),
-                    )
-                  : const Icon(Icons.bookmark_add_outlined),
-              onPressed: _saveToDocVaultLibrary,
-              tooltip: 'Save to DocVault',
-            ),
-          IconButton(
-            icon: const Icon(Icons.open_in_new_rounded),
-            onPressed: _openWithExternalApp,
-            tooltip: 'Open in External App',
-          ),
-          IconButton(
-            icon: const Icon(Icons.share_outlined),
-            onPressed: _shareDocument,
-            tooltip: 'Share Document',
-          ),
-          IconButton(
-            icon: const Icon(Icons.download_rounded),
-            onPressed: _exportDocument,
-            tooltip: 'Save to Device',
-          ),
-        ],
+        behavior:
+            SnackBarBehavior.floating,
+        backgroundColor: isError
+            ? AppTheme.errorColor
+            : AppTheme.successColor,
+        margin:
+            const EdgeInsets.all(16),
+        shape:
+            RoundedRectangleBorder(
+          borderRadius:
+              BorderRadius.circular(14),
+        ),
       ),
-      body: _errorMessage != null
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24.0),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(
-                      Icons.error_outline_rounded,
-                      size: 48,
-                      color: AppTheme.errorColor,
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      _errorMessage!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton.icon(
-                      onPressed: _openWithExternalApp,
-                      icon: const Icon(Icons.open_in_new_rounded),
-                      label: const Text('Open in System App'),
-                    ),
-                  ],
-                ),
-              ),
-            )
-          : _docType == ConversionType.pdf
-              ? Stack(
-                  children: [
-                    if (_pdfController != null)
-                      PdfViewPinch(
-                        controller: _pdfController!,
-                        onDocumentLoaded: (document) {
-                          if (mounted) {
-                            setState(() {
-                              _actualPageCount = document.pagesCount;
-                              _isLoading = false;
-                            });
-                          }
-                        },
-                        onPageChanged: (page) {
-                          if (mounted) {
-                            setState(() {
-                              _currentPage = page;
-                            });
-                          }
-                        },
-                        onDocumentError: (error) {
-                          if (mounted) {
-                            setState(() {
-                              _errorMessage = 'Failed to display PDF: $error';
-                              _isLoading = false;
-                            });
-                          }
-                        },
-                      ),
-                    if (_isLoading)
-                      const Center(
-                        child: CircularProgressIndicator(
-                          color: AppTheme.primaryColor,
-                        ),
-                      ),
-                  ],
-                )
-              : _buildNonPdfViewer(isDark),
     );
   }
 
-  Widget _buildNonPdfViewer(bool isDark) {
-    if (_isLoading) {
-      return const Center(
-        child: CircularProgressIndicator(
-          color: AppTheme.primaryColor,
+  // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    _renderTimeoutTimer?.cancel();
+    _pdfController?.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // ============================================================
+  // BUILD
+  // ============================================================
+
+  @override
+  Widget build(BuildContext context) {
+    final theme =
+        Theme.of(context);
+
+    final isDark =
+        theme.brightness ==
+            Brightness.dark;
+
+    return PopScope(
+      canPop: !widget.isExternal,
+      onPopInvokedWithResult: (
+        didPop,
+        result,
+      ) {
+        if (didPop) return;
+
+        _closeViewer();
+      },
+      child: Scaffold(
+        backgroundColor: isDark
+            ? const Color(0xFF070A16)
+            : const Color(0xFFF5F7FB),
+        body: SafeArea(
+          child: Column(
+            children: [
+              _buildTopBar(isDark),
+
+              Expanded(
+                child: _buildBody(isDark),
+              ),
+
+              _buildBottomToolbar(isDark),
+            ],
+          ),
         ),
-      );
+      ),
+    );
+  }
+
+  // ============================================================
+  // TOP BAR
+  // ============================================================
+
+  Widget _buildTopBar(bool isDark) {
+    return Container(
+      padding:
+          const EdgeInsets.fromLTRB(
+        14,
+        10,
+        14,
+        12,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF0D1122)
+            : Colors.white,
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(
+                    alpha: 0.06,
+                  )
+                : Colors.black.withValues(
+                    alpha: 0.06,
+                  ),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          _buildTopIcon(
+            icon:
+                Icons.arrow_back_rounded,
+            onTap: _closeViewer,
+          ),
+
+          const SizedBox(width: 12),
+
+          Expanded(
+            child: Column(
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
+              children: [
+                Text(
+                  widget.fileName,
+                  maxLines: 1,
+                  overflow:
+                      TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight:
+                        FontWeight.w800,
+                    color: isDark
+                        ? Colors.white
+                        : const Color(
+                            0xFF151823,
+                          ),
+                  ),
+                ),
+
+                const SizedBox(height: 3),
+
+                Row(
+                  children: [
+                    _buildTypeBadge(),
+
+                    const SizedBox(width: 7),
+
+                    if (_actualPageCount >
+                        0)
+                      Text(
+                        '$_itemUnit $_currentPage of $_actualPageCount',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight:
+                              FontWeight.w600,
+                          color: isDark
+                              ? Colors.white60
+                              : Colors.black54,
+                        ),
+                      ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+
+          if (!widget.isExternal)
+            _buildTopIcon(
+              icon: Icons.edit_rounded,
+              onTap: _editDocument,
+            ),
+
+          const SizedBox(width: 6),
+
+          _buildTopIcon(
+            icon:
+                Icons.more_horiz_rounded,
+            onTap: () =>
+                _showMoreOptions(isDark),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // TYPE BADGE
+  // ============================================================
+
+  Widget _buildTypeBadge() {
+    String label;
+
+    if (_isPdf) {
+      label = 'PDF';
+    } else if (_isPpt) {
+      label = 'PPT';
+    } else {
+      label = 'DOC';
     }
 
-    final isPpt = _docType == ConversionType.ppt;
-    final aspectRatio = isPpt ? (16 / 9) : (1 / 1.414);
+    return Container(
+      padding:
+          const EdgeInsets.symmetric(
+        horizontal: 8,
+        vertical: 3,
+      ),
+      decoration: BoxDecoration(
+        color: _accentColor.withValues(
+          alpha: 0.12,
+        ),
+        borderRadius:
+            BorderRadius.circular(6),
+      ),
+      child: Text(
+        label,
+        style: TextStyle(
+          color: _accentColor,
+          fontSize: 10,
+          fontWeight: FontWeight.w900,
+        ),
+      ),
+    );
+  }
 
-    return Column(
-      children: [
-        Expanded(
-          child: PageView.builder(
+  // ============================================================
+  // TOP ICON
+  // ============================================================
+
+  Widget _buildTopIcon({
+    required IconData icon,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius:
+            BorderRadius.circular(13),
+        child: Container(
+          width: 42,
+          height: 42,
+          decoration: BoxDecoration(
+            borderRadius:
+                BorderRadius.circular(13),
+            color: Theme.of(context)
+                        .brightness ==
+                    Brightness.dark
+                ? Colors.white.withValues(
+                    alpha: 0.06,
+                  )
+                : Colors.black.withValues(
+                    alpha: 0.035,
+                  ),
+          ),
+          child: Icon(
+            icon,
+            size: 21,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // BODY
+  // ============================================================
+
+  Widget _buildBody(bool isDark) {
+    if (_errorMessage != null) {
+      return _buildErrorState(isDark);
+    }
+
+    if (_isPdf) {
+      return _buildPdfViewer(isDark);
+    }
+
+    if (_usingFallbackView && _fallbackImagePaths.isNotEmpty) {
+      return _buildFallbackImageViewer(isDark);
+    }
+
+    return _buildOfficeWebViewer(isDark);
+  }
+
+  // ============================================================
+  // ERROR
+  // ============================================================
+
+  Widget _buildErrorState(bool isDark) {
+    return Center(
+      child: Padding(
+        padding:
+            const EdgeInsets.all(28),
+        child: Container(
+          width: double.infinity,
+          padding:
+              const EdgeInsets.all(28),
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF111627)
+                : Colors.white,
+            borderRadius:
+                BorderRadius.circular(26),
+            border: Border.all(
+              color:
+                  AppTheme.errorColor.withValues(
+                alpha: 0.15,
+              ),
+            ),
+          ),
+          child: Column(
+            mainAxisSize:
+                MainAxisSize.min,
+            children: [
+              Container(
+                width: 76,
+                height: 76,
+                decoration:
+                    BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: AppTheme.errorColor
+                      .withValues(
+                    alpha: 0.10,
+                  ),
+                ),
+                child: const Icon(
+                  Icons
+                      .error_outline_rounded,
+                  size: 42,
+                  color:
+                      AppTheme.errorColor,
+                ),
+              ),
+
+              const SizedBox(height: 20),
+
+              Text(
+                'Unable to open document',
+                textAlign:
+                    TextAlign.center,
+                style: TextStyle(
+                  fontSize: 19,
+                  fontWeight:
+                      FontWeight.w800,
+                  color: isDark
+                      ? Colors.white
+                      : const Color(
+                          0xFF171A25,
+                        ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              Text(
+                _errorMessage!,
+                textAlign:
+                    TextAlign.center,
+                style: TextStyle(
+                  fontSize: 13,
+                  height: 1.5,
+                  color: isDark
+                      ? Colors.white60
+                      : Colors.black54,
+                ),
+              ),
+
+              const SizedBox(height: 24),
+
+              if (!_isPdf && _fallbackImagePaths.isEmpty) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _isLoading = true;
+                        _errorMessage = null;
+                      });
+                      _tryFallbackNativeRendering();
+                    },
+                    icon: const Icon(Icons.slideshow_rounded),
+                    label: Text('View as $_itemUnit Images'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _accentColor,
+                      side: BorderSide(
+                        color: _accentColor.withValues(alpha: 0.5),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
+              SizedBox(
+                width: double.infinity,
+                height: 50,
+                child:
+                    ElevatedButton.icon(
+                  onPressed:
+                      _openWithExternalApp,
+                  icon: const Icon(
+                    Icons.open_in_new_rounded,
+                  ),
+                  label: const Text(
+                    'Open in System App',
+                  ),
+                  style:
+                      ElevatedButton.styleFrom(
+                    backgroundColor:
+                        _accentColor,
+                    foregroundColor:
+                        Colors.white,
+                    elevation: 0,
+                    shape:
+                        RoundedRectangleBorder(
+                      borderRadius:
+                          BorderRadius.circular(
+                        15,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+
+              const SizedBox(height: 10),
+
+              TextButton(
+                onPressed: _closeViewer,
+                child: const Text(
+                  'Go to Home',
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FALLBACK IMAGE VIEWER (DOCX / PPTX native slides)
+  // ============================================================
+
+  Widget _buildFallbackImageViewer(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF101526) : const Color(0xFFE9EDF4),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          PageView.builder(
             controller: _pageController,
-            itemCount: _extractedPagePaths.length,
-            onPageChanged: (idx) {
-              setState(() => _currentPage = idx + 1);
+            itemCount: _fallbackImagePaths.length,
+            onPageChanged: (index) {
+              if (!mounted) return;
+              setState(() {
+                _currentPage = index + 1;
+              });
             },
             itemBuilder: (context, index) {
-              final path = _extractedPagePaths[index];
+              final imageFile = File(_fallbackImagePaths[index]);
               return Center(
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  child: AspectRatio(
-                    aspectRatio: aspectRatio,
-                    child: Container(
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(isPpt ? 12 : 8),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withValues(alpha: 0.15),
-                            blurRadius: 16,
-                            offset: const Offset(0, 4),
-                          ),
-                        ],
-                      ),
-                      clipBehavior: Clip.antiAlias,
-                      child: Stack(
-                        fit: StackFit.expand,
-                        children: [
-                          Image.file(
-                            File(path),
-                            fit: BoxFit.contain,
-                          ),
-                          Positioned(
-                            bottom: 8,
-                            right: 8,
-                            child: Container(
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 8,
-                                vertical: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: Colors.black54,
-                                borderRadius: BorderRadius.circular(6),
-                              ),
-                              child: Text(
-                                '${index + 1}',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 11,
-                                  fontWeight: FontWeight.bold,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4.0,
+                  child: Image.file(
+                    imageFile,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Center(
+                      child: Text(
+                        'Unable to load $_itemUnit ${index + 1}',
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
                       ),
                     ),
                   ),
@@ -542,51 +1127,543 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               );
             },
           ),
-        ),
-        if (_extractedPagePaths.length > 1)
-          Container(
-            height: 60,
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            color: isDark ? AppTheme.surfaceDark : AppTheme.surfaceLight,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              itemCount: _extractedPagePaths.length,
-              separatorBuilder: (context, index) => const SizedBox(width: 8),
-              itemBuilder: (context, idx) {
-                final isSelected = idx == _currentPage - 1;
-                return GestureDetector(
-                  onTap: () {
-                    _pageController.animateToPage(
-                      idx,
-                      duration: const Duration(milliseconds: 300),
-                      curve: Curves.easeInOut,
-                    );
-                  },
-                  child: Container(
-                    width: isPpt ? 60 : 40,
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(6),
-                      border: Border.all(
-                        color: isSelected
-                            ? _docType.badgeColor
-                            : Colors.transparent,
-                        width: 2,
-                      ),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: Image.file(
-                      File(_extractedPagePaths[idx]),
-                      fit: BoxFit.cover,
+          if (_fallbackImagePaths.length > 1)
+            Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$_itemUnit $_currentPage of ${_fallbackImagePaths.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
                     ),
                   ),
-                );
-              },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // PDF VIEWER
+  // ============================================================
+
+  Widget _buildPdfViewer(bool isDark) {
+    if (_pdfController == null) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    return Container(
+      margin:
+          const EdgeInsets.fromLTRB(
+        12,
+        12,
+        12,
+        8,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF101526)
+            : const Color(0xFFE9EDF4),
+        borderRadius:
+            BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          PdfViewPinch(
+            controller: _pdfController!,
+
+            onDocumentLoaded: (
+              document,
+            ) {
+              if (!mounted) return;
+
+              setState(() {
+                _actualPageCount =
+                    document.pagesCount;
+                _currentPage = 1;
+                _isLoading = false;
+              });
+            },
+
+            onPageChanged: (page) {
+              if (!mounted) return;
+
+              setState(() {
+                _currentPage = page;
+              });
+            },
+
+            onDocumentError: (error) {
+              if (!mounted) return;
+
+              setState(() {
+                _errorMessage =
+                    'Failed to display PDF: $error';
+                _isLoading = false;
+              });
+            },
+          ),
+
+          if (_isLoading)
+            Container(
+              color: isDark
+                  ? const Color(0xFF0A0D19)
+                  : const Color(
+                      0xFFF5F7FB,
+                    ),
+              child: Center(
+                child:
+                    _buildLoadingState(isDark),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // OFFICE VIEWER (WebView based — DOCX/PPTX)
+  // ============================================================
+
+  Widget _buildOfficeWebViewer(bool isDark) {
+    if (_webViewController == null) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.fromLTRB(
+        12,
+        12,
+        12,
+        8,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF101526)
+            : const Color(0xFFE9EDF4),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          WebViewWidget(controller: _webViewController!),
+
+          if (_isLoading)
+            Container(
+              color: isDark
+                  ? const Color(0xFF0A0D19)
+                  : const Color(0xFFF5F7FB),
+              child: Center(
+                child: _buildLoadingState(isDark),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // LOADING
+  // ============================================================
+
+  Widget _buildLoadingState(bool isDark) {
+    return Center(
+      child: Column(
+        mainAxisSize:
+            MainAxisSize.min,
+        children: [
+          Container(
+            width: 76,
+            height: 76,
+            decoration:
+                BoxDecoration(
+              color:
+                  _accentColor.withValues(
+                alpha: 0.10,
+              ),
+              borderRadius:
+                  BorderRadius.circular(22),
+            ),
+            child: Center(
+              child:
+                  CircularProgressIndicator(
+                color: _accentColor,
+                strokeWidth: 3,
+              ),
             ),
           ),
-      ],
+
+          const SizedBox(height: 18),
+
+          Text(
+            'Loading document...',
+            style: TextStyle(
+              fontSize: 15,
+              fontWeight:
+                  FontWeight.w700,
+              color: isDark
+                  ? Colors.white
+                  : const Color(
+                      0xFF171A25,
+                    ),
+            ),
+          ),
+
+          const SizedBox(height: 5),
+
+          Text(
+            'Preparing your ${_itemUnit.toLowerCase()}',
+            style: TextStyle(
+              fontSize: 12,
+              color: isDark
+                  ? Colors.white54
+                  : Colors.black45,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // BOTTOM TOOLBAR
+  // ============================================================
+
+  Widget _buildBottomToolbar(bool isDark) {
+    return Container(
+      padding:
+          const EdgeInsets.fromLTRB(
+        14,
+        10,
+        14,
+        12,
+      ),
+      decoration: BoxDecoration(
+        color: isDark
+            ? const Color(0xFF0D1122)
+            : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(
+                    alpha: 0.06,
+                  )
+                : Colors.black.withValues(
+                    alpha: 0.06,
+                  ),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _buildBottomAction(
+              icon:
+                  Icons.open_in_new_rounded,
+              label: 'Open',
+              onTap:
+                  _openWithExternalApp,
+              isDark: isDark,
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          Expanded(
+            child: _buildBottomAction(
+              icon:
+                  Icons.share_outlined,
+              label: 'Share',
+              onTap: _shareDocument,
+              isDark: isDark,
+            ),
+          ),
+
+          const SizedBox(width: 8),
+
+          Expanded(
+            child: _buildBottomAction(
+              icon:
+                  Icons.download_rounded,
+              label: 'Save',
+              onTap: _exportDocument,
+              isDark: isDark,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
+  // BOTTOM ACTION
+  // ============================================================
+
+  Widget _buildBottomAction({
+    required IconData icon,
+    required String label,
+    required VoidCallback onTap,
+    required bool isDark,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius:
+            BorderRadius.circular(15),
+        child: Container(
+          height: 52,
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(
+                    alpha: 0.055,
+                  )
+                : const Color(
+                    0xFFF5F6FA,
+                  ),
+            borderRadius:
+                BorderRadius.circular(15),
+            border: Border.all(
+              color: isDark
+                  ? Colors.white.withValues(
+                      alpha: 0.06,
+                    )
+                  : Colors.black.withValues(
+                      alpha: 0.05,
+                    ),
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment:
+                MainAxisAlignment.center,
+            children: [
+              Icon(
+                icon,
+                size: 19,
+                color: isDark
+                    ? Colors.white
+                    : const Color(
+                        0xFF252936,
+                      ),
+              ),
+
+              const SizedBox(height: 2),
+
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 10,
+                  fontWeight:
+                      FontWeight.w700,
+                  color: isDark
+                      ? Colors.white70
+                      : Colors.black54,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // MORE OPTIONS
+  // ============================================================
+
+  void _showMoreOptions(bool isDark) {
+    showModalBottomSheet(
+      context: context,
+      backgroundColor:
+          Colors.transparent,
+      builder: (sheetContext) {
+        return Container(
+          padding:
+              const EdgeInsets.fromLTRB(
+            18,
+            12,
+            18,
+            24,
+          ),
+          decoration: BoxDecoration(
+            color: isDark
+                ? const Color(0xFF111627)
+                : Colors.white,
+            borderRadius:
+                const BorderRadius.vertical(
+              top: Radius.circular(28),
+            ),
+          ),
+          child: SafeArea(
+            child: Column(
+              mainAxisSize:
+                  MainAxisSize.min,
+              children: [
+                Container(
+                  width: 42,
+                  height: 4,
+                  decoration:
+                      BoxDecoration(
+                    color: isDark
+                        ? Colors.white24
+                        : Colors.black12,
+                    borderRadius:
+                        BorderRadius.circular(
+                      20,
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 20),
+
+                _buildSheetItem(
+                  icon:
+                      Icons.open_in_new_rounded,
+                  title:
+                      'Open with another app',
+                  subtitle:
+                      'Use an installed document app',
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+                    _openWithExternalApp();
+                  },
+                ),
+
+                if (widget.isExternal)
+                  _buildSheetItem(
+                    icon:
+                        Icons
+                            .bookmark_add_outlined,
+                    title:
+                        'Save to DocScanner',
+                    subtitle:
+                        'Keep this document in your library',
+                    onTap:
+                        _isSavingToDocScanner
+                            ? null
+                            : () {
+                                Navigator.pop(
+                                  sheetContext,
+                                );
+                                _saveToDocScannerLibrary();
+                              },
+                  ),
+
+                _buildSheetItem(
+                  icon:
+                      Icons.share_outlined,
+                  title:
+                      'Share document',
+                  subtitle:
+                      'Send this file to another app',
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+                    _shareDocument();
+                  },
+                ),
+
+                _buildSheetItem(
+                  icon:
+                      Icons.download_rounded,
+                  title:
+                      'Save to device',
+                  subtitle:
+                      'Export a copy of this document',
+                  onTap: () {
+                    Navigator.pop(
+                      sheetContext,
+                    );
+                    _exportDocument();
+                  },
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  // ============================================================
+  // SHEET ITEM
+  // ============================================================
+
+  Widget _buildSheetItem({
+    required IconData icon,
+    required String title,
+    required String subtitle,
+    required VoidCallback? onTap,
+  }) {
+    return ListTile(
+      enabled: onTap != null,
+      contentPadding:
+          const EdgeInsets.symmetric(
+        vertical: 4,
+      ),
+      leading: Container(
+        width: 46,
+        height: 46,
+        decoration: BoxDecoration(
+          color:
+              _accentColor.withValues(
+            alpha: 0.10,
+          ),
+          borderRadius:
+              BorderRadius.circular(14),
+        ),
+        child: Icon(
+          icon,
+          color: _accentColor,
+        ),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontWeight: FontWeight.w700,
+          fontSize: 14,
+        ),
+      ),
+      subtitle: Text(
+        subtitle,
+        style: const TextStyle(
+          fontSize: 11,
+        ),
+      ),
+      trailing: const Icon(
+        Icons.chevron_right_rounded,
+      ),
+      onTap: onTap,
     );
   }
 }
 
-typedef DocumentViewerScreen = PdfViewerScreen;
+// ================================================================
+// BACKWARD COMPATIBILITY
+// ================================================================
+
+typedef DocumentViewerScreen =
+    PdfViewerScreen;

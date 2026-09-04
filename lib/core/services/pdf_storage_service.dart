@@ -15,7 +15,7 @@ import 'pptx_generation_service.dart';
 
 class PdfStorageService {
   static const String _metadataFileName = 'pdf_records.json';
-  static const String _metadataDirName = 'DocVault/metadata';
+  static const String _metadataDirName = 'DocScanner/metadata';
 
   PdfStorageService();
 

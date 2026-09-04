@@ -33,9 +33,11 @@ void main() {
   });
 
   tearDownAll(() async {
-    if (await tempDir.exists()) {
-      await tempDir.delete(recursive: true);
-    }
+    try {
+      if (await tempDir.exists()) {
+        await tempDir.delete(recursive: true);
+      }
+    } catch (_) {}
   });
 
   final List<Size> testScreenSizes = [

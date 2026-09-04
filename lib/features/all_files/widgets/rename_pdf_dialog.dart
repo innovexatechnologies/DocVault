@@ -78,6 +78,7 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
           color: isDark ? AppTheme.dividerDark : AppTheme.dividerColor,
         ),
       ),
+      actionsOverflowButtonSpacing: 8,
       title: Row(
         children: [
           Container(
@@ -95,12 +96,16 @@ class _RenamePdfDialogState extends State<RenamePdfDialog> {
             ),
           ),
           const SizedBox(width: 12),
-          Text(
-            'Rename ${docType.shortName}',
-            style: TextStyle(
-              fontSize: 18,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
+          Expanded(
+            child: Text(
+              'Rename ${docType.shortName}',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 18,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ],

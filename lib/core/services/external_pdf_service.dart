@@ -1,206 +1,323 @@
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:flutter/services.dart';
 
+import '../../models/conversion_type.dart';
 import '../utils/file_utils.dart';
-import 'pdf_storage_service.dart';
 
 class ExternalPdfService {
   static const MethodChannel _channel =
       MethodChannel('docvault/pdf_intent');
 
-  /// Imports an external PDF into DocVault permanent storage.
-  static Future<Map<String, dynamic>> importPdfFromUri(
+  static Future<Map<String, dynamic>> importDocumentFromUri(
     String uri,
   ) async {
-    if (uri.trim().isEmpty) {
-      throw Exception('PDF URI is empty.');
+    final cleanUri = uri.trim();
+
+    if (cleanUri.isEmpty) {
+      throw Exception('Document URI is empty.');
     }
 
-    // ============================================================
-    // READ PDF FROM ANDROID
-    // ============================================================
+    final result = await _invokeDocumentRead(cleanUri);
 
-    final result = await _channel.invokeMethod(
-      'readPdf',
-      {
-        'uri': uri,
-      },
-    );
-
-    if (result == null) {
-      throw Exception(
-        'Failed to read external PDF document.',
-      );
+    if (result.isEmpty) {
+      throw Exception('Android did not return document data.');
     }
 
-    final data = Map<Object?, Object?>.from(result);
-
-    final rawBytes = data['bytes'];
+    final rawBytes = result['bytes'];
 
     if (rawBytes == null) {
-      throw Exception(
-        'Android did not return PDF data.',
-      );
+      throw Exception('Android did not return document bytes.');
     }
 
-    final bytes = Uint8List.fromList(
-      List<int>.from(rawBytes as List),
-    );
+    late final Uint8List bytes;
+
+    try {
+      if (rawBytes is Uint8List) {
+        bytes = rawBytes;
+      } else if (rawBytes is List) {
+        bytes = Uint8List.fromList(
+          rawBytes.map((e) => e as int).toList(),
+        );
+      } else {
+        throw Exception(
+          'Invalid document byte data received from Android.',
+        );
+      }
+    } catch (e) {
+      throw Exception(
+        'Failed to convert external document bytes: $e',
+      );
+    }
 
     if (bytes.isEmpty) {
+      throw Exception('The external document is empty.');
+    }
+
+    final androidFileName =
+        result['fileName']?.toString().trim();
+
+    final mimeType =
+        result['mimeType']?.toString().trim().toLowerCase();
+
+    String originalFileName;
+
+    if (androidFileName != null &&
+        androidFileName.isNotEmpty) {
+      originalFileName = androidFileName;
+    } else {
+      originalFileName = _fileNameFromUri(cleanUri);
+    }
+
+    if (!_hasSupportedExtension(originalFileName)) {
+      final extension = _extensionFromMimeType(mimeType);
+
+      if (extension != null) {
+        final baseName = _removeExtension(originalFileName);
+        originalFileName = '$baseName.$extension';
+      }
+    }
+
+    if (!_hasSupportedExtension(originalFileName)) {
       throw Exception(
-        'The external PDF is empty.',
+        'Unsupported external document format: $originalFileName',
       );
     }
 
-    // ============================================================
-    // FILE NAME
-    // ============================================================
+    final type = ConversionType.fromFileName(
+      originalFileName,
+    );
 
-    final originalFileName =
-        data['fileName']?.toString() ??
-            'External_Document.pdf';
-
-    String fileName =
-        _sanitizeFileName(originalFileName);
-
-    if (!fileName
-        .toLowerCase()
-        .endsWith('.pdf')) {
-      fileName = '$fileName.pdf';
+    if (!_isSupportedConversionType(type)) {
+      throw Exception(
+        'Unsupported external document type: $originalFileName',
+      );
     }
 
-    // ============================================================
-    // PERMANENT DOCVAULT STORAGE
-    // ============================================================
+    final fileName = FileUtils.normalizeFileName(
+      originalFileName,
+      type,
+    );
 
-    final appDirectory =
-        await FileUtils.getAppDocumentsDirectory();
+    final cacheDir =
+        await FileUtils.getCacheDirectory();
 
-    await appDirectory.create(
+    final timestamp =
+        DateTime.now().millisecondsSinceEpoch;
+
+    final uniqueFileName =
+        '${timestamp}_$fileName';
+
+    final tempFilePath =
+        '${cacheDir.path}/$uniqueFileName';
+
+    final file = File(tempFilePath);
+
+    await file.parent.create(
       recursive: true,
     );
-
-    // ============================================================
-    // UNIQUE FILE NAME
-    // ============================================================
-
-    final finalFileName =
-        await _getUniqueFileName(
-      appDirectory,
-      fileName,
-    );
-
-    final permanentPath =
-        '${appDirectory.path}/$finalFileName';
-
-    final file = File(permanentPath);
 
     await file.writeAsBytes(
       bytes,
       flush: true,
     );
 
-    // ============================================================
-    // VERIFY FILE
-    // ============================================================
-
     if (!await file.exists()) {
       throw Exception(
-        'Failed to save PDF inside DocVault.',
+        'Failed to save external document.',
       );
     }
 
-    final fileSize = await file.length();
+    final savedLength = await file.length();
 
-    if (fileSize == 0) {
+    if (savedLength <= 0) {
       throw Exception(
-        'Saved PDF file is empty.',
+        'Saved external document is empty.',
       );
     }
 
-    // ============================================================
-    // REGISTER PDF IN DOCVAULT LIBRARY
-    // ============================================================
-
-    final storageService =
-        PdfStorageService();
-
-    await storageService.saveDocument(
-      filePath: permanentPath,
-      fileName: finalFileName,
-      pageCount: 1,
+    final savedType =
+        ConversionType.fromFileName(
+      file.path,
     );
 
-    // ============================================================
-    // RETURN PERMANENT FILE PATH
-    // ============================================================
+    if (!_isSupportedConversionType(savedType)) {
+      await _safeDelete(file);
+
+      throw Exception(
+        'Saved external document has an unsupported format.',
+      );
+    }
 
     return {
-      'filePath': permanentPath,
-      'fileName': finalFileName,
+      'filePath': file.path,
+      'fileName': fileName,
+      'type': savedType,
+      'mimeType': mimeType,
     };
   }
 
-  // ==============================================================
-  // UNIQUE FILE NAME
-  // ==============================================================
-
-  static Future<String> _getUniqueFileName(
-    Directory directory,
-    String originalName,
+  static Future<Map<String, dynamic>> importPdfFromUri(
+    String uri,
   ) async {
-    const extension = '.pdf';
-
-    String baseName = originalName;
-
-    if (baseName
-        .toLowerCase()
-        .endsWith(extension)) {
-      baseName = baseName.substring(
-        0,
-        baseName.length - extension.length,
-      );
-    }
-
-    String candidate =
-        '$baseName$extension';
-
-    int counter = 1;
-
-    while (
-        await File(
-          '${directory.path}/$candidate',
-        ).exists()) {
-      candidate =
-          '${baseName}_$counter$extension';
-
-      counter++;
-    }
-
-    return candidate;
+    return importDocumentFromUri(uri);
   }
 
-  // ==============================================================
-  // SANITIZE FILE NAME
-  // ==============================================================
+  static Future<Map<String, dynamic>> _invokeDocumentRead(
+    String uri,
+  ) async {
+    try {
+      final result = await _channel.invokeMethod(
+        'readDocument',
+        {
+          'uri': uri,
+        },
+      );
 
-  static String _sanitizeFileName(
+      if (result is Map) {
+        return Map<String, dynamic>.from(
+          result.map(
+            (key, value) => MapEntry(
+              key.toString(),
+              value,
+            ),
+          ),
+        );
+      }
+    } catch (_) {}
+
+    try {
+      final result = await _channel.invokeMethod(
+        'readPdf',
+        {
+          'uri': uri,
+        },
+      );
+
+      if (result is Map) {
+        return Map<String, dynamic>.from(
+          result.map(
+            (key, value) => MapEntry(
+              key.toString(),
+              value,
+            ),
+          ),
+        );
+      }
+    } catch (_) {}
+
+    throw Exception(
+      'Unable to read external document from Android.',
+    );
+  }
+
+  static String _fileNameFromUri(
+    String uriString,
+  ) {
+    try {
+      final uri = Uri.parse(uriString);
+
+      if (uri.pathSegments.isNotEmpty) {
+        final lastSegment =
+            uri.pathSegments.last;
+
+        if (lastSegment.isNotEmpty) {
+          return Uri.decodeComponent(lastSegment);
+        }
+      }
+    } catch (_) {}
+
+    return 'External_Document';
+  }
+
+  static bool _hasSupportedExtension(
     String fileName,
   ) {
-    final cleaned = fileName
-        .replaceAll(
-          RegExp(r'[<>:"/\\|?*]'),
-          '_',
-        )
-        .trim();
+    final lower =
+        fileName.toLowerCase().trim();
 
-    if (cleaned.isEmpty) {
-      return 'External_Document.pdf';
+    return lower.endsWith('.pdf') ||
+        lower.endsWith('.doc') ||
+        lower.endsWith('.docx') ||
+        lower.endsWith('.ppt') ||
+        lower.endsWith('.pptx');
+  }
+
+  static bool _isSupportedConversionType(
+    ConversionType type,
+  ) {
+    return type == ConversionType.pdf ||
+        type == ConversionType.docs ||
+        type == ConversionType.ppt;
+  }
+
+  static String? _extensionFromMimeType(
+    String? mimeType,
+  ) {
+    if (mimeType == null || mimeType.isEmpty) {
+      return null;
     }
 
-    return cleaned;
+    final clean = mimeType.split(';').first.trim().toLowerCase();
+
+    if (clean == 'application/pdf' ||
+        clean == 'application/x-pdf' ||
+        clean.contains('pdf')) {
+      return 'pdf';
+    }
+
+    if (clean ==
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        clean.contains('wordprocessingml')) {
+      return 'docx';
+    }
+
+    if (clean == 'application/msword' ||
+        clean == 'application/x-msword' ||
+        clean.contains('msword')) {
+      return 'doc';
+    }
+
+    if (clean ==
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        clean.contains('presentationml')) {
+      return 'pptx';
+    }
+
+    if (clean == 'application/vnd.ms-powerpoint' ||
+        clean == 'application/powerpoint' ||
+        clean == 'application/mspowerpoint' ||
+        clean == 'application/x-mspowerpoint' ||
+        clean.contains('powerpoint')) {
+      return 'ppt';
+    }
+
+    return null;
+  }
+
+  static String _removeExtension(
+    String fileName,
+  ) {
+    final index =
+        fileName.lastIndexOf('.');
+
+    if (index <= 0) {
+      return fileName;
+    }
+
+    return fileName.substring(
+      0,
+      index,
+    );
+  }
+
+  static Future<void> _safeDelete(
+    File file,
+  ) async {
+    try {
+      if (await file.exists()) {
+        await file.delete();
+      }
+    } catch (_) {}
   }
 }

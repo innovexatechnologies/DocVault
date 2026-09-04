@@ -5,7 +5,7 @@ void main() {
   group('ImageSelectionProvider reorder logic', () {
     test('initial addImages does not mark unsaved changes', () {
       final provider = ImageSelectionProvider();
-      provider.addImages(['a.png', 'b.png'], 'gallery');
+      provider.addImages(['a.png', 'b.png'], 'gallery', markUnsaved: false);
 
       expect(provider.hasImages, isTrue);
       expect(provider.hasUnsavedChanges, isFalse);

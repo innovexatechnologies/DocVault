@@ -63,7 +63,7 @@ void main() {
       expect(ConversionType.ppt.extension, 'pptx');
 
       expect(ConversionType.pdf.shortName, 'PDF');
-      expect(ConversionType.docs.shortName, 'DOCS');
+      expect(ConversionType.docs.shortName, 'DOCX');
       expect(ConversionType.ppt.shortName, 'PPT');
     });
   });

@@ -1,77 +1,311 @@
-import 'package:flutter/material.dart';
+ import 'package:flutter/foundation.dart';
 import 'package:uuid/uuid.dart';
+
 import '../../models/image_item.dart';
 
 class ImageSelectionProvider extends ChangeNotifier {
   final List<ImageItem> _selectedImages = [];
+
   bool _hasUnsavedChanges = false;
 
-  List<ImageItem> get selectedImages => List.unmodifiable(_selectedImages);
+  static const Uuid _uuid = Uuid();
+
+  // ==============================================================
+  // GETTERS
+  // ==============================================================
+
+  List<ImageItem> get selectedImages =>
+      List.unmodifiable(_selectedImages);
+
   int get imageCount => _selectedImages.length;
+
   bool get hasImages => _selectedImages.isNotEmpty;
+
   bool get hasUnsavedChanges => _hasUnsavedChanges;
 
+  // ==============================================================
+  // UNSAVED CHANGES
+  // ==============================================================
+
   void setUnsavedChanges(bool value) {
-    if (_hasUnsavedChanges != value) {
-      _hasUnsavedChanges = value;
-      notifyListeners();
+    if (_hasUnsavedChanges == value) {
+      return;
     }
+
+    _hasUnsavedChanges = value;
+    notifyListeners();
   }
 
-  void addImages(List<String> filePaths, String source, {bool markUnsaved = false}) {
-    const uuid = Uuid();
-    for (final filePath in filePaths) {
-      final imageItem = ImageItem(
-        id: uuid.v4(),
-        filePath: filePath,
-        capturedAt: DateTime.now(),
-        source: source,
-      );
-      _selectedImages.add(imageItem);
+  // ==============================================================
+  // START NEW FILE / NEW CONVERSION
+  // ==============================================================
+  //
+  // IMPORTANT:
+  // Call this BEFORE selecting images for a NEW PDF/DOCX/PPTX.
+  //
+  // This completely removes images from the previous file.
+  //
+
+  void startNewSelection() {
+    _selectedImages.clear();
+    _hasUnsavedChanges = false;
+
+    notifyListeners();
+  }
+
+  // ==============================================================
+  // ADD IMAGES
+  // ==============================================================
+  //
+  // Adds images to the CURRENT selection.
+  //
+  // Duplicate file paths are automatically ignored.
+  //
+  
+
+  void addImages(
+    List<String> filePaths,
+    String source, {
+    bool markUnsaved = true,
+  }) {
+    if (filePaths.isEmpty) {
+      return;
     }
+
+    bool changed = false;
+
+    for (final rawPath in filePaths) {
+      final filePath = rawPath.trim();
+
+      if (filePath.isEmpty) {
+        continue;
+      }
+
+      // ------------------------------------------------------------
+      // Prevent duplicate image paths.
+      // ------------------------------------------------------------
+
+      final alreadyExists = _selectedImages.any(
+        (image) => image.filePath == filePath,
+      );
+
+      if (alreadyExists) {
+        continue;
+      }
+
+      _selectedImages.add(
+        ImageItem(
+          id: _uuid.v4(),
+          filePath: filePath,
+          capturedAt: DateTime.now(),
+          source: source,
+        ),
+      );
+
+      changed = true;
+    }
+
+    if (!changed) {
+      return;
+    }
+
     if (markUnsaved) {
       _hasUnsavedChanges = true;
     }
+
     notifyListeners();
   }
 
-  void updateImageFilePath(String imageId, String newFilePath) {
-    final index = _selectedImages.indexWhere((image) => image.id == imageId);
-    if (index != -1) {
-      final old = _selectedImages[index];
-      _selectedImages[index] = ImageItem(
-        id: old.id,
-        filePath: newFilePath,
-        capturedAt: old.capturedAt,
-        source: old.source,
-      );
-      _hasUnsavedChanges = true;
-      notifyListeners();
-    }
-  }
+  // ==============================================================
+  // REPLACE CURRENT SELECTION
+  // ==============================================================
+  //
+  // Use this when the picker returns the COMPLETE selection.
+  //
+  // Old images are removed.
+  //
 
-  void replaceImages(List<ImageItem> items) {
+  void replaceImages(
+    List<ImageItem> items, {
+    bool markUnsaved = true,
+  }) {
+    final uniquePaths = <String>{};
+    final newImages = <ImageItem>[];
+
+    for (final image in items) {
+      final path = image.filePath.trim();
+
+      if (path.isEmpty) {
+        continue;
+      }
+
+      if (!uniquePaths.add(path)) {
+        continue;
+      }
+
+      newImages.add(image);
+    }
+
     _selectedImages
       ..clear()
-      ..addAll(items);
-    _hasUnsavedChanges = true;
+      ..addAll(newImages);
+
+    _hasUnsavedChanges = markUnsaved;
+
     notifyListeners();
   }
+
+  // ==============================================================
+  // REPLACE IMAGES FROM FILE PATHS
+  // ==============================================================
+  //
+  // IMPORTANT:
+  // Use this when selecting images for a NEW/COMPLETE file.
+  //
+  // It ALWAYS replaces the old selection.
+  //
+
+  void replaceImagesFromPaths(
+    List<String> filePaths,
+    String source, {
+    bool markUnsaved = true,
+  }) {
+    final uniquePaths = <String>{};
+    final newImages = <ImageItem>[];
+
+    for (final rawPath in filePaths) {
+      final filePath = rawPath.trim();
+
+      if (filePath.isEmpty) {
+        continue;
+      }
+
+      // Prevent duplicates inside the new selection.
+      if (!uniquePaths.add(filePath)) {
+        continue;
+      }
+
+      newImages.add(
+        ImageItem(
+          id: _uuid.v4(),
+          filePath: filePath,
+          capturedAt: DateTime.now(),
+          source: source,
+        ),
+      );
+    }
+
+    _selectedImages
+      ..clear()
+      ..addAll(newImages);
+
+    _hasUnsavedChanges = markUnsaved;
+
+    notifyListeners();
+  }
+
+  // ==============================================================
+  // UPDATE IMAGE FILE PATH
+  // ==============================================================
+
+  void updateImageFilePath(
+    String imageId,
+    String newFilePath,
+  ) {
+    final path = newFilePath.trim();
+
+    if (path.isEmpty) {
+      return;
+    }
+
+    final index = _selectedImages.indexWhere(
+      (image) => image.id == imageId,
+    );
+
+    if (index == -1) {
+      return;
+    }
+
+    // Prevent duplicate paths.
+    final duplicateExists = _selectedImages.any(
+      (image) =>
+          image.id != imageId &&
+          image.filePath == path,
+    );
+
+    if (duplicateExists) {
+      return;
+    }
+
+    final oldImage = _selectedImages[index];
+
+    _selectedImages[index] = ImageItem(
+      id: oldImage.id,
+      filePath: path,
+      capturedAt: oldImage.capturedAt,
+      source: oldImage.source,
+    );
+
+    _hasUnsavedChanges = true;
+
+    notifyListeners();
+  }
+
+  // ==============================================================
+  // REMOVE IMAGE
+  // ==============================================================
 
   void removeImage(String imageId) {
-    _selectedImages.removeWhere((image) => image.id == imageId);
+    final oldLength = _selectedImages.length;
+
+    _selectedImages.removeWhere(
+      (image) => image.id == imageId,
+    );
+
+    if (_selectedImages.length == oldLength) {
+      return;
+    }
+
     _hasUnsavedChanges = true;
+
     notifyListeners();
   }
 
-  void reorderImages(int oldIndex, int newIndex) {
+  // ==============================================================
+  // REMOVE IMAGE BY FILE PATH
+  // ==============================================================
+
+  void removeImageByPath(String filePath) {
+    final oldLength = _selectedImages.length;
+
+    _selectedImages.removeWhere(
+      (image) => image.filePath == filePath,
+    );
+
+    if (_selectedImages.length == oldLength) {
+      return;
+    }
+
+    _hasUnsavedChanges = true;
+
+    notifyListeners();
+  }
+
+  // ==============================================================
+  // REORDER IMAGES
+  // ==============================================================
+
+  void reorderImages(
+    int oldIndex,
+    int newIndex,
+  ) {
     if (_selectedImages.length < 2) {
       return;
     }
 
     if (oldIndex < 0 ||
-        newIndex < 0 ||
         oldIndex >= _selectedImages.length ||
+        newIndex < 0 ||
         newIndex > _selectedImages.length) {
       return;
     }
@@ -80,21 +314,30 @@ class ImageSelectionProvider extends ChangeNotifier {
       return;
     }
 
-    final reorderedItems = List<ImageItem>.from(_selectedImages);
     if (oldIndex < newIndex) {
       newIndex -= 1;
     }
-    final item = reorderedItems.removeAt(oldIndex);
-    reorderedItems.insert(newIndex, item);
 
-    _selectedImages
-      ..clear()
-      ..addAll(reorderedItems);
+    final item = _selectedImages.removeAt(oldIndex);
+
+    _selectedImages.insert(
+      newIndex,
+      item,
+    );
+
     _hasUnsavedChanges = true;
+
     notifyListeners();
   }
 
-  void swapImages(int indexA, int indexB) {
+  // ==============================================================
+  // SWAP IMAGES
+  // ==============================================================
+
+  void swapImages(
+    int indexA,
+    int indexB,
+  ) {
     if (indexA < 0 ||
         indexB < 0 ||
         indexA >= _selectedImages.length ||
@@ -104,19 +347,62 @@ class ImageSelectionProvider extends ChangeNotifier {
     }
 
     final temp = _selectedImages[indexA];
+
     _selectedImages[indexA] = _selectedImages[indexB];
     _selectedImages[indexB] = temp;
+
     _hasUnsavedChanges = true;
+
     notifyListeners();
   }
+
+  // ==============================================================
+  // CLEAR ALL IMAGES
+  // ==============================================================
 
   void clearAllImages() {
+    if (_selectedImages.isEmpty &&
+        !_hasUnsavedChanges) {
+      return;
+    }
+
     _selectedImages.clear();
     _hasUnsavedChanges = false;
+
     notifyListeners();
   }
 
+  // ==============================================================
+  // GET IMAGE FILE PATHS
+  // ==============================================================
+
   List<String> getImageFilePaths() {
-    return _selectedImages.map((image) => image.filePath).toList();
+    return List<String>.from(
+      _selectedImages.map(
+        (image) => image.filePath,
+      ),
+    );
+  }
+
+  // ==============================================================
+  // CHECK IF IMAGE EXISTS
+  // ==============================================================
+
+  bool containsImage(String filePath) {
+    return _selectedImages.any(
+      (image) => image.filePath == filePath,
+    );
+  }
+
+  // ==============================================================
+  // RESET PROVIDER
+  // ==============================================================
+
+  void reset() {
+    _selectedImages.clear();
+    _hasUnsavedChanges = false;
+
+    notifyListeners();
   }
 }
+ 

@@ -1,20 +1,29 @@
 import 'package:flutter/material.dart';
 
 class ResponsiveHelper {
+  static const double smallMobileMaxWidth = 360;
   static const double mobileMaxWidth = 600;
   static const double tabletMaxWidth = 1200;
+
+  static bool isSmallMobile(BuildContext context) {
+    return MediaQuery.of(context).size.width <= smallMobileMaxWidth;
+  }
 
   static bool isMobile(BuildContext context) {
     return MediaQuery.of(context).size.width < mobileMaxWidth;
   }
 
   static bool isTablet(BuildContext context) {
-    return MediaQuery.of(context).size.width >= mobileMaxWidth &&
-        MediaQuery.of(context).size.width < tabletMaxWidth;
+    final width = MediaQuery.of(context).size.width;
+    return width >= mobileMaxWidth && width < tabletMaxWidth;
   }
 
   static bool isDesktop(BuildContext context) {
     return MediaQuery.of(context).size.width >= tabletMaxWidth;
+  }
+
+  static bool isLandscape(BuildContext context) {
+    return MediaQuery.of(context).orientation == Orientation.landscape;
   }
 
   static double getScreenWidth(BuildContext context) {
@@ -26,7 +35,9 @@ class ResponsiveHelper {
   }
 
   static double getResponsivePadding(BuildContext context) {
-    if (isMobile(context)) {
+    if (isSmallMobile(context)) {
+      return 12;
+    } else if (isMobile(context)) {
       return 16;
     } else if (isTablet(context)) {
       return 24;
@@ -35,8 +46,14 @@ class ResponsiveHelper {
     }
   }
 
+  static double horizontalPadding(BuildContext context) {
+    return getResponsivePadding(context);
+  }
+
   static double getResponsiveButtonHeight(BuildContext context) {
-    if (isMobile(context)) {
+    if (isSmallMobile(context)) {
+      return 44;
+    } else if (isMobile(context)) {
       return 48;
     } else {
       return 56;
@@ -49,7 +66,9 @@ class ResponsiveHelper {
     double? tabletSize,
     double? desktopSize,
   }) {
-    if (isMobile(context)) {
+    if (isSmallMobile(context)) {
+      return mobileSize > 13 ? mobileSize - 1.5 : mobileSize;
+    } else if (isMobile(context)) {
       return mobileSize;
     } else if (isTablet(context)) {
       return tabletSize ?? mobileSize + 2;
@@ -59,9 +78,11 @@ class ResponsiveHelper {
   }
 
   static int getGridCrossAxisCount(BuildContext context) {
-    if (isMobile(context)) {
+    final width = getScreenWidth(context);
+    if (width < mobileMaxWidth) {
+      if (isLandscape(context)) return 3;
       return 2;
-    } else if (isTablet(context)) {
+    } else if (width < tabletMaxWidth) {
       return 3;
     } else {
       return 4;
@@ -69,7 +90,9 @@ class ResponsiveHelper {
   }
 
   static double getGridSpacing(BuildContext context) {
-    if (isMobile(context)) {
+    if (isSmallMobile(context)) {
+      return 6;
+    } else if (isMobile(context)) {
       return 8;
     } else if (isTablet(context)) {
       return 12;
@@ -81,7 +104,7 @@ class ResponsiveHelper {
   static BoxConstraints getConstrainedWidth(BuildContext context) {
     final width = getScreenWidth(context);
     if (isDesktop(context)) {
-      return BoxConstraints(maxWidth: tabletMaxWidth);
+      return const BoxConstraints(maxWidth: tabletMaxWidth);
     }
     return BoxConstraints(maxWidth: width);
   }
