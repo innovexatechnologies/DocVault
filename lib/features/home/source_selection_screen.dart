@@ -1,5 +1,4 @@
- import 'package:flutter/material.dart';
-import 'package:permission_handler/permission_handler.dart';
+import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_constants.dart';
@@ -27,92 +26,85 @@ class SourceSelectionScreen extends StatelessWidget {
   // ==========================================================================
 
   Future<void> _handleCamera(BuildContext context) async {
-    try {
-      final status =
-          await _permissionService.requestCameraPermission();
-
-      if (!context.mounted) return;
-
-      if (status.isGranted) {
+    await _permissionService.requestOrPromptCamera(
+      context,
+      onGranted: () {
+        if (!context.mounted) return;
         Navigator.of(context).pushNamed(
           '/camera',
           arguments: conversionType,
         );
-      } else {
-        _showDeniedMessage(
-          context,
-          'Camera permission was denied.',
-        );
-      }
-    } catch (e) {
-      debugPrint(
-        'Camera permission error: $e',
-      );
-
-      if (!context.mounted) return;
-
-      _showDeniedMessage(
-        context,
-        'Unable to access the camera.',
-      );
-    }
+      },
+    );
   }
 
   // ==========================================================================
   // GALLERY
   // ==========================================================================
 
-Future<void> _handleGallery(BuildContext context) async {
-  try {
-    final galleryService = GalleryService();
+  Future<void> _handleGallery(BuildContext context) async {
+    try {
+      final galleryService = GalleryService();
 
-    final List<String> imagePaths =
-        await galleryService.pickImages();
+      final List<String> imagePaths =
+          await galleryService.pickImages();
 
-    if (!context.mounted) return;
+      if (!context.mounted) return;
 
-    // User cancelled the picker.
-    if (imagePaths.isEmpty) {
-      return;
-    }
+      // User cancelled the picker.
+      if (imagePaths.isEmpty) {
+        return;
+      }
 
-    final imageProvider =
-        context.read<ImageSelectionProvider>();
+      final imageProvider =
+          context.read<ImageSelectionProvider>();
 
-    // ============================================================
-    // IMPORTANT:
-    // Replace previous selection completely.
-    // This prevents images from the previous PDF
-    // appearing in the new PDF.
-    // ============================================================
+      // ============================================================
+      // IMPORTANT:
+      // Replace previous selection completely.
+      // This prevents images from the previous PDF
+      // appearing in the new PDF.
+      // ============================================================
 
-    imageProvider.replaceImagesFromPaths(
-      imagePaths,
-      'gallery',
-      markUnsaved: true,
-    );
+      imageProvider.replaceImagesFromPaths(
+        imagePaths,
+        'gallery',
+        markUnsaved: true,
+      );
 
-    if (!context.mounted) return;
+      if (!context.mounted) return;
 
-    await Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) => ReviewScreen(
-          conversionType: conversionType,
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => ReviewScreen(
+            conversionType: conversionType,
+          ),
         ),
-      ),
-    );
-  } catch (e, stackTrace) {
-    debugPrint('Gallery selection error: $e');
-    debugPrintStack(stackTrace: stackTrace);
+      );
+    } catch (e, stackTrace) {
+      debugPrint('Gallery selection error: $e');
+      debugPrintStack(stackTrace: stackTrace);
 
-    if (!context.mounted) return;
+      if (!context.mounted) return;
 
-    _showDeniedMessage(
-      context,
-      'Unable to select images from gallery.',
-    );
+      // In case of permission restriction, prompt the user gracefully
+      final hasPermission =
+          await _permissionService.hasGalleryPermission();
+      if (!context.mounted) return;
+
+      if (!hasPermission) {
+        await _permissionService.requestOrPromptGallery(context);
+        return;
+      }
+
+      if (!context.mounted) return;
+
+      _showDeniedMessage(
+        context,
+        'Unable to select images from gallery.',
+      );
+    }
   }
-}
   // ==========================================================================
   // ERROR MESSAGE
   // ==========================================================================

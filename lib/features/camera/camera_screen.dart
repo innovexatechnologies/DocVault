@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../../core/constants/app_constants.dart';
 import '../../core/services/camera_service.dart';
 import '../../core/services/gallery_service.dart';
+import '../../core/services/permission_service.dart';
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/responsive_helper.dart';
@@ -25,8 +26,10 @@ class CameraScreen extends StatefulWidget {
 
 class _CameraScreenState extends State<CameraScreen> {
   late CameraService _cameraService;
+  final PermissionService _permissionService = PermissionService();
 
   bool _isInitializing = true;
+  bool _isPermissionDenied = false;
   String? _errorMessage;
   int _captureCount = 0;
   bool _isCapturing = false;
@@ -45,19 +48,51 @@ class _CameraScreenState extends State<CameraScreen> {
   // ==========================================================
 
   Future<void> _initializeCamera() async {
+    if (mounted) {
+      setState(() {
+        _isInitializing = true;
+        _errorMessage = null;
+        _isPermissionDenied = false;
+      });
+    }
+
     try {
+      final hasPermission = await _permissionService.hasCameraPermission();
+      if (!hasPermission) {
+        final status = await _permissionService.requestCameraPermission();
+        if (!status.isGranted && !status.isLimited) {
+          if (mounted) {
+            setState(() {
+              _isInitializing = false;
+              _isPermissionDenied = true;
+              _errorMessage = AppConstants.cameraPermissionDenied;
+            });
+          }
+          return;
+        }
+      }
+
       await _cameraService.initializeCamera();
 
       if (mounted) {
         setState(() {
           _isInitializing = false;
+          _isPermissionDenied = false;
+          _errorMessage = null;
         });
       }
     } catch (e) {
       if (mounted) {
+        final status = await _permissionService.getCameraStatus();
+        if (!mounted) return;
+        final isDenied =
+            status.isDenied || status.isPermanentlyDenied || status.isRestricted;
         setState(() {
           _isInitializing = false;
-          _errorMessage = AppConstants.cameraInitFailed;
+          _isPermissionDenied = isDenied;
+          _errorMessage = isDenied
+              ? AppConstants.cameraPermissionDenied
+              : AppConstants.cameraInitFailed;
         });
       }
     }
@@ -503,7 +538,9 @@ class _CameraScreenState extends State<CameraScreen> {
                       errorIconSize + 30,
                   decoration:
                       BoxDecoration(
-                    color: AppTheme.errorColor
+                    color: (_isPermissionDenied
+                            ? AppTheme.accentColor
+                            : AppTheme.errorColor)
                         .withValues(
                       alpha:
                           isDark ? 0.14 : 0.08,
@@ -512,11 +549,14 @@ class _CameraScreenState extends State<CameraScreen> {
                         BoxShape.circle,
                   ),
                   child: Icon(
-                    Icons.error_outline_rounded,
+                    _isPermissionDenied
+                        ? Icons.no_photography_rounded
+                        : Icons.error_outline_rounded,
                     size:
                         errorIconSize,
-                    color:
-                        AppTheme.errorColor,
+                    color: _isPermissionDenied
+                        ? AppTheme.accentColor
+                        : AppTheme.errorColor,
                   ),
                 ),
 
@@ -550,6 +590,55 @@ class _CameraScreenState extends State<CameraScreen> {
                       double.infinity,
                   child:
                       ElevatedButton.icon(
+                    onPressed: _isPermissionDenied
+                        ? () async {
+                            await _permissionService.requestOrPromptCamera(
+                              context,
+                              onGranted: () {
+                                if (mounted) {
+                                  _initializeCamera();
+                                }
+                              },
+                            );
+                          }
+                        : _initializeCamera,
+                    icon: Icon(
+                      _isPermissionDenied
+                          ? Icons.camera_alt_rounded
+                          : Icons.refresh_rounded,
+                    ),
+                    label: Text(
+                      _isPermissionDenied
+                          ? 'Grant Camera Access'
+                          : 'Try Again',
+                    ),
+                    style:
+                        ElevatedButton.styleFrom(
+                      backgroundColor:
+                          colorScheme.primary,
+                      foregroundColor:
+                          colorScheme.onPrimary,
+                      elevation: 0,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          16,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+
+                const SizedBox(height: 12),
+
+                SizedBox(
+                  height:
+                      buttonHeight,
+                  width:
+                      double.infinity,
+                  child:
+                      OutlinedButton.icon(
                     onPressed:
                         _goToGallery,
                     icon: const Icon(
@@ -560,12 +649,13 @@ class _CameraScreenState extends State<CameraScreen> {
                       'Use Gallery Instead',
                     ),
                     style:
-                        ElevatedButton.styleFrom(
-                      backgroundColor:
-                          colorScheme.primary,
+                        OutlinedButton.styleFrom(
                       foregroundColor:
-                          colorScheme.onPrimary,
-                      elevation: 0,
+                          colorScheme.primary,
+                      side: BorderSide(
+                        color: colorScheme.primary
+                            .withValues(alpha: 0.4),
+                      ),
                       shape:
                           RoundedRectangleBorder(
                         borderRadius:
