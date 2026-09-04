@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <style>
+    body { margin: 0; padding: 0; font-family: sans-serif; }
+    #container { width: 100%; min-height: 100vh; background: #ffffff; }
+  </style>
+</head>
+<body>
+  <div id="container"></div>
+
+  <script src="jszip.min.js"></script>
+  <script src="docx-preview.js"></script>
+  <script src="pptx-preview.js"></script>
+
+  <script>
+    function base64ToArrayBuffer(base64) {
+      const binary = atob(base64);
+      const bytes = new Uint8Array(binary.length);
+      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      return bytes.buffer;
+    }
+
+    function notifySuccess() {
+      if (window.DocumentBridge) DocumentBridge.postMessage('success');
+    }
+    function notifyError(err) {
+      if (window.DocumentBridge) DocumentBridge.postMessage('error:' + err);
+    }
+    function notifyPageCount(count) {
+      if (window.DocumentBridge) DocumentBridge.postMessage('pagecount:' + count);
+    }
+
+    async function renderDocx(base64Data) {
+      try {
+        const buffer = base64ToArrayBuffer(base64Data);
+        await docx.renderAsync(buffer, document.getElementById('container'));
+        notifySuccess();
+      } catch (err) {
+        notifyError(err.message || String(err));
+      }
+    }
+
+    async function renderPptx(base64Data) {
+      try {
+        const buffer = base64ToArrayBuffer(base64Data);
+        const preview = pptxPreview.init(document.getElementById('container'), {
+          width: window.innerWidth,
+          height: window.innerHeight,
+          mode: 'slide'
+        });
+        const pptx = await preview.preview(buffer);
+        notifyPageCount(pptx.slides ? pptx.slides.length : 0);
+        notifySuccess();
+      } catch (err) {
+        notifyError(err.message || String(err));
+      }
+    }
+  </script>
+</body>
+</html>

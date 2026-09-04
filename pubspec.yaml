@@ -40,8 +40,8 @@ dependencies:
 
   pdf: ^3.10.5
   printing: ^5.11.0
-
-  path_provider: ^2.1.1
+  webview_flutter: ^4.10.0
+  path_provider: ^2.1.4
 
   share_plus: ^7.2.2
   url_launcher: ^6.3.1
