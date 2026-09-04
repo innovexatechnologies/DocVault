@@ -48,12 +48,16 @@ class PdfDetailsDialog extends StatelessWidget {
             child: Icon(docType.icon, color: docType.badgeColor, size: 22),
           ),
           const SizedBox(width: 12),
-          Text(
-            '${docType.shortName} Details',
-            style: TextStyle(
-              fontSize: 17,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface,
+          Expanded(
+            child: Text(
+              '${docType.shortName} Details',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 17,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
+              ),
             ),
           ),
         ],
@@ -123,47 +127,50 @@ class PdfDetailsDialog extends StatelessWidget {
       ),
       actionsPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
       actions: [
-        Row(
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
-          children: [
-            IconButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                onShare();
-              },
-              icon: const Icon(Icons.share_outlined),
-              tooltip: 'Share',
-              color: docType.badgeColor,
-            ),
-            IconButton(
-              onPressed: () {
-                Navigator.of(context).pop();
-                onExport();
-              },
-              icon: const Icon(Icons.download_rounded),
-              tooltip: 'Save to Device',
-              color: docType.badgeColor,
-            ),
-            ElevatedButton.icon(
-              onPressed: () {
-                Navigator.of(context).pop();
-                onOpen();
-              },
-              icon: const Icon(Icons.visibility_outlined, size: 18),
-              label: Text('Open ${docType.shortName}'),
-              style: ElevatedButton.styleFrom(
-                backgroundColor: docType.badgeColor,
-                foregroundColor: Colors.white,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(10),
-                ),
-                padding: const EdgeInsets.symmetric(
-                  horizontal: 16,
-                  vertical: 8,
+        FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              IconButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onShare();
+                },
+                icon: const Icon(Icons.share_outlined),
+                tooltip: 'Share',
+                color: docType.badgeColor,
+              ),
+              IconButton(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onExport();
+                },
+                icon: const Icon(Icons.download_rounded),
+                tooltip: 'Save to Device',
+                color: docType.badgeColor,
+              ),
+              ElevatedButton.icon(
+                onPressed: () {
+                  Navigator.of(context).pop();
+                  onOpen();
+                },
+                icon: const Icon(Icons.visibility_outlined, size: 18),
+                label: Text('Open ${docType.shortName}'),
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: docType.badgeColor,
+                  foregroundColor: Colors.white,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
+                  ),
                 ),
               ),
-            ),
-          ],
+            ],
+          ),
         ),
       ],
     );

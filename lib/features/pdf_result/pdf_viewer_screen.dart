@@ -12,7 +12,6 @@ import '../../core/providers/pdf_manager_provider.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/file_utils.dart';
 import '../../models/conversion_type.dart';
-import '../../models/pdf_document.dart' as model;
 import '../pdf_generation/review_screen.dart';
 
 class PdfViewerScreen extends StatefulWidget {
@@ -37,8 +36,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   PdfControllerPinch? _pdfController;
   WebViewController? _webViewController;
   late final PageController _pageController;
-
-  List<String> _documentPages = [];
 
   int _actualPageCount = 0;
   int _currentPage = 1;
@@ -283,6 +280,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       // ==========================================================
       // INTERNAL DOCVAULT DOCUMENT
       // ==========================================================
+
+      if (!mounted) return;
 
       final provider =
           context.read<PdfManagerProvider>();

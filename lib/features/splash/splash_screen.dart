@@ -28,6 +28,8 @@ class _SplashScreenState extends State<SplashScreen>
   late Animation<double> _glowAnimation;
   late Animation<double> _scanLineAnimation;
 
+  Timer? _navigationTimer;
+
   @override
   void initState() {
     super.initState();
@@ -94,7 +96,7 @@ class _SplashScreenState extends State<SplashScreen>
   // ============================================================
 
   void _navigate() {
-    Future.delayed(
+    _navigationTimer = Timer(
       const Duration(milliseconds: 5400),
       () {
         if (!mounted) return;
@@ -110,6 +112,7 @@ class _SplashScreenState extends State<SplashScreen>
 
   @override
   void dispose() {
+    _navigationTimer?.cancel();
     _animationController.dispose();
     _scanController.dispose();
     _chipController.dispose();
@@ -234,7 +237,7 @@ class _SplashScreenState extends State<SplashScreen>
               child: ScaleTransition(
                 scale: _scaleAnimation,
                 child: SingleChildScrollView(
-                  physics: const NeverScrollableScrollPhysics(),
+                  physics: const ClampingScrollPhysics(),
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
@@ -362,20 +365,21 @@ class _SplashScreenState extends State<SplashScreen>
           // VERSION / COPYRIGHT
           // ======================================================
 
-          Positioned(
-            bottom: 24,
-            left: 0,
-            right: 0,
-            child: Text(
-              'Scan. Convert. Generate. Export.',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w500,
-                color: textColor.withValues(alpha: 0.35),
+          if (MediaQuery.of(context).size.height > 520)
+            Positioned(
+              bottom: 24,
+              left: 0,
+              right: 0,
+              child: Text(
+                'Scan. Convert. Generate. Export.',
+                textAlign: TextAlign.center,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w500,
+                  color: textColor.withValues(alpha: 0.35),
+                ),
               ),
             ),
-          ),
         ],
       ),
     );
@@ -609,57 +613,63 @@ class _SplashScreenState extends State<SplashScreen>
       ),
     ];
 
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: List.generate(steps.length * 2 - 1, (i) {
-        if (i.isOdd) {
-          // Small colored dot connector between steps.
-          final leftColor = steps[i ~/ 2].color;
-          final rightColor = steps[i ~/ 2 + 1].color;
-
-          return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8),
-            child: Container(
-              width: 4,
-              height: 4,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                gradient: LinearGradient(
-                  colors: [leftColor, rightColor],
-                ),
-              ),
-            ),
-          );
-        }
-
-        final step = steps[i ~/ 2];
-
-        return Column(
+    return FittedBox(
+      fit: BoxFit.scaleDown,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            Container(
-              width: 38,
-              height: 38,
-              decoration: BoxDecoration(
-                color: step.color.withValues(alpha: isDark ? 0.14 : 0.09),
-                shape: BoxShape.circle,
-              ),
-              child: Icon(step.icon, size: 18, color: step.color),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              step.label,
-              style: TextStyle(
-                fontSize: 10,
-                fontWeight: FontWeight.w700,
-                color: isDark
-                    ? Colors.white.withValues(alpha: 0.65)
-                    : Colors.black.withValues(alpha: 0.55),
-              ),
-            ),
-          ],
-        );
-      }),
+          children: List.generate(steps.length * 2 - 1, (i) {
+            if (i.isOdd) {
+              // Small colored dot connector between steps.
+              final leftColor = steps[i ~/ 2].color;
+              final rightColor = steps[i ~/ 2 + 1].color;
+
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                child: Container(
+                  width: 4,
+                  height: 4,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    gradient: LinearGradient(
+                      colors: [leftColor, rightColor],
+                    ),
+                  ),
+                ),
+              );
+            }
+
+            final step = steps[i ~/ 2];
+
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: step.color.withValues(alpha: isDark ? 0.14 : 0.09),
+                    shape: BoxShape.circle,
+                  ),
+                  child: Icon(step.icon, size: 18, color: step.color),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  step.label,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w700,
+                    color: isDark
+                        ? Colors.white.withValues(alpha: 0.65)
+                        : Colors.black.withValues(alpha: 0.55),
+                  ),
+                ),
+              ],
+            );
+          }),
+        ),
+      ),
     );
   }
 
@@ -711,7 +721,7 @@ class _ScanCornerPainter extends CustomPainter {
     const strokeWidth = 4.0;
     const inset = 14.0;
 
-    final paintFor = (Color color) => Paint()
+    Paint paintFor(Color color) => Paint()
       ..color = color
       ..strokeWidth = strokeWidth
       ..strokeCap = StrokeCap.round

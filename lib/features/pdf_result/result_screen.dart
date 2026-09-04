@@ -1090,10 +1090,13 @@ class _ResultScreenState extends State<ResultScreen> {
           size: 19,
         ),
 
-        label: Text(
-          label,
-          style: const TextStyle(
-            fontWeight: FontWeight.w700,
+        label: FittedBox(
+          fit: BoxFit.scaleDown,
+          child: Text(
+            label,
+            style: const TextStyle(
+              fontWeight: FontWeight.w700,
+            ),
           ),
         ),
 
@@ -1221,27 +1224,30 @@ class _ResultScreenState extends State<ResultScreen> {
         ),
       ),
 
-      child: Row(
-        mainAxisAlignment:
-            MainAxisAlignment.center,
-        children: [
-          Icon(
-            icon,
-            size: 18,
-          ),
-
-          const SizedBox(
-            width: 7,
-          ),
-
-          Text(
-            label,
-            style: const TextStyle(
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
+      child: FittedBox(
+        fit: BoxFit.scaleDown,
+        child: Row(
+          mainAxisAlignment:
+              MainAxisAlignment.center,
+          children: [
+            Icon(
+              icon,
+              size: 18,
             ),
-          ),
-        ],
+
+            const SizedBox(
+              width: 7,
+            ),
+
+            Text(
+              label,
+              style: const TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -1339,42 +1345,45 @@ class _ResultScreenState extends State<ResultScreen> {
                     ),
             ),
 
-            child: Row(
-              mainAxisAlignment:
-                  MainAxisAlignment.center,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Row(
+                mainAxisAlignment:
+                    MainAxisAlignment.center,
 
-              children: [
-                Icon(
-                  icon,
-                  size: 21,
-                  color: isPrimary
-                      ? Colors.white
-                      : Theme.of(context)
-                          .colorScheme
-                          .onSurface
-                          .withValues(
-                          alpha: 0.72,
-                        ),
-                ),
-
-                const SizedBox(
-                  width: 8,
-                ),
-
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight:
-                        FontWeight.w800,
+                children: [
+                  Icon(
+                    icon,
+                    size: 21,
                     color: isPrimary
                         ? Colors.white
                         : Theme.of(context)
                             .colorScheme
-                            .onSurface,
+                            .onSurface
+                            .withValues(
+                            alpha: 0.72,
+                          ),
                   ),
-                ),
-              ],
+
+                  const SizedBox(
+                    width: 8,
+                  ),
+
+                  Text(
+                    label,
+                    style: TextStyle(
+                      fontSize: 13,
+                      fontWeight:
+                          FontWeight.w800,
+                      color: isPrimary
+                          ? Colors.white
+                          : Theme.of(context)
+                              .colorScheme
+                              .onSurface,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),

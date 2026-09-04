@@ -150,9 +150,6 @@ Future<void> _handleGallery(BuildContext context) async {
     final isMobile =
         ResponsiveHelper.isMobile(context);
 
-    final isTablet =
-        ResponsiveHelper.isTablet(context);
-
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final isDark =
@@ -181,12 +178,15 @@ Future<void> _handleGallery(BuildContext context) async {
       ),
 
       body: SafeArea(
-        child: SingleChildScrollView(
-          physics:
-              const BouncingScrollPhysics(),
+        child: Center(
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 600),
+            child: SingleChildScrollView(
+              physics:
+                  const BouncingScrollPhysics(),
 
-          child: Padding(
-            padding: EdgeInsets.all(padding),
+              child: Padding(
+                padding: EdgeInsets.all(padding),
 
             child: Column(
               crossAxisAlignment:
@@ -245,7 +245,7 @@ Future<void> _handleGallery(BuildContext context) async {
                       isMobile ? 32 : 50,
                 ),
 
-                if (isTablet)
+                if (!isMobile)
                   Row(
                     children: [
                       Expanded(
@@ -459,7 +459,9 @@ Future<void> _handleGallery(BuildContext context) async {
           ),
         ),
       ),
-    );
+    ),
+  ),
+);
   }
 
   // ==========================================================================

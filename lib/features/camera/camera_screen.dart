@@ -272,7 +272,7 @@ class _CameraScreenState extends State<CameraScreen> {
     final controller =
         _cameraService.controller;
 
-    if (!controller.value.isInitialized) {
+    if (controller == null || !controller.value.isInitialized) {
       return const ColoredBox(
         color: Colors.black,
       );
@@ -1007,47 +1007,48 @@ class _CameraScreenState extends State<CameraScreen> {
                                         18,
                                       ),
                                     ),
-                                    child:
-                                        Row(
-                                      mainAxisSize:
-                                          MainAxisSize
-                                              .min,
-                                      children: [
-                                        Icon(
-                                          Icons
-                                              .check_rounded,
-                                          color:
-                                              _captureCount > 0
-                                                  ? Colors
-                                                      .white
-                                                  : Colors
-                                                      .white38,
-                                          size:
-                                              22,
-                                        ),
-
-                                        if (_captureCount >
-                                            0) ...[
-                                          const SizedBox(
-                                            width:
-                                                5,
+                                    child: FittedBox(
+                                      fit: BoxFit.scaleDown,
+                                      child: Row(
+                                        mainAxisSize:
+                                            MainAxisSize
+                                                .min,
+                                        children: [
+                                          Icon(
+                                            Icons
+                                                .check_rounded,
+                                            color:
+                                                _captureCount > 0
+                                                    ? Colors
+                                                        .white
+                                                    : Colors
+                                                        .white38,
+                                            size:
+                                                22,
                                           ),
-                                          const Text(
-                                            'Done',
-                                            style:
-                                                TextStyle(
-                                              color:
-                                                  Colors
-                                                      .white,
-                                              fontSize:
-                                                  14,
-                                              fontWeight:
-                                                  FontWeight
-                                                      .w800,
+                                          if (_captureCount >
+                                              0) ...[
+                                            const SizedBox(
+                                              width:
+                                                  5,
                                             ),
-                                          ),
+                                            const Text(
+                                              'Done',
+                                              style:
+                                                  TextStyle(
+                                                color:
+                                                    Colors
+                                                        .white,
+                                                fontSize:
+                                                    14,
+                                                fontWeight:
+                                                    FontWeight
+                                                        .w800,
+                                              ),
+                                            ),
+                                          ],
                                         ],
-                                      ],
+                                      ),
                                     ),
                                   ),
                                 ),

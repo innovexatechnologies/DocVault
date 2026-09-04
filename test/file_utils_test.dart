@@ -8,6 +8,8 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('FileUtils.normalizePdfFileName Tests', () {
     test('appends .pdf to base name without extension', () {
       expect(FileUtils.normalizePdfFileName('My Birthday Photos'), 'My Birthday Photos.pdf');
@@ -39,8 +41,8 @@ void main() {
 
     test('trims whitespace and handles empty strings', () {
       expect(FileUtils.normalizePdfFileName('   Vacation 2026   '), 'Vacation 2026.pdf');
-      expect(FileUtils.normalizePdfFileName(''), 'DocVault_Document.pdf');
-      expect(FileUtils.normalizePdfFileName('   '), 'DocVault_Document.pdf');
+      expect(FileUtils.normalizePdfFileName(''), 'DocScanner_Document.pdf');
+      expect(FileUtils.normalizePdfFileName('   '), 'DocScanner_Document.pdf');
     });
 
     test('preserves spaces and valid characters', () {
@@ -85,6 +87,22 @@ void main() {
 
   group('External document import flow', () {
     test('imports a supported DOCX or PPTX via the generic document bridge', () async {
+      final tempDir = await Directory.systemTemp.createTemp('docvault_import_test');
+      addTearDown(() async {
+        try {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (_) {}
+      });
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (MethodCall methodCall) async {
+          return tempDir.path;
+        },
+      );
+
       const channel = MethodChannel('docvault/pdf_intent');
       TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
           .setMockMethodCallHandler(channel, (MethodCall call) async {

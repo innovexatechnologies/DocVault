@@ -9,6 +9,7 @@ import 'package:image/image.dart' as img;
 import '../../models/conversion_type.dart';
 import '../../models/pdf_result.dart';
 import '../utils/file_utils.dart';
+import 'pdf_storage_service.dart';
 
 class PptxGenerationService {
   PptxGenerationService();
@@ -103,6 +104,16 @@ class PptxGenerationService {
         'Generated PowerPoint presentation is empty.',
       );
     }
+
+    // ============================================================
+    // SAVE METADATA TO STORAGE
+    // ============================================================
+
+    await PdfStorageService().saveDocument(
+      filePath: destinationPath,
+      fileName: fileName,
+      pageCount: paths.length,
+    );
 
     // ============================================================
     // RESULT

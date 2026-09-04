@@ -1114,10 +1114,11 @@ class _ImageEditorScreenState
                 ),
               ),
               content:
-                  Column(
-                mainAxisSize:
-                    MainAxisSize.min,
-                children: [
+                  SingleChildScrollView(
+                child: Column(
+                  mainAxisSize:
+                      MainAxisSize.min,
+                  children: [
                   TextField(
                     controller:
                         textController,
@@ -1247,6 +1248,7 @@ class _ImageEditorScreenState
                   ),
                 ],
               ),
+            ),
               actionsPadding:
                   const EdgeInsets.fromLTRB(
                 20,
@@ -2417,36 +2419,41 @@ class _ImageEditorScreenState
                 ),
               ),
               const Spacer(),
-              OutlinedButton.icon(
-                onPressed:
-                    _handleAutoCrop,
-                icon:
-                    const Icon(
-                  Icons
-                      .auto_awesome_rounded,
-                  size: 17,
-                ),
-                label:
-                    const Text(
-                  'Auto Crop',
-                ),
-                style:
-                    OutlinedButton
-                        .styleFrom(
-                  foregroundColor:
-                      AppTheme
-                          .primaryColor,
-                  side:
-                      const BorderSide(
-                    color: AppTheme
-                        .primaryColor,
-                  ),
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius
-                            .circular(
-                      12,
+              Flexible(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        _handleAutoCrop,
+                    icon:
+                        const Icon(
+                      Icons
+                          .auto_awesome_rounded,
+                      size: 17,
+                    ),
+                    label:
+                        const Text(
+                      'Auto Crop',
+                    ),
+                    style:
+                        OutlinedButton
+                            .styleFrom(
+                      foregroundColor:
+                          AppTheme
+                              .primaryColor,
+                      side:
+                          const BorderSide(
+                        color: AppTheme
+                            .primaryColor,
+                      ),
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius
+                                .circular(
+                          12,
+                        ),
+                      ),
                     ),
                   ),
                 ),

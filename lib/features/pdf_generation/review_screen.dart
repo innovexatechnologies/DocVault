@@ -484,12 +484,15 @@ class _ReviewScreenState extends State<ReviewScreen> {
             onPressed: _handleBack,
           ),
 
-          title: Text(
-            _isEditingExisting
-                ? widget.existingDocument!.title
-                : 'Review & Organize '
-                    '(${_effectiveType.shortName})',
-            overflow: TextOverflow.ellipsis,
+          title: FittedBox(
+            fit: BoxFit.scaleDown,
+            alignment: Alignment.centerLeft,
+            child: Text(
+              _isEditingExisting
+                  ? widget.existingDocument!.title
+                  : 'Review & Organize (${_effectiveType.shortName})',
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
 
           backgroundColor: isDark
@@ -785,25 +788,29 @@ class _ReviewScreenState extends State<ReviewScreen> {
           Row(
             children: [
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      _showAddImagesBottomSheet,
-                  icon: const Icon(
-                    Icons.add_rounded,
-                    size: 18,
-                  ),
-                  label: const Text('Add'),
-                  style:
-                      OutlinedButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      vertical: 8,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        _showAddImagesBottomSheet,
+                    icon: const Icon(
+                      Icons.add_rounded,
+                      size: 18,
                     ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        10,
+                    label: const Text('Add'),
+                    style:
+                        OutlinedButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          10,
+                        ),
                       ),
                     ),
                   ),
@@ -813,39 +820,43 @@ class _ReviewScreenState extends State<ReviewScreen> {
               const SizedBox(width: 8),
 
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed:
-                      _toggleReorderMode,
-                  icon: Icon(
-                    _isReordering
-                        ? Icons.check_rounded
-                        : Icons.swap_vert_rounded,
-                    size: 18,
-                  ),
-                  label: Text(
-                    _isReordering
-                        ? 'Done'
-                        : 'Reorder',
-                  ),
-                  style:
-                      OutlinedButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      vertical: 8,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: OutlinedButton.icon(
+                    onPressed:
+                        _toggleReorderMode,
+                    icon: Icon(
+                      _isReordering
+                          ? Icons.check_rounded
+                          : Icons.swap_vert_rounded,
+                      size: 18,
                     ),
-                    backgroundColor:
-                        _isReordering
-                            ? _effectiveType
-                                .badgeColor
-                                .withValues(
-                                alpha: 0.15,
-                              )
-                            : null,
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        10,
+                    label: Text(
+                      _isReordering
+                          ? 'Done'
+                          : 'Reorder',
+                    ),
+                    style:
+                        OutlinedButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      backgroundColor:
+                          _isReordering
+                              ? _effectiveType
+                                  .badgeColor
+                                  .withValues(
+                                  alpha: 0.15,
+                                )
+                              : null,
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          10,
+                        ),
                       ),
                     ),
                   ),
@@ -855,24 +866,28 @@ class _ReviewScreenState extends State<ReviewScreen> {
               const SizedBox(width: 8),
 
               Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _openPreview,
-                  icon: const Icon(
-                    Icons.preview_rounded,
-                    size: 18,
-                  ),
-                  label: const Text('Preview'),
-                  style:
-                      OutlinedButton.styleFrom(
-                    padding:
-                        const EdgeInsets.symmetric(
-                      vertical: 8,
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  child: OutlinedButton.icon(
+                    onPressed: _openPreview,
+                    icon: const Icon(
+                      Icons.preview_rounded,
+                      size: 18,
                     ),
-                    shape:
-                        RoundedRectangleBorder(
-                      borderRadius:
-                          BorderRadius.circular(
-                        10,
+                    label: const Text('Preview'),
+                    style:
+                        OutlinedButton.styleFrom(
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 8,
+                      ),
+                      shape:
+                          RoundedRectangleBorder(
+                        borderRadius:
+                            BorderRadius.circular(
+                          10,
+                        ),
                       ),
                     ),
                   ),
@@ -1046,105 +1061,114 @@ class _ReviewScreenState extends State<ReviewScreen> {
           ),
 
           // ======================================================
-          // EDIT
+          // BOTTOM CONTROLS (EDIT + SOURCE BADGE)
           // ======================================================
 
           Positioned(
             bottom: 8,
             left: 8,
-            child: GestureDetector(
-              onTap: () => _openImageEditor(
-                imageItem.id,
-                imageItem.filePath,
-                index,
-              ),
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(
-                  horizontal: 8,
-                  vertical: 4,
-                ),
-                decoration:
-                    BoxDecoration(
-                  color: Colors.black
-                      .withValues(alpha: 0.70),
-                  borderRadius:
-                      BorderRadius.circular(8),
-                  border: Border.all(
-                    color: Colors.white24,
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize:
-                      MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.tune_rounded,
-                      color: Colors.white,
-                      size: 13,
-                    ),
-                    SizedBox(width: 4),
-                    Text(
-                      'Edit',
-                      style: TextStyle(
-                        color: Colors.white,
-                        fontSize: 11,
-                        fontWeight:
-                            FontWeight.w600,
+            right: 8,
+            child: Row(
+              mainAxisAlignment:
+                  MainAxisAlignment.spaceBetween,
+              children: [
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: GestureDetector(
+                      onTap: () => _openImageEditor(
+                        imageItem.id,
+                        imageItem.filePath,
+                        index,
+                      ),
+                      child: Container(
+                        padding:
+                            const EdgeInsets.symmetric(
+                          horizontal: 8,
+                          vertical: 4,
+                        ),
+                        decoration:
+                            BoxDecoration(
+                          color: Colors.black
+                              .withValues(alpha: 0.70),
+                          borderRadius:
+                              BorderRadius.circular(8),
+                          border: Border.all(
+                            color: Colors.white24,
+                          ),
+                        ),
+                        child: const Row(
+                          mainAxisSize:
+                              MainAxisSize.min,
+                          children: [
+                            Icon(
+                              Icons.tune_rounded,
+                              color: Colors.white,
+                              size: 13,
+                            ),
+                            SizedBox(width: 4),
+                            Text(
+                              'Edit',
+                              style: TextStyle(
+                                color: Colors.white,
+                                fontSize: 11,
+                                fontWeight:
+                                    FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
-          ),
-
-          // ======================================================
-          // SOURCE BADGE
-          // ======================================================
-
-          Positioned(
-            bottom: 8,
-            right: 8,
-            child: Container(
-              padding:
-                  const EdgeInsets.symmetric(
-                horizontal: 6,
-                vertical: 3,
-              ),
-              decoration:
-                  BoxDecoration(
-                color: Colors.black
-                    .withValues(alpha: 0.50),
-                borderRadius:
-                    BorderRadius.circular(6),
-              ),
-              child: Row(
-                mainAxisSize:
-                    MainAxisSize.min,
-                children: [
-                  Icon(
-                    imageItem.source == 'camera'
-                        ? Icons.camera_alt_rounded
-                        : Icons.photo_library_rounded,
-                    size: 11,
-                    color: Colors.white70,
                   ),
-                  const SizedBox(width: 3),
-                  Text(
-                    imageItem.source == 'camera'
-                        ? 'Cam'
-                        : 'Gal',
-                    style:
-                        const TextStyle(
-                      color: Colors.white70,
-                      fontSize: 10,
-                      fontWeight:
-                          FontWeight.w500,
+                ),
+                const SizedBox(width: 4),
+                Flexible(
+                  child: FittedBox(
+                    fit: BoxFit.scaleDown,
+                    child: Container(
+                      padding:
+                          const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 3,
+                      ),
+                      decoration:
+                          BoxDecoration(
+                        color: Colors.black
+                            .withValues(alpha: 0.50),
+                        borderRadius:
+                            BorderRadius.circular(6),
+                      ),
+                      child: Row(
+                        mainAxisSize:
+                            MainAxisSize.min,
+                        children: [
+                          Icon(
+                            imageItem.source == 'camera'
+                                ? Icons.camera_alt_rounded
+                                : Icons.photo_library_rounded,
+                            size: 11,
+                            color: Colors.white70,
+                          ),
+                          const SizedBox(width: 3),
+                          Text(
+                            imageItem.source == 'camera'
+                                ? 'Cam'
+                                : 'Gal',
+                            style:
+                                const TextStyle(
+                              color: Colors.white70,
+                              fontSize: 10,
+                              fontWeight:
+                                  FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
                     ),
                   ),
-                ],
-              ),
+                ),
+              ],
             ),
           ),
         ],

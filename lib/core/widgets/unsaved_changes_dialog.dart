@@ -65,6 +65,7 @@ class UnsavedChangesDialog extends StatelessWidget {
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(24),
       ),
+      actionsOverflowButtonSpacing: 8,
       titlePadding: const EdgeInsets.fromLTRB(
         22,
         22,

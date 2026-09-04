@@ -150,6 +150,21 @@ class ScanFilterService {
     // to the output image.
     // ----------------------------------------------------------
 
+    final docWidth = math.max(
+      _distance(expanded.topLeft, expanded.topRight),
+      _distance(expanded.bottomLeft, expanded.bottomRight),
+    ).round();
+
+    final docHeight = math.max(
+      _distance(expanded.topLeft, expanded.bottomLeft),
+      _distance(expanded.topRight, expanded.bottomRight),
+    ).round();
+
+    final targetImage = img.Image(
+      width: math.max(50, docWidth),
+      height: math.max(50, docHeight),
+    );
+
     final rectified = img.copyRectify(
       original,
       topLeft: img.Point(
@@ -168,6 +183,7 @@ class ScanFilterService {
         expanded.bottomRight.x.round(),
         expanded.bottomRight.y.round(),
       ),
+      toImage: targetImage,
       interpolation: img.Interpolation.cubic,
     );
 
