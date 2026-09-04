@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'dart:convert';
 import 'package:webview_flutter/webview_flutter.dart';
@@ -42,6 +43,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   bool _isLoading = true;
   bool _isSavingToDocScanner = false;
+
+  final List<String> _fallbackImagePaths = [];
+  bool _usingFallbackView = false;
+  Timer? _renderTimeoutTimer;
 
   String? _errorMessage;
 
@@ -101,8 +106,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         return;
       }
 
-      // DOCX / PPTX -> WebView-based rendering
-      // (real formatting/tables ke saath, image conversion nahi)
+      // DOCX / PPTX -> WebView-based rendering with native extraction fallback
+      _renderTimeoutTimer?.cancel();
+      _renderTimeoutTimer = Timer(const Duration(seconds: 8), () {
+        if (mounted && _isLoading && !_usingFallbackView) {
+          debugPrint(
+            'WebView render timed out for ${widget.fileName}. Falling back to native page extraction...',
+          );
+          _tryFallbackNativeRendering(
+            error: 'WebView preview took too long. Switched to slide/page view.',
+          );
+        }
+      });
+
       _webViewController = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
         ..addJavaScriptChannel(
@@ -112,6 +128,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         ..setNavigationDelegate(
           NavigationDelegate(
             onPageFinished: (_) => _renderOfficeDocument(),
+            onWebResourceError: (error) {
+              debugPrint('WebView web resource error: ${error.description}');
+            },
           ),
         )
         ..loadFlutterAsset('assets/webview/index.html');
@@ -122,13 +141,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         });
       }
     } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _errorMessage =
-            'Failed to open ${widget.fileName}:\n$e';
-        _isLoading = false;
-      });
+      debugPrint('WebView initialization error: $e. Attempting fallback...');
+      await _tryFallbackNativeRendering(error: e.toString());
     }
   }
 
@@ -138,7 +152,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Future<void> _renderOfficeDocument() async {
     try {
-      final bytes = await File(widget.filePath).readAsBytes();
+      final file = File(widget.filePath);
+      if (!await file.exists()) {
+        throw Exception('File does not exist: ${widget.filePath}');
+      }
+
+      final bytes = await file.readAsBytes();
       final base64Data = base64Encode(bytes);
       final jsFunction = _isPpt ? 'renderPptx' : 'renderDocx';
 
@@ -146,13 +165,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         "$jsFunction('$base64Data')",
       );
     } catch (e) {
-      if (!mounted) return;
-
-      setState(() {
-        _errorMessage =
-            'Failed to render ${widget.fileName}:\n$e';
-        _isLoading = false;
-      });
+      debugPrint('WebView script error: $e. Attempting native fallback...');
+      await _tryFallbackNativeRendering(error: e.toString());
     }
   }
 
@@ -166,23 +180,57 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     final data = message.message;
 
     if (data == 'success') {
+      _renderTimeoutTimer?.cancel();
       setState(() {
         _isLoading = false;
+        _errorMessage = null;
       });
     } else if (data.startsWith('error:')) {
-      setState(() {
-        _errorMessage =
-            'Failed to render ${widget.fileName}:\n${data.substring(6)}';
-        _isLoading = false;
-      });
+      _renderTimeoutTimer?.cancel();
+      debugPrint('DocumentBridge error: ${data.substring(6)}. Trying native extraction...');
+      _tryFallbackNativeRendering(error: data.substring(6));
     } else if (data.startsWith('pagecount:')) {
       final count = int.tryParse(data.substring(10)) ?? 0;
-
-      setState(() {
-        _actualPageCount = count;
-        _currentPage = 1;
-      });
+      if (count > 0) {
+        setState(() {
+          _actualPageCount = count;
+          _currentPage = 1;
+        });
+      }
     }
+  }
+
+  // ============================================================
+  // FALLBACK NATIVE IMAGE RENDERING FOR DOCX / PPTX
+  // ============================================================
+
+  Future<void> _tryFallbackNativeRendering({String? error}) async {
+    _renderTimeoutTimer?.cancel();
+    try {
+      final pages = await FileUtils.extractPagesFromDocument(widget.filePath);
+      if (pages.isNotEmpty && mounted) {
+        setState(() {
+          _fallbackImagePaths.clear();
+          _fallbackImagePaths.addAll(pages);
+          _actualPageCount = pages.length;
+          _currentPage = 1;
+          _usingFallbackView = true;
+          _isLoading = false;
+          _errorMessage = null;
+        });
+        return;
+      }
+    } catch (e) {
+      debugPrint('Fallback native page extraction failed: $e');
+    }
+
+    if (!mounted) return;
+
+    setState(() {
+      _errorMessage =
+          'Failed to render ${widget.fileName}:\n${error ?? 'Unsupported document format'}';
+      _isLoading = false;
+    });
   }
 
   // ============================================================
@@ -615,6 +663,18 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   // ============================================================
+  // DISPOSE
+  // ============================================================
+
+  @override
+  void dispose() {
+    _renderTimeoutTimer?.cancel();
+    _pdfController?.dispose();
+    _pageController.dispose();
+    super.dispose();
+  }
+
+  // ============================================================
   // BUILD
   // ============================================================
 
@@ -856,6 +916,10 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return _buildPdfViewer(isDark);
     }
 
+    if (_usingFallbackView && _fallbackImagePaths.isNotEmpty) {
+      return _buildFallbackImageViewer(isDark);
+    }
+
     return _buildOfficeWebViewer(isDark);
   }
 
@@ -944,6 +1008,34 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
               const SizedBox(height: 24),
 
+              if (!_isPdf && _fallbackImagePaths.isEmpty) ...[
+                SizedBox(
+                  width: double.infinity,
+                  height: 48,
+                  child: OutlinedButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _isLoading = true;
+                        _errorMessage = null;
+                      });
+                      _tryFallbackNativeRendering();
+                    },
+                    icon: const Icon(Icons.slideshow_rounded),
+                    label: Text('View as $_itemUnit Images'),
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: _accentColor,
+                      side: BorderSide(
+                        color: _accentColor.withValues(alpha: 0.5),
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(15),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 10),
+              ],
+
               SizedBox(
                 width: double.infinity,
                 height: 50,
@@ -986,6 +1078,82 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             ],
           ),
         ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // FALLBACK IMAGE VIEWER (DOCX / PPTX native slides)
+  // ============================================================
+
+  Widget _buildFallbackImageViewer(bool isDark) {
+    return Container(
+      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF101526) : const Color(0xFFE9EDF4),
+        borderRadius: BorderRadius.circular(24),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: Stack(
+        children: [
+          PageView.builder(
+            controller: _pageController,
+            itemCount: _fallbackImagePaths.length,
+            onPageChanged: (index) {
+              if (!mounted) return;
+              setState(() {
+                _currentPage = index + 1;
+              });
+            },
+            itemBuilder: (context, index) {
+              final imageFile = File(_fallbackImagePaths[index]);
+              return Center(
+                child: InteractiveViewer(
+                  minScale: 0.8,
+                  maxScale: 4.0,
+                  child: Image.file(
+                    imageFile,
+                    fit: BoxFit.contain,
+                    errorBuilder: (context, error, stackTrace) => Center(
+                      child: Text(
+                        'Unable to load $_itemUnit ${index + 1}',
+                        style: TextStyle(
+                          color: isDark ? Colors.white70 : Colors.black54,
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            },
+          ),
+          if (_fallbackImagePaths.length > 1)
+            Positioned(
+              bottom: 16,
+              left: 0,
+              right: 0,
+              child: Center(
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    '$_itemUnit $_currentPage of ${_fallbackImagePaths.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
       ),
     );
   }
@@ -1490,17 +1658,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       onTap: onTap,
     );
-  }
-
-  // ============================================================
-  // DISPOSE
-  // ============================================================
-
-  @override
-  void dispose() {
-    _pdfController?.dispose();
-    _pageController.dispose();
-    super.dispose();
   }
 }
 

@@ -566,7 +566,18 @@ class MainActivity : FlutterActivity() {
             return true
         }
 
-        val mimeType =
+        val uriPath = uri.path?.lowercase() ?: ""
+        if (
+            uriPath.endsWith(".pdf") ||
+            uriPath.endsWith(".docx") ||
+            uriPath.endsWith(".doc") ||
+            uriPath.endsWith(".pptx") ||
+            uriPath.endsWith(".ppt")
+        ) {
+            return true
+        }
+
+        val rawMimeType =
             try {
                 contentResolver
                     .getType(uri)
@@ -576,11 +587,23 @@ class MainActivity : FlutterActivity() {
                 null
             }
 
-        return mimeType == "application/pdf" ||
-                mimeType == "application/msword" ||
-                mimeType == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
-                mimeType == "application/vnd.ms-powerpoint" ||
-                mimeType == "application/vnd.openxmlformats-officedocument.presentationml.presentation"
+        val cleanMime = rawMimeType?.split(";")?.firstOrNull()?.trim() ?: ""
+
+        return cleanMime == "application/pdf" ||
+                cleanMime == "application/x-pdf" ||
+                cleanMime == "application/msword" ||
+                cleanMime == "application/x-msword" ||
+                cleanMime == "application/vnd.openxmlformats-officedocument.wordprocessingml.document" ||
+                cleanMime == "application/vnd.ms-powerpoint" ||
+                cleanMime == "application/powerpoint" ||
+                cleanMime == "application/mspowerpoint" ||
+                cleanMime == "application/x-mspowerpoint" ||
+                cleanMime == "application/vnd.openxmlformats-officedocument.presentationml.presentation" ||
+                cleanMime.contains("pdf") ||
+                cleanMime.contains("wordprocessingml") ||
+                cleanMime.contains("presentationml") ||
+                cleanMime.contains("msword") ||
+                cleanMime.contains("powerpoint")
     }
 
     // =========================================================================

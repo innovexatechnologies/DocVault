@@ -2,10 +2,56 @@
 <html>
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
   <style>
-    body { margin: 0; padding: 0; font-family: sans-serif; }
-    #container { width: 100%; min-height: 100vh; background: #ffffff; }
+    * {
+      box-sizing: border-box;
+    }
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      min-height: 100%;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background: #f4f6fa;
+      color: #1a1a24;
+      -webkit-font-smoothing: antialiased;
+      overflow-x: hidden;
+    }
+    #container {
+      width: 100%;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 12px 6px;
+    }
+
+    /* DOCX preview styling */
+    .docx-wrapper {
+      background: transparent !important;
+      padding: 0 !important;
+      max-width: 100% !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+    }
+    .docx-wrapper > section.docx {
+      margin: 8px auto 16px auto !important;
+      max-width: 100% !important;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
+      border-radius: 10px !important;
+      overflow-x: auto !important;
+    }
+
+    /* PPTX preview styling */
+    .pptx-preview-container, .pptx-wrapper {
+      max-width: 100% !important;
+      margin: 8px auto !important;
+      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
+      border-radius: 10px !important;
+      overflow: hidden !important;
+    }
   </style>
 </head>
 <body>
@@ -19,7 +65,9 @@
     function base64ToArrayBuffer(base64) {
       const binary = atob(base64);
       const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+      for (let i = 0; i < binary.length; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
       return bytes.buffer;
     }
 
@@ -36,7 +84,21 @@
     async function renderDocx(base64Data) {
       try {
         const buffer = base64ToArrayBuffer(base64Data);
-        await docx.renderAsync(buffer, document.getElementById('container'));
+        const container = document.getElementById('container');
+        container.innerHTML = '';
+
+        await docx.renderAsync(buffer, container, null, {
+          inWrapper: true,
+          ignoreWidth: false,
+          ignoreHeight: false,
+          breakPages: true,
+          trimXmlDeclaration: true
+        });
+
+        // Determine rendered page count
+        const pages = document.querySelectorAll('.docx-wrapper > section.docx, section.docx');
+        const count = pages.length > 0 ? pages.length : 1;
+        notifyPageCount(count);
         notifySuccess();
       } catch (err) {
         notifyError(err.message || String(err));
@@ -46,13 +108,28 @@
     async function renderPptx(base64Data) {
       try {
         const buffer = base64ToArrayBuffer(base64Data);
-        const preview = pptxPreview.init(document.getElementById('container'), {
-          width: window.innerWidth,
-          height: window.innerHeight,
+        const container = document.getElementById('container');
+        container.innerHTML = '';
+
+        const clientWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+        const clientHeight = window.innerHeight || document.documentElement.clientHeight || 640;
+
+        const preview = pptxPreview.init(container, {
+          width: clientWidth,
+          height: clientHeight,
           mode: 'slide'
         });
+
         const pptx = await preview.preview(buffer);
-        notifyPageCount(pptx.slides ? pptx.slides.length : 0);
+        let slideCount = 1;
+        if (pptx && pptx.slides && pptx.slides.length > 0) {
+          slideCount = pptx.slides.length;
+        } else {
+          const domSlides = document.querySelectorAll('.pptx-wrapper, .slide, .pptx-slide');
+          if (domSlides.length > 0) slideCount = domSlides.length;
+        }
+
+        notifyPageCount(slideCount);
         notifySuccess();
       } catch (err) {
         notifyError(err.message || String(err));

@@ -254,30 +254,45 @@ class ExternalPdfService {
   static String? _extensionFromMimeType(
     String? mimeType,
   ) {
-    if (mimeType == null ||
-        mimeType.isEmpty) {
+    if (mimeType == null || mimeType.isEmpty) {
       return null;
     }
 
-    switch (mimeType.toLowerCase()) {
-      case 'application/pdf':
-        return 'pdf';
+    final clean = mimeType.split(';').first.trim().toLowerCase();
 
-      case 'application/msword':
-        return 'doc';
-
-      case 'application/vnd.openxmlformats-officedocument.wordprocessingml.document':
-        return 'docx';
-
-      case 'application/vnd.ms-powerpoint':
-        return 'ppt';
-
-      case 'application/vnd.openxmlformats-officedocument.presentationml.presentation':
-        return 'pptx';
-
-      default:
-        return null;
+    if (clean == 'application/pdf' ||
+        clean == 'application/x-pdf' ||
+        clean.contains('pdf')) {
+      return 'pdf';
     }
+
+    if (clean ==
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document' ||
+        clean.contains('wordprocessingml')) {
+      return 'docx';
+    }
+
+    if (clean == 'application/msword' ||
+        clean == 'application/x-msword' ||
+        clean.contains('msword')) {
+      return 'doc';
+    }
+
+    if (clean ==
+            'application/vnd.openxmlformats-officedocument.presentationml.presentation' ||
+        clean.contains('presentationml')) {
+      return 'pptx';
+    }
+
+    if (clean == 'application/vnd.ms-powerpoint' ||
+        clean == 'application/powerpoint' ||
+        clean == 'application/mspowerpoint' ||
+        clean == 'application/x-mspowerpoint' ||
+        clean.contains('powerpoint')) {
+      return 'ppt';
+    }
+
+    return null;
   }
 
   static String _removeExtension(

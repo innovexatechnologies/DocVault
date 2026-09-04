@@ -296,6 +296,16 @@ class _MyAppState extends State<MyApp> {
           ),
         ),
       );
+
+      // Ensure the user is not stuck on the opening document screen
+      final navigator = MyApp.navigatorKey.currentState;
+      if (navigator != null) {
+        if (navigator.canPop()) {
+          navigator.pop();
+        } else {
+          navigator.pushReplacementNamed('/home');
+        }
+      }
     } finally {
       _isOpeningExternalDocument = false;
     }
