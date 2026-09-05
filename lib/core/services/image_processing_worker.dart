@@ -123,11 +123,64 @@ class ImageProcessingWorker {
     return result.outputPath!;
   }
 
+  Future<String> crop(
+    String inputPath,
+    String outputPath, {
+    required int x,
+    required int y,
+    required int width,
+    required int height,
+  }) async {
+    final result = await _submit(
+      inputPath,
+      outputPath,
+      'crop',
+      0,
+      [x, y, width, height],
+    );
+
+    if (!result.isSuccess) {
+      throw ImageProcessingException(
+        result.error ?? 'Crop processing failed.',
+      );
+    }
+
+    return result.outputPath!;
+  }
+
+  Future<String> cropNormalized(
+    String inputPath,
+    String outputPath, {
+    required double left,
+    required double top,
+    required double right,
+    required double bottom,
+  }) async {
+    final result = await _submit(
+      inputPath,
+      outputPath,
+      'cropNormalized',
+      0,
+      [left, top, right, bottom],
+    );
+
+    if (!result.isSuccess) {
+      throw ImageProcessingException(
+        result.error ?? 'Crop processing failed.',
+      );
+    }
+
+    return result.outputPath!;
+  }
+
   Future<ImageProcessingWorkerResult> _submit(
     String inputPath,
     String outputPath,
     String operation,
     int param,
+    [
+      List<num> arguments = const [],
+    ]
   ) async {
     await start();
 
@@ -135,7 +188,14 @@ class ImageProcessingWorker {
     final completer = Completer<ImageProcessingWorkerResult>();
     _pending[jobId] = completer;
 
-    _sendPort!.send([jobId, inputPath, outputPath, operation, param]);
+    _sendPort!.send([
+      jobId,
+      inputPath,
+      outputPath,
+      operation,
+      param,
+      arguments,
+    ]);
 
     // Safety net: if the worker isolate ever dies mid-job, the caller
     // must still get an answer so the UI never hangs on a spinner.
@@ -196,15 +256,22 @@ Future<void> _entry(SendPort mainPort) async {
   mainPort.send(port.sendPort);
 
   await for (final dynamic message in port) {
-    if (message is List && message.length == 5) {
+    if (message is List && message.length == 6) {
       final jobId = message[0] as int;
       final inputPath = message[1] as String;
       final outputPath = message[2] as String;
       final operation = message[3] as String;
       final param = message[4] as int;
+      final arguments = (message[5] as List).cast<num>();
 
       try {
-        await _runJob(inputPath, outputPath, operation, param);
+        await _runJob(
+          inputPath,
+          outputPath,
+          operation,
+          param,
+          arguments,
+        );
         mainPort.send([jobId, outputPath, null]);
       } catch (e) {
         mainPort.send([jobId, null, '$e']);
@@ -218,6 +285,7 @@ Future<void> _runJob(
   String outputPath,
   String operation,
   int param,
+  List<num> arguments,
 ) async {
   final file = File(inputPath);
 
@@ -228,16 +296,17 @@ Future<void> _runJob(
   }
 
   final bytes = await file.readAsBytes();
-  final decoded = img.decodeImage(bytes);
-
-  if (decoded == null) {
-    throw ImageProcessingException(
-      'Could not decode image: $inputPath',
-    );
-  }
 
   switch (operation) {
     case 'filter':
+      final decoded = img.decodeImage(bytes);
+
+      if (decoded == null) {
+        throw ImageProcessingException(
+          'Could not decode image: $inputPath',
+        );
+      }
+
       if (param < 0 || param >= ImageFilterType.values.length) {
         throw ImageProcessingException('Unknown filter: $param');
       }
@@ -267,6 +336,14 @@ Future<void> _runJob(
         // No reliable document corner was detected — save the
         // untouched (but resolution-guarded) image so the caller
         // always gets a valid file.
+        final decoded = img.decodeImage(bytes);
+
+        if (decoded == null) {
+          throw ImageProcessingException(
+            'Could not decode image: $inputPath',
+          );
+        }
+
         final work = _applyResolutionGuard(decoded);
         final fallback = Uint8List.fromList(
           img.encodeJpg(work, quality: 95),
@@ -276,6 +353,91 @@ Future<void> _runJob(
       } else {
         await File(outputPath).writeAsBytes(cropped, flush: true);
       }
+      break;
+
+    case 'crop':
+      if (arguments.length != 4) {
+        throw ImageProcessingException('Invalid crop arguments.');
+      }
+
+      final decoded = img.decodeImage(bytes);
+
+      if (decoded == null) {
+        throw ImageProcessingException(
+          'Could not decode image: $inputPath',
+        );
+      }
+
+      final x = arguments[0].toInt();
+      final y = arguments[1].toInt();
+      final width = arguments[2].toInt();
+      final height = arguments[3].toInt();
+
+      if (width <= 0 || height <= 0) {
+        throw ImageProcessingException(
+          'Crop width and height must be greater than zero.',
+        );
+      }
+
+      final safeX = x.clamp(0, decoded.width - 1);
+      final safeY = y.clamp(0, decoded.height - 1);
+      final safeWidth = width.clamp(1, decoded.width - safeX);
+      final safeHeight = height.clamp(1, decoded.height - safeY);
+
+      final cropped = img.copyCrop(
+        decoded,
+        x: safeX,
+        y: safeY,
+        width: safeWidth,
+        height: safeHeight,
+      );
+
+      await File(outputPath).writeAsBytes(
+        img.encodePng(cropped),
+        flush: true,
+      );
+      break;
+
+    case 'cropNormalized':
+      if (arguments.length != 4 ||
+          arguments.any((value) => !value.isFinite)) {
+        throw ImageProcessingException('Invalid crop coordinates.');
+      }
+
+      final decoded = img.decodeImage(bytes);
+
+      if (decoded == null) {
+        throw ImageProcessingException(
+          'Could not decode image: $inputPath',
+        );
+      }
+
+      final l = arguments[0].toDouble().clamp(0.0, 1.0).toDouble();
+      final t = arguments[1].toDouble().clamp(0.0, 1.0).toDouble();
+      final r = arguments[2].toDouble().clamp(0.0, 1.0).toDouble();
+      final b = arguments[3].toDouble().clamp(0.0, 1.0).toDouble();
+
+      if (r <= l || b <= t) {
+        throw ImageProcessingException('Invalid crop rectangle.');
+      }
+
+      final x0 = (l * decoded.width).round().clamp(0, decoded.width - 1);
+      final y0 = (t * decoded.height).round().clamp(0, decoded.height - 1);
+      final x1 = (r * decoded.width).round().clamp(x0 + 1, decoded.width);
+      final y1 = (b * decoded.height).round().clamp(y0 + 1, decoded.height);
+
+      final cropped = img.copyCrop(
+        decoded,
+        x: x0,
+        y: y0,
+        width: x1 - x0,
+        height: y1 - y0,
+      );
+
+      await File(outputPath).writeAsBytes(
+        img.encodePng(cropped),
+        flush: true,
+      );
       break;
 
     default:

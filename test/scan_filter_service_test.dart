@@ -41,4 +41,31 @@ void main() {
 
     expect(result, same(bytes));
   });
+
+  test('autoCrop bounds the rectified output for a large document', () {
+    final source = img.Image(width: 4200, height: 5200);
+
+    for (final pixel in source) {
+      pixel
+        ..r = 20
+        ..g = 20
+        ..b = 20;
+    }
+
+    for (var y = 300; y < 4900; y++) {
+      for (var x = 250; x < 3950; x++) {
+        source.getPixel(x, y)
+          ..r = 250
+          ..g = 250
+          ..b = 250;
+      }
+    }
+
+    final bytes = Uint8List.fromList(img.encodeJpg(source, quality: 80));
+    final cropped = img.decodeImage(ScanFilterService.autoCrop(bytes));
+
+    expect(cropped, isNotNull);
+    expect(cropped!.width, lessThanOrEqualTo(4000));
+    expect(cropped.height, lessThanOrEqualTo(4000));
+  });
 }

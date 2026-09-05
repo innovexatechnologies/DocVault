@@ -180,32 +180,54 @@ class ScanFilterService {
       _distance(expanded.topRight, expanded.bottomRight),
     ).round();
 
+    if (docWidth < 2 || docHeight < 2) {
+      return inputBytes;
+    }
+
+    // Rectification allocates the complete destination image. Keep the
+    // result bounded so a high-resolution camera frame or a noisy edge
+    // candidate cannot allocate an unbounded bitmap in the worker isolate.
+    const maxOutputDimension = 4000;
+    final outputScale = math.min(
+      1.0,
+      maxOutputDimension / math.max(docWidth, docHeight),
+    );
+    final outputWidth = math.max(50, (docWidth * outputScale).round());
+    final outputHeight = math.max(50, (docHeight * outputScale).round());
+
     final targetImage = img.Image(
-      width: math.max(50, docWidth),
-      height: math.max(50, docHeight),
+      width: outputWidth,
+      height: outputHeight,
     );
 
-    final rectified = img.copyRectify(
-      original,
-      topLeft: img.Point(
-        expanded.topLeft.x.round(),
-        expanded.topLeft.y.round(),
-      ),
-      topRight: img.Point(
-        expanded.topRight.x.round(),
-        expanded.topRight.y.round(),
-      ),
-      bottomLeft: img.Point(
-        expanded.bottomLeft.x.round(),
-        expanded.bottomLeft.y.round(),
-      ),
-      bottomRight: img.Point(
-        expanded.bottomRight.x.round(),
-        expanded.bottomRight.y.round(),
-      ),
-      toImage: targetImage,
-      interpolation: img.Interpolation.cubic,
-    );
+    img.Image rectified;
+    try {
+      rectified = img.copyRectify(
+        original,
+        topLeft: img.Point(
+          expanded.topLeft.x.round(),
+          expanded.topLeft.y.round(),
+        ),
+        topRight: img.Point(
+          expanded.topRight.x.round(),
+          expanded.topRight.y.round(),
+        ),
+        bottomLeft: img.Point(
+          expanded.bottomLeft.x.round(),
+          expanded.bottomLeft.y.round(),
+        ),
+        bottomRight: img.Point(
+          expanded.bottomRight.x.round(),
+          expanded.bottomRight.y.round(),
+        ),
+        toImage: targetImage,
+        interpolation: img.Interpolation.cubic,
+      );
+    } catch (_) {
+      // Detection is best-effort. A failed rectify must leave the source
+      // usable instead of turning Auto Crop into a fatal edit operation.
+      return inputBytes;
+    }
 
     if (rectified.width < 50 || rectified.height < 50) {
       return inputBytes;

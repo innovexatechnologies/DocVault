@@ -153,46 +153,22 @@ class ImageEditorService {
     required int width,
     required int height,
   }) async {
-    final bytes = await File(inputPath).readAsBytes();
-    final image = img.decodeImage(bytes);
-
-    if (image == null) {
-      throw Exception('Unable to decode image.');
-    }
-
-    if (image.width <= 0 || image.height <= 0) {
-      throw Exception('Image has invalid dimensions.');
-    }
-
     if (width <= 0 || height <= 0) {
       throw ArgumentError(
         'Crop width and height must be greater than zero.',
       );
     }
 
-    final safeX = x.clamp(0, image.width - 1);
-    final safeY = y.clamp(0, image.height - 1);
+    final outputPath = await _getNewEditedPath(extension: 'png');
 
-    final safeWidth = width.clamp(
-      1,
-      image.width - safeX,
+    return ImageProcessingWorker.instance.crop(
+      inputPath,
+      outputPath,
+      x: x,
+      y: y,
+      width: width,
+      height: height,
     );
-    final safeHeight = height.clamp(
-      1,
-      image.height - safeY,
-    );
-
-    final cropped = img.copyCrop(
-      image,
-      x: safeX,
-      y: safeY,
-      width: safeWidth,
-      height: safeHeight,
-    );
-
-    // PNG is lossless. This prevents the crop operation itself from
-    // introducing JPEG compression artefacts.
-    return _saveLosslessCrop(cropped);
   }
 
   /// Crops using normalized image coordinates (0.0 -> 1.0).
@@ -207,21 +183,14 @@ class ImageEditorService {
     required double right,
     required double bottom,
   }) async {
-    final bytes = await File(inputPath).readAsBytes();
-    final image = img.decodeImage(bytes);
-
-    if (image == null) {
-      throw Exception('Unable to decode image.');
+    if (![left, top, right, bottom].every((value) => value.isFinite)) {
+      throw ArgumentError('Crop coordinates must be finite.');
     }
 
-    if (image.width <= 0 || image.height <= 0) {
-      throw Exception('Image has invalid dimensions.');
-    }
-
-    final l = left.clamp(0.0, 1.0);
-    final t = top.clamp(0.0, 1.0);
-    final r = right.clamp(0.0, 1.0);
-    final b = bottom.clamp(0.0, 1.0);
+    final l = left.clamp(0.0, 1.0).toDouble();
+    final t = top.clamp(0.0, 1.0).toDouble();
+    final r = right.clamp(0.0, 1.0).toDouble();
+    final b = bottom.clamp(0.0, 1.0).toDouble();
 
     if (r <= l || b <= t) {
       throw ArgumentError(
@@ -229,47 +198,16 @@ class ImageEditorService {
       );
     }
 
-    // Convert the UI's normalized crop boundaries to source pixels.
-    // round() gives a deterministic nearest-pixel boundary and avoids
-    // accumulating floating-point truncation across multiple edits.
-    var x0 = (l * image.width).round();
-    var y0 = (t * image.height).round();
-    var x1 = (r * image.width).round();
-    var y1 = (b * image.height).round();
+    final outputPath = await _getNewEditedPath(extension: 'png');
 
-    x0 = x0.clamp(0, image.width - 1);
-    y0 = y0.clamp(0, image.height - 1);
-    x1 = x1.clamp(x0 + 1, image.width);
-    y1 = y1.clamp(y0 + 1, image.height);
-
-    final cropped = img.copyCrop(
-      image,
-      x: x0,
-      y: y0,
-      width: x1 - x0,
-      height: y1 - y0,
+    return ImageProcessingWorker.instance.cropNormalized(
+      inputPath,
+      outputPath,
+      left: l,
+      top: t,
+      right: r,
+      bottom: b,
     );
-
-    // The crop itself remains lossless.
-    return _saveLosslessCrop(cropped);
-  }
-
-  Future<String> _saveLosslessCrop(
-    img.Image image,
-  ) async {
-    final outPath =
-        await _getNewEditedPath(
-      extension: 'png',
-    );
-
-    final outBytes = img.encodePng(image);
-
-    await File(outPath).writeAsBytes(
-      outBytes,
-      flush: true,
-    );
-
-    return outPath;
   }
 
   // ============================================================

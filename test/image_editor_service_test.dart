@@ -68,6 +68,34 @@ void main() {
     expect(decoded.height, 60);
   });
 
+  test('normalized crop clamps boundaries', () async {
+    final croppedPath = await editorService.cropImageNormalized(
+      sampleImagePath,
+      left: -0.1,
+      top: 0.1,
+      right: 0.6,
+      bottom: 1.2,
+    );
+
+    final decoded = img.decodeImage(await File(croppedPath).readAsBytes());
+    expect(decoded, isNotNull);
+    expect(decoded!.width, 60);
+    expect(decoded.height, 180);
+  });
+
+  test('normalized crop rejects non-finite coordinates', () async {
+    expect(
+      () => editorService.cropImageNormalized(
+        sampleImagePath,
+        left: double.nan,
+        top: 0,
+        right: 1,
+        bottom: 1,
+      ),
+      throwsArgumentError,
+    );
+  });
+
   test('applies grayscale filter', () async {
     final filteredPath = await editorService.applyFilter(
       sampleImagePath,
