@@ -552,18 +552,19 @@ class _ImageEditorScreenState
     });
 
     try {
-      // Corners are already normalized against the real image bounds
-      // (see _resizeCrop / _moveCrop), so they can be handed straight
-      // to the perspective-transform pipeline. This is a genuine
-      // 4-point warp, not a rectangular crop: a skewed/angled quad
-      // gets flattened just like the auto-detector's result.
+      // SIMPLE CROP:
+      // The four UI corners are always kept axis-aligned. We pass the
+      // normalized image coordinates to the service, which converts
+      // them to integer source-pixel boundaries and performs a direct
+      // copyCrop. No perspective transform, interpolation, stretching,
+      // padding, or resizing is involved.
       final newBasePath =
-          await _editorService.perspectiveCropQuad(
+          await _editorService.cropImageNormalized(
         _baseImagePath,
-        topLeft: _cropTopLeft,
-        topRight: _cropTopRight,
-        bottomLeft: _cropBottomLeft,
-        bottomRight: _cropBottomRight,
+        left: _cropTopLeft.dx,
+        top: _cropTopLeft.dy,
+        right: _cropTopRight.dx,
+        bottom: _cropBottomLeft.dy,
       );
 
       final preview =
@@ -581,6 +582,9 @@ class _ImageEditorScreenState
 
         _activeMode =
             EditorMode.none;
+
+        _selectedCropRatio = 'Free';
+        _resetCropCorners();
       });
 
       await _loadImageSize();
@@ -800,52 +804,90 @@ class _ImageEditorScreenState
     final ratio = _ratioValue(_selectedCropRatio);
 
     if (ratio == null) {
-      // FREE MODE: each corner is fully independent, which is what
-      // makes true perspective correction possible (e.g. matching a
-      // document photographed at an angle). Bounds keep the corner
-      // on the image and keep the quad from collapsing into a line.
-      setState(() {
+      // FREE MODE is a normal rectangular crop.
+      // All four corners remain axis-aligned:
+      //
+      //   TL -------- TR
+      //   |            |
+      //   |   CROP     |
+      //   |            |
+      //   BL -------- BR
+      //
+      // This is intentionally NOT a perspective/quad crop. Every
+      // screen movement is converted through the displayed image rect
+      // and ultimately becomes an integer source-pixel boundary.
+      final rect = _cropBoundingRect;
+
+      var left = rect.left;
+      var top = rect.top;
+      var right = rect.right;
+      var bottom = rect.bottom;
+
+      switch (handle) {
+        case _CropHandle.topLeft:
+          left += d.dx;
+          top += d.dy;
+          break;
+
+        case _CropHandle.topRight:
+          right += d.dx;
+          top += d.dy;
+          break;
+
+        case _CropHandle.bottomLeft:
+          left += d.dx;
+          bottom += d.dy;
+          break;
+
+        case _CropHandle.bottomRight:
+          right += d.dx;
+          bottom += d.dy;
+          break;
+      }
+
+      const minSize = 0.01;
+
+      left = left.clamp(0.0, 1.0 - minSize);
+      right = right.clamp(minSize, 1.0);
+      top = top.clamp(0.0, 1.0 - minSize);
+      bottom = bottom.clamp(minSize, 1.0);
+
+      // Preserve the dragged side while guaranteeing a valid rectangle.
+      if (right - left < minSize) {
         switch (handle) {
           case _CropHandle.topLeft:
-            _cropTopLeft = _clampCorner(
-              _cropTopLeft + d,
-              minX: 0.0,
-              maxX: _cropTopRight.dx - _minCornerGap,
-              minY: 0.0,
-              maxY: _cropBottomLeft.dy - _minCornerGap,
-            );
-            break;
-
-          case _CropHandle.topRight:
-            _cropTopRight = _clampCorner(
-              _cropTopRight + d,
-              minX: _cropTopLeft.dx + _minCornerGap,
-              maxX: 1.0,
-              minY: 0.0,
-              maxY: _cropBottomRight.dy - _minCornerGap,
-            );
-            break;
-
           case _CropHandle.bottomLeft:
-            _cropBottomLeft = _clampCorner(
-              _cropBottomLeft + d,
-              minX: 0.0,
-              maxX: _cropBottomRight.dx - _minCornerGap,
-              minY: _cropTopLeft.dy + _minCornerGap,
-              maxY: 1.0,
-            );
+            left = right - minSize;
             break;
-
+          case _CropHandle.topRight:
           case _CropHandle.bottomRight:
-            _cropBottomRight = _clampCorner(
-              _cropBottomRight + d,
-              minX: _cropBottomLeft.dx + _minCornerGap,
-              maxX: 1.0,
-              minY: _cropTopRight.dy + _minCornerGap,
-              maxY: 1.0,
-            );
+            right = left + minSize;
             break;
         }
+      }
+
+      if (bottom - top < minSize) {
+        switch (handle) {
+          case _CropHandle.topLeft:
+          case _CropHandle.topRight:
+            top = bottom - minSize;
+            break;
+          case _CropHandle.bottomLeft:
+          case _CropHandle.bottomRight:
+            bottom = top + minSize;
+            break;
+        }
+      }
+
+      left = left.clamp(0.0, 1.0 - minSize);
+      right = right.clamp(left + minSize, 1.0);
+      top = top.clamp(0.0, 1.0 - minSize);
+      bottom = bottom.clamp(top + minSize, 1.0);
+
+      setState(() {
+        _setCropFromRect(
+          Rect.fromLTRB(left, top, right, bottom),
+        );
       });
 
       return;

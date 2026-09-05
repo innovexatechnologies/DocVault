@@ -15,10 +15,24 @@ class FilterScreen extends StatefulWidget {
   State<FilterScreen> createState() => _FilterScreenState();
 }
 
+/// Cancellation token to prevent race conditions
+class _CancellationToken {
+  bool _cancelled = false;
+
+  void cancel() {
+    _cancelled = true;
+  }
+
+  bool get isCancelled => _cancelled;
+}
+
 class _FilterScreenState extends State<FilterScreen> {
   ScanFilter _selectedFilter = ScanFilter.original;
   Uint8List? _filteredBytes;
   bool _isApplying = false;
+
+  /// Track pending operation to cancel if new one starts
+  _CancellationToken? _currentToken;
 
   @override
   void initState() {
@@ -26,34 +40,65 @@ class _FilterScreenState extends State<FilterScreen> {
     _filteredBytes = widget.scannedImageBytes;
   }
 
+  @override
+  void dispose() {
+    /// Cancel any pending operations
+    _currentToken?.cancel();
+    super.dispose();
+  }
+
   Future<void> _selectFilter(ScanFilter filter) async {
+    /// Cancel previous operation
+    _currentToken?.cancel();
+    final token = _CancellationToken();
+    _currentToken = token;
+
     setState(() {
       _selectedFilter = filter;
       _isApplying = true;
     });
 
     try {
-      final bytes = await compute(
-        _applyFilter,
-        _FilterRequest(filter, widget.scannedImageBytes),
+      /// Apply filter — always on the original scanned bytes,
+      /// never on the currently displayed filtered result, so
+      /// filters never stack/overlap on top of each other.
+      final bytes = await ScanFilterService.apply(
+        filter,
+        widget.scannedImageBytes,
       );
 
-      if (!mounted) return;
+      /// Check if operation was cancelled or widget unmounted
+      if (token.isCancelled || !mounted) {
+        return;
+      }
 
       setState(() {
         _filteredBytes = bytes;
         _isApplying = false;
       });
-    } catch (_) {
-      if (!mounted) return;
+
+      // NOTE: previously there was an `oldBytes?.clear()` call here.
+      // Uint8List is a FIXED-LENGTH list — calling `.clear()` on it
+      // always throws UnsupportedError. That exception was being
+      // silently caught below and shown to the user as "Filter
+      // failed", even though the filter had actually applied
+      // successfully. It has been removed; Dart's garbage collector
+      // frees the old bytes automatically once nothing references
+      // them anymore.
+    } catch (e) {
+      /// Check if cancelled
+      if (token.isCancelled || !mounted) {
+        return;
+      }
 
       setState(() {
         _isApplying = false;
       });
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Unable to apply this filter.'),
+        SnackBar(
+          content: Text('Filter failed: ${e.toString()}'),
+          duration: const Duration(seconds: 2),
         ),
       );
     }
@@ -70,7 +115,11 @@ class _FilterScreenState extends State<FilterScreen> {
           TextButton(
             onPressed: _isApplying || _filteredBytes == null
                 ? null
-                : () => Navigator.of(context).pop(_filteredBytes),
+                : () {
+                    /// Cancel pending operations before pop
+                    _currentToken?.cancel();
+                    Navigator.of(context).pop(_filteredBytes);
+                  },
             child: const Text('Done'),
           ),
         ],
@@ -78,39 +127,70 @@ class _FilterScreenState extends State<FilterScreen> {
       body: SafeArea(
         child: Column(
           children: [
+            /// Image Preview
             Expanded(
-              child: Center(
-                child: _isApplying
-                    ? const CircularProgressIndicator()
-                    : Image.memory(
-                        _filteredBytes!,
-                        fit: BoxFit.contain,
-                      ),
+              child: Container(
+                color: Colors.black12,
+                child: Center(
+                  child: _isApplying
+                      ? Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const CircularProgressIndicator(),
+                            const SizedBox(height: 16),
+                            Text(
+                              'Processing ${ScanFilterService.label(_selectedFilter)}...',
+                              style: Theme.of(context).textTheme.bodyMedium,
+                            ),
+                          ],
+                        )
+                      : _filteredBytes != null
+                          ? Image.memory(
+                              _filteredBytes!,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                            )
+                          : const Text('No image'),
+                ),
               ),
             ),
-            SizedBox(
-              height: 96,
-              child: ListView.separated(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                scrollDirection: Axis.horizontal,
-                itemCount: ScanFilter.values.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final filter = ScanFilter.values[index];
-                  final isSelected = filter == _selectedFilter;
 
-                  return ChoiceChip(
-                    label: Text(ScanFilterService.label(filter)),
-                    selected: isSelected,
-                    selectedColor: colorScheme.primary,
-                    labelStyle: TextStyle(
-                      color: isSelected ? colorScheme.onPrimary : null,
-                    ),
-                    onSelected: _isApplying
-                        ? null
-                        : (_) => _selectFilter(filter),
-                  );
-                },
+            /// Filter Chips
+            Container(
+              color: Colors.white,
+              child: SizedBox(
+                height: 96,
+                child: ListView.separated(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  scrollDirection: Axis.horizontal,
+                  itemCount: ScanFilter.values.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: 8),
+                  itemBuilder: (context, index) {
+                    final filter = ScanFilter.values[index];
+                    final isSelected = filter == _selectedFilter;
+
+                    return ChoiceChip(
+                      label: Text(
+                        ScanFilterService.label(filter),
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                      selected: isSelected,
+                      selectedColor: colorScheme.primary,
+                      labelStyle: TextStyle(
+                        color: isSelected ? colorScheme.onPrimary : null,
+                        fontSize: 12,
+                      ),
+                      onSelected: _isApplying
+                          ? null
+                          : (_) {
+                              /// Don't apply if already selected
+                              if (filter != _selectedFilter) {
+                                _selectFilter(filter);
+                              }
+                            },
+                    );
+                  },
+                ),
               ),
             ),
           ],
@@ -118,15 +198,4 @@ class _FilterScreenState extends State<FilterScreen> {
       ),
     );
   }
-}
-
-class _FilterRequest {
-  final ScanFilter filter;
-  final Uint8List bytes;
-
-  const _FilterRequest(this.filter, this.bytes);
-}
-
-Uint8List _applyFilter(_FilterRequest request) {
-  return ScanFilterService.apply(request.filter, request.bytes);
 }
