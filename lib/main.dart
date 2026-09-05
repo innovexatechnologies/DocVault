@@ -8,6 +8,7 @@ import 'core/providers/image_selection_provider.dart';
 import 'core/providers/pdf_manager_provider.dart';
 import 'core/providers/theme_provider.dart';
 import 'core/services/external_pdf_service.dart';
+import 'core/services/scan_filter_service.dart'; // ✅ ADD YEH
 import 'core/theme/app_theme.dart';
 
 import 'features/camera/camera_screen.dart';
@@ -22,10 +23,14 @@ import 'features/splash/splash_screen.dart';
 
 import 'models/pdf_result.dart';
 
+// ============================================================================
+// MAIN - ✅ ASYNC ADD KIYA
+// ============================================================================
+
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
-
   runApp(const MyApp());
+  ScanFilterService.initialize(); // background mein, await na karo
 }
 
 // ============================================================================
@@ -523,11 +528,14 @@ class _MyAppState extends State<MyApp> {
   }
 
   // ==========================================================================
-  // DISPOSE
+  // DISPOSE - ✅ UPDATED
   // ==========================================================================
 
   @override
   void dispose() {
+    // ✅ YEH LINE ADD KIA (سب سے پہلے)
+    ScanFilterService.dispose();
+
     if (!kIsWeb) {
       _channel.setMethodCallHandler(null);
     }
