@@ -24,36 +24,6 @@ class ExternalPdfService {
       throw Exception('Android did not return document data.');
     }
 
-    final rawBytes = result['bytes'];
-
-    if (rawBytes == null) {
-      throw Exception('Android did not return document bytes.');
-    }
-
-    late final Uint8List bytes;
-
-    try {
-      if (rawBytes is Uint8List) {
-        bytes = rawBytes;
-      } else if (rawBytes is List) {
-        bytes = Uint8List.fromList(
-          rawBytes.map((e) => e as int).toList(),
-        );
-      } else {
-        throw Exception(
-          'Invalid document byte data received from Android.',
-        );
-      }
-    } catch (e) {
-      throw Exception(
-        'Failed to convert external document bytes: $e',
-      );
-    }
-
-    if (bytes.isEmpty) {
-      throw Exception('The external document is empty.');
-    }
-
     final androidFileName =
         result['fileName']?.toString().trim();
 
@@ -98,6 +68,51 @@ class ExternalPdfService {
       originalFileName,
       type,
     );
+
+    // 1. Direct file path if streamed by native Android
+    final nativeFilePath = result['filePath']?.toString();
+    if (nativeFilePath != null && nativeFilePath.isNotEmpty) {
+      final nativeFile = File(nativeFilePath);
+      if (await nativeFile.exists() && await nativeFile.length() > 0) {
+        return {
+          'filePath': nativeFile.path,
+          'fileName': fileName,
+          'type': type,
+          'mimeType': mimeType,
+        };
+      }
+    }
+
+    // 2. Fallback if byte data was returned
+    final rawBytes = result['bytes'];
+
+    if (rawBytes == null) {
+      throw Exception('Android did not return document data or file path.');
+    }
+
+    late final Uint8List bytes;
+
+    try {
+      if (rawBytes is Uint8List) {
+        bytes = rawBytes;
+      } else if (rawBytes is List) {
+        bytes = Uint8List.fromList(
+          rawBytes.map((e) => e as int).toList(),
+        );
+      } else {
+        throw Exception(
+          'Invalid document byte data received from Android.',
+        );
+      }
+    } catch (e) {
+      throw Exception(
+        'Failed to convert external document bytes: $e',
+      );
+    }
+
+    if (bytes.isEmpty) {
+      throw Exception('The external document is empty.');
+    }
 
     final cacheDir =
         await FileUtils.getCacheDirectory();

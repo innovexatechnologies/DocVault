@@ -74,6 +74,15 @@ class FileUtils {
 
     final type = ConversionType.fromFileName(filePath);
 
+    if (type == ConversionType.pdf) {
+      return extractPdfPagesToImages(filePath);
+    }
+
+    final bytes = await file.readAsBytes();
+    if (isLegacyOfficeDocument(bytes)) {
+      return _extractLegacyOfficePreviewPages(filePath, bytes, type);
+    }
+
     switch (type) {
       case ConversionType.pdf:
         return extractPdfPagesToImages(filePath);
@@ -109,7 +118,18 @@ class FileUtils {
 
     final bytes = await file.readAsBytes();
 
-    final archive = ZipDecoder().decodeBytes(bytes);
+    if (isLegacyOfficeDocument(bytes)) {
+      final legacyText = _extractTextFromLegacyOfficeBinary(bytes);
+      return legacyText.trim().isNotEmpty ? [legacyText.trim()] : [''];
+    }
+
+    Archive archive;
+    try {
+      archive = ZipDecoder().decodeBytes(bytes);
+    } catch (_) {
+      final legacyText = _extractTextFromLegacyOfficeBinary(bytes);
+      return legacyText.trim().isNotEmpty ? [legacyText.trim()] : [''];
+    }
 
     // -------------------------------------------------------------------------
     // DOCX
@@ -508,9 +528,24 @@ class FileUtils {
     try {
       final bytes = await file.readAsBytes();
 
-      final archive = ZipDecoder().decodeBytes(
-        bytes,
-      );
+      if (isLegacyOfficeDocument(bytes)) {
+        return _extractLegacyOfficePreviewPages(
+          docxPath,
+          bytes,
+          ConversionType.docs,
+        );
+      }
+
+      Archive archive;
+      try {
+        archive = ZipDecoder().decodeBytes(bytes);
+      } catch (_) {
+        return _extractLegacyOfficePreviewPages(
+          docxPath,
+          bytes,
+          ConversionType.docs,
+        );
+      }
 
       final pageSize = _readDocxPageSize(
         archive,
@@ -605,16 +640,14 @@ class FileUtils {
           );
         }
 
-        final pagePath =
-            await _createTextPreviewPage(
+        final pagePaths = await _createTextPreviewPages(
           directory: cacheDir,
-          fileName: 'page_0001.jpg',
           text: text,
           width: pageSize.widthPx,
           height: pageSize.heightPx,
         );
 
-        outputPaths.add(pagePath);
+        outputPaths.addAll(pagePaths);
       }
 
       if (outputPaths.isEmpty) {
@@ -668,9 +701,24 @@ class FileUtils {
     try {
       final bytes = await file.readAsBytes();
 
-      final archive = ZipDecoder().decodeBytes(
-        bytes,
-      );
+      if (isLegacyOfficeDocument(bytes)) {
+        return _extractLegacyOfficePreviewPages(
+          pptxPath,
+          bytes,
+          ConversionType.ppt,
+        );
+      }
+
+      Archive archive;
+      try {
+        archive = ZipDecoder().decodeBytes(bytes);
+      } catch (_) {
+        return _extractLegacyOfficePreviewPages(
+          pptxPath,
+          bytes,
+          ConversionType.ppt,
+        );
+      }
 
       final slideSize =
           _readPptxSlideSize(archive);
@@ -749,7 +797,18 @@ class FileUtils {
           ),
         );
 
+        // Extract slide XML text if present
+        String slideText = '';
+        try {
+          final slideXml = utf8.decode(
+            Uint8List.fromList(slideFiles[i].content),
+            allowMalformed: true,
+          );
+          slideText = _extractXmlText(slideXml, textTag: 'a:t');
+        } catch (_) {}
+
         // Add image if available.
+        bool hasImage = false;
         if (i < mediaFiles.length) {
           final decoded = img.decodeImage(
             Uint8List.fromList(
@@ -758,6 +817,7 @@ class FileUtils {
           );
 
           if (decoded != null) {
+            hasImage = true;
             final fitted = _fitImage(
               source: decoded,
               maxWidth: slideSize.widthPx,
@@ -779,6 +839,18 @@ class FileUtils {
               dstY: y,
             );
           }
+        }
+
+        // When no image is present, render a styled slide presentation card
+        if (!hasImage) {
+          _drawSlideCard(
+            slideCanvas: slideCanvas,
+            slideText: slideText,
+            slideNumber: i + 1,
+            totalSlides: slideFiles.length,
+            width: slideSize.widthPx,
+            height: slideSize.heightPx,
+          );
         }
 
         final outputPath =
@@ -863,42 +935,455 @@ class FileUtils {
   }
 
   // ===========================================================================
-  // CREATE TEXT PREVIEW PAGE
+  // CREATE TEXT PREVIEW PAGES (PAGINATED WITH REAL TEXT RENDERING)
   // ===========================================================================
 
-  static Future<String> _createTextPreviewPage({
+  static Future<List<String>> _createTextPreviewPages({
     required Directory directory,
-    required String fileName,
     required String text,
     required int width,
     required int height,
+    bool isLegacy = false,
   }) async {
-    final page = img.Image(
-      width: width,
-      height: height,
-    );
+    final cleanText = text.trim();
+    final List<String> paragraphs = cleanText.isEmpty
+        ? ['Document is empty or contains non-text media.']
+        : cleanText.split('\n');
 
-    img.fill(
-      page,
-      color: img.ColorRgb8(
-        255,
-        255,
-        255,
-      ),
-    );
+    final int marginX = (width * 0.08).round().clamp(40, 90);
+    final int contentWidth = width - (marginX * 2);
+    final int maxCharsPerLine = (contentWidth ~/ 9).clamp(25, 110);
+    const int lineHeight = 22;
+    final int startY = isLegacy ? 100 : 70;
+    final int availableHeight = height - startY - 60;
+    final int maxLinesPerPage = (availableHeight ~/ lineHeight).clamp(15, 60);
 
-    final outputPath =
-        '${directory.path}/$fileName';
+    final allLines = <String>[];
+    for (final p in paragraphs) {
+      final trimmed = p.trim();
+      if (trimmed.isEmpty) {
+        allLines.add('');
+      } else {
+        allLines.addAll(_wrapText(trimmed, maxCharsPerLine));
+      }
+    }
 
-    await File(outputPath).writeAsBytes(
-      img.encodeJpg(
+    if (allLines.isEmpty) {
+      allLines.add('Document contains no readable text.');
+    }
+
+    final pagesList = <List<String>>[];
+    for (int i = 0; i < allLines.length; i += maxLinesPerPage) {
+      final end = (i + maxLinesPerPage < allLines.length)
+          ? i + maxLinesPerPage
+          : allLines.length;
+      pagesList.add(allLines.sublist(i, end));
+    }
+
+    final outputPaths = <String>[];
+    final totalPages = pagesList.length;
+
+    for (int pageIdx = 0; pageIdx < totalPages; pageIdx++) {
+      final page = img.Image(
+        width: width,
+        height: height,
+      );
+
+      img.fill(
         page,
-        quality: 80,
-      ),
-      flush: true,
+        color: img.ColorRgb8(255, 255, 255),
+      );
+
+      // Top decorative bar
+      final topBarColor = isLegacy
+          ? img.ColorRgb8(25, 118, 210) // Word blue
+          : img.ColorRgb8(33, 150, 243);
+      img.fillRect(
+        page,
+        x1: 0,
+        y1: 0,
+        x2: width,
+        y2: 6,
+        color: topBarColor,
+      );
+
+      if (isLegacy) {
+        img.drawString(
+          page,
+          'MICROSOFT WORD (LEGACY 97-2003)',
+          font: img.arial14,
+          x: marginX,
+          y: 20,
+          color: img.ColorRgb8(100, 116, 139),
+        );
+        img.drawString(
+          page,
+          'Extracted text preview - For full formatting, open in Office app',
+          font: img.arial14,
+          x: marginX,
+          y: 42,
+          color: img.ColorRgb8(148, 163, 184),
+        );
+        img.fillRect(
+          page,
+          x1: marginX,
+          y1: 65,
+          x2: width - marginX,
+          y2: 66,
+          color: img.ColorRgb8(226, 232, 240),
+        );
+      }
+
+      int y = startY;
+      final linesOnThisPage = pagesList[pageIdx];
+      for (final line in linesOnThisPage) {
+        if (line.isNotEmpty) {
+          img.drawString(
+            page,
+            line,
+            font: img.arial14,
+            x: marginX,
+            y: y,
+            color: img.ColorRgb8(30, 41, 59),
+          );
+        }
+        y += lineHeight;
+      }
+
+      // Page footer
+      img.drawString(
+        page,
+        'Page ${pageIdx + 1} of $totalPages',
+        font: img.arial14,
+        x: (width / 2 - 40).round(),
+        y: height - 40,
+        color: img.ColorRgb8(148, 163, 184),
+      );
+
+      final fileName = 'page_${(pageIdx + 1).toString().padLeft(4, '0')}.jpg';
+      final pagePath = '${directory.path}/$fileName';
+
+      await File(pagePath).writeAsBytes(
+        img.encodeJpg(page, quality: 85),
+        flush: true,
+      );
+
+      outputPaths.add(pagePath);
+    }
+
+    return outputPaths;
+  }
+
+  // ===========================================================================
+  // SLIDE CARD RENDERING (FOR TEXT-ONLY PPTX SLIDES & FALLBACK)
+  // ===========================================================================
+
+  static void _drawSlideCard({
+    required img.Image slideCanvas,
+    required String slideText,
+    required int slideNumber,
+    required int totalSlides,
+    required int width,
+    required int height,
+    bool isLegacy = false,
+  }) {
+    img.fill(
+      slideCanvas,
+      color: img.ColorRgb8(250, 251, 253),
     );
 
-    return outputPath;
+    // Modern PowerPoint orange accent header bar
+    final barColor = isLegacy
+        ? img.ColorRgb8(180, 80, 20)
+        : img.ColorRgb8(230, 81, 0);
+    img.fillRect(
+      slideCanvas,
+      x1: 0,
+      y1: 0,
+      x2: width,
+      y2: 10,
+      color: barColor,
+    );
+
+    // Header badge
+    final headerText = isLegacy
+        ? 'PPT (LEGACY 97-2003) | SLIDE $slideNumber OF $totalSlides'
+        : 'POWERPOINT PRESENTATION | SLIDE $slideNumber OF $totalSlides';
+    img.drawString(
+      slideCanvas,
+      headerText,
+      font: img.arial14,
+      x: 40,
+      y: 28,
+      color: img.ColorRgb8(120, 120, 120),
+    );
+
+    img.fillRect(
+      slideCanvas,
+      x1: 40,
+      y1: 52,
+      x2: width - 40,
+      y2: 54,
+      color: img.ColorRgb8(225, 228, 232),
+    );
+
+    final cleanText = slideText.trim();
+    if (cleanText.isEmpty) {
+      final centerText = 'Slide $slideNumber';
+      final font = width > 800 ? img.arial48 : img.arial24;
+      img.drawString(
+        slideCanvas,
+        centerText,
+        font: font,
+        x: (width / 2 - 80).round().clamp(40, width - 100),
+        y: (height / 2 - 20).round(),
+        color: img.ColorRgb8(140, 140, 140),
+      );
+      return;
+    }
+
+    final rawLines = cleanText
+        .split('\n')
+        .where((l) => l.trim().isNotEmpty)
+        .toList();
+    if (rawLines.isEmpty) return;
+
+    int currentY = 75;
+    final titleFont = width >= 800 ? img.arial48 : img.arial24;
+    final bodyFont = img.arial24;
+    final smallFont = img.arial14;
+
+    // First line: Title
+    final titleText = rawLines.first.trim();
+    final titleLines = _wrapText(titleText, (width - 80) ~/ 16);
+    for (final tLine in titleLines.take(2)) {
+      img.drawString(
+        slideCanvas,
+        tLine,
+        font: titleFont,
+        x: 40,
+        y: currentY,
+        color: img.ColorRgb8(33, 33, 33),
+      );
+      currentY += (titleFont == img.arial48 ? 54 : 32);
+    }
+    currentY += 16;
+
+    // Remaining lines: Bullet points
+    final contentLines = rawLines.skip(1).toList();
+    final maxChars = (width - 100) ~/ 13;
+
+    for (final rawItem in contentLines) {
+      if (currentY > height - 60) break;
+      final wrapped = _wrapText(rawItem.trim(), maxChars);
+      bool isFirstLineOfBullet = true;
+      for (final wLine in wrapped) {
+        if (currentY > height - 60) break;
+        final lineStr = isFirstLineOfBullet ? '- $wLine' : '   $wLine';
+        img.drawString(
+          slideCanvas,
+          lineStr,
+          font: bodyFont,
+          x: 50,
+          y: currentY,
+          color: img.ColorRgb8(55, 65, 81),
+        );
+        currentY += 28;
+        isFirstLineOfBullet = false;
+      }
+      currentY += 8;
+    }
+
+    // Bottom slide footer
+    final footerY = height - 32;
+    img.drawString(
+      slideCanvas,
+      '$slideNumber / $totalSlides',
+      font: smallFont,
+      x: width - 80,
+      y: footerY,
+      color: img.ColorRgb8(150, 150, 150),
+    );
+  }
+
+  // ===========================================================================
+  // TEXT WRAPPING HELPER
+  // ===========================================================================
+
+  static List<String> _wrapText(String text, int maxCharsPerLine) {
+    if (text.length <= maxCharsPerLine) return [text];
+    final words = text.split(' ');
+    final lines = <String>[];
+    var currentLine = '';
+
+    for (final word in words) {
+      if (word.isEmpty) continue;
+      if (currentLine.isEmpty) {
+        currentLine = word;
+      } else if (currentLine.length + 1 + word.length <= maxCharsPerLine) {
+        currentLine = '$currentLine $word';
+      } else {
+        lines.add(currentLine);
+        currentLine = word;
+      }
+    }
+    if (currentLine.isNotEmpty) {
+      lines.add(currentLine);
+    }
+    return lines.isEmpty ? [text] : lines;
+  }
+
+  // ===========================================================================
+  // LEGACY OFFICE BINARY FORMAT DETECTION & PARSING (.DOC / .PPT 97-2003)
+  // ===========================================================================
+
+  /// Checks if file bytes match the Microsoft OLE2 Compound Document binary header.
+  static bool isLegacyOfficeDocument(Uint8List bytes) {
+    if (bytes.length < 8) return false;
+    return bytes[0] == 0xD0 &&
+        bytes[1] == 0xCF &&
+        bytes[2] == 0x11 &&
+        bytes[3] == 0xE0 &&
+        bytes[4] == 0xA1 &&
+        bytes[5] == 0xB1 &&
+        bytes[6] == 0x1A &&
+        bytes[7] == 0xE1;
+  }
+
+  static bool _isOfficeInternalMetadata(String text) {
+    final lower = text.toLowerCase();
+    return lower == 'root entry' ||
+        lower == 'worddocument' ||
+        lower == '1table' ||
+        lower == '0table' ||
+        lower == 'summaryinformation' ||
+        lower == 'documentsummaryinformation' ||
+        lower == 'current user' ||
+        lower == 'compobj' ||
+        lower == 'powerpoint document' ||
+        lower.startsWith('microsoft ') ||
+        lower.startsWith('msworddoc') ||
+        lower.contains('times new roman') ||
+        lower.contains('calibri');
+  }
+
+  static String _extractTextFromLegacyOfficeBinary(Uint8List bytes) {
+    final lines = <String>{};
+
+    // 1. Scan for UTF-16LE strings
+    final utf16Run = <int>[];
+    for (int i = 0; i < bytes.length - 1; i += 2) {
+      final b0 = bytes[i];
+      final b1 = bytes[i + 1];
+      if (b1 == 0 &&
+          ((b0 >= 32 && b0 <= 126) || b0 == 10 || b0 == 13 || b0 == 9)) {
+        utf16Run.add(b0);
+      } else {
+        if (utf16Run.length >= 4) {
+          final str = String.fromCharCodes(utf16Run).trim();
+          if (str.length >= 4 && !_isOfficeInternalMetadata(str)) {
+            lines.add(str);
+          }
+        }
+        utf16Run.clear();
+      }
+    }
+    if (utf16Run.length >= 4) {
+      final str = String.fromCharCodes(utf16Run).trim();
+      if (str.length >= 4 && !_isOfficeInternalMetadata(str)) {
+        lines.add(str);
+      }
+    }
+
+    // 2. Scan for ASCII strings
+    final asciiRun = <int>[];
+    for (int i = 0; i < bytes.length; i++) {
+      final b = bytes[i];
+      if ((b >= 32 && b <= 126) || b == 10 || b == 13 || b == 9) {
+        asciiRun.add(b);
+      } else {
+        if (asciiRun.length >= 5) {
+          final str = String.fromCharCodes(asciiRun).trim();
+          if (str.length >= 5 && !_isOfficeInternalMetadata(str)) {
+            lines.add(str);
+          }
+        }
+        asciiRun.clear();
+      }
+    }
+    if (asciiRun.length >= 5) {
+      final str = String.fromCharCodes(asciiRun).trim();
+      if (str.length >= 5 && !_isOfficeInternalMetadata(str)) {
+        lines.add(str);
+      }
+    }
+
+    return lines.join('\n\n');
+  }
+
+  static Future<List<String>> _extractLegacyOfficePreviewPages(
+    String filePath,
+    Uint8List bytes,
+    ConversionType type,
+  ) async {
+    final cacheDir = await _getOfficePreviewCacheDirectory(filePath);
+    final prefix = type == ConversionType.ppt ? 'slide_' : 'page_';
+    final cached = await _getCachedOfficePages(filePath, prefix);
+    if (cached != null && cached.isNotEmpty) {
+      return cached;
+    }
+
+    await _deleteOfficeCache(cacheDir);
+    await cacheDir.create(recursive: true);
+
+    final extractedText = _extractTextFromLegacyOfficeBinary(bytes);
+
+    if (type == ConversionType.ppt) {
+      final slideSize = _DocumentPageSize.fromEmu(12192000, 6858000);
+      final paragraphs = extractedText
+          .split('\n\n')
+          .where((p) => p.trim().isNotEmpty)
+          .toList();
+      final totalSlides =
+          paragraphs.isEmpty ? 1 : paragraphs.length.clamp(1, 30);
+      final outputPaths = <String>[];
+
+      for (int i = 0; i < totalSlides; i++) {
+        final slideCanvas = img.Image(
+          width: slideSize.widthPx,
+          height: slideSize.heightPx,
+        );
+        final slideText =
+            paragraphs.isNotEmpty ? paragraphs[i] : '';
+        _drawSlideCard(
+          slideCanvas: slideCanvas,
+          slideText: slideText,
+          slideNumber: i + 1,
+          totalSlides: totalSlides,
+          width: slideSize.widthPx,
+          height: slideSize.heightPx,
+          isLegacy: true,
+        );
+
+        final outputPath =
+            '${cacheDir.path}/slide_${(i + 1).toString().padLeft(4, '0')}.jpg';
+        await File(outputPath).writeAsBytes(
+          img.encodeJpg(slideCanvas, quality: 80),
+          flush: true,
+        );
+        outputPaths.add(outputPath);
+      }
+      return outputPaths;
+    } else {
+      const pageSize = _DocumentPageSize(widthPx: 816, heightPx: 1056);
+      return _createTextPreviewPages(
+        directory: cacheDir,
+        text: extractedText,
+        width: pageSize.widthPx,
+        height: pageSize.heightPx,
+        isLegacy: true,
+      );
+    }
   }
 
   // ===========================================================================

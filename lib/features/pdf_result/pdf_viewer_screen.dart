@@ -50,6 +50,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   String? _errorMessage;
 
+  // View management state
+  double _zoomScale = 1.0;
+  int _rotationQuarterTurns = 0;
+  bool _isFitWidth = true;
+  String _docxViewMode = 'page'; // 'page' or 'reflow'
+  String _pptxSlideMode = 'slide'; // 'slide' or 'list'
+  final bool _showControlsBar = true;
+
   bool get _isPdf => _docType == ConversionType.pdf;
 
   bool get _isPpt => _docType == ConversionType.ppt;
@@ -108,19 +116,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       // DOCX / PPTX -> WebView-based rendering with native extraction fallback
       _renderTimeoutTimer?.cancel();
-      _renderTimeoutTimer = Timer(const Duration(seconds: 8), () {
+      _renderTimeoutTimer = Timer(const Duration(seconds: 25), () {
         if (mounted && _isLoading && !_usingFallbackView) {
           debugPrint(
             'WebView render timed out for ${widget.fileName}. Falling back to native page extraction...',
           );
           _tryFallbackNativeRendering(
-            error: 'WebView preview took too long. Switched to slide/page view.',
+            error: 'WebView preview took longer than usual. Switched to slide/page view.',
           );
         }
       });
 
       _webViewController = WebViewController()
         ..setJavaScriptMode(JavaScriptMode.unrestricted)
+        ..setBackgroundColor(Colors.transparent)
         ..addJavaScriptChannel(
           'DocumentBridge',
           onMessageReceived: _handleBridgeMessage,
@@ -157,13 +166,33 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         throw Exception('File does not exist: ${widget.filePath}');
       }
 
+      if (!mounted) return;
+      final isDark = Theme.of(context).brightness == Brightness.dark;
+      await _webViewController?.runJavaScript(
+        "setTheme('${isDark ? 'dark' : 'light'}');",
+      );
+
       final bytes = await file.readAsBytes();
       final base64Data = base64Encode(bytes);
-      final jsFunction = _isPpt ? 'renderPptx' : 'renderDocx';
 
-      await _webViewController!.runJavaScript(
-        "$jsFunction('$base64Data')",
-      );
+      if (base64Data.length > 400000) {
+        // Transfer in safe 350KB chunks to prevent Android evaluateJavascript IPC buffer limit
+        const chunkSize = 350000;
+        for (int i = 0; i < base64Data.length; i += chunkSize) {
+          final end = (i + chunkSize < base64Data.length) ? i + chunkSize : base64Data.length;
+          final chunk = base64Data.substring(i, end);
+          final isFirst = i == 0;
+          final isLast = end == base64Data.length;
+          await _webViewController!.runJavaScript(
+            "receiveDocChunk('$chunk', $isFirst, $isLast, $_isPpt);",
+          );
+        }
+      } else {
+        final jsFunction = _isPpt ? 'renderPptx' : 'renderDocx';
+        await _webViewController!.runJavaScript(
+          "$jsFunction('$base64Data');",
+        );
+      }
     } catch (e) {
       debugPrint('WebView script error: $e. Attempting native fallback...');
       await _tryFallbackNativeRendering(error: e.toString());
@@ -194,7 +223,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       if (count > 0) {
         setState(() {
           _actualPageCount = count;
-          _currentPage = 1;
+        });
+      }
+    } else if (data.startsWith('slidechanged:')) {
+      final parts = data.substring(13).split(':');
+      if (parts.length >= 2) {
+        final curr = int.tryParse(parts[0]) ?? 1;
+        final total = int.tryParse(parts[1]) ?? _actualPageCount;
+        setState(() {
+          _currentPage = curr;
+          if (total > 0) _actualPageCount = total;
         });
       }
     }
@@ -231,6 +269,253 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           'Failed to render ${widget.fileName}:\n${error ?? 'Unsupported document format'}';
       _isLoading = false;
     });
+  }
+
+  // ============================================================
+  // VIEW & PAGE MANAGEMENT CONTROLS
+  // ============================================================
+
+  void _zoomIn() {
+    setState(() {
+      _zoomScale = (_zoomScale + 0.2).clamp(0.6, 3.0);
+    });
+    _webViewController?.runJavaScript("setZoom($_zoomScale);");
+  }
+
+  void _zoomOut() {
+    setState(() {
+      _zoomScale = (_zoomScale - 0.2).clamp(0.6, 3.0);
+    });
+    _webViewController?.runJavaScript("setZoom($_zoomScale);");
+  }
+
+  void _resetZoom() {
+    setState(() {
+      _zoomScale = 1.0;
+    });
+    _webViewController?.runJavaScript("setZoom(1.0);");
+  }
+
+  void _rotateDocument() {
+    setState(() {
+      _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4;
+    });
+  }
+
+  void _toggleDocxViewMode() {
+    setState(() {
+      _docxViewMode = _docxViewMode == 'page' ? 'reflow' : 'page';
+    });
+    _webViewController?.runJavaScript("setViewMode('$_docxViewMode');");
+  }
+
+  void _togglePptxSlideMode() {
+    setState(() {
+      _pptxSlideMode = _pptxSlideMode == 'slide' ? 'list' : 'slide';
+    });
+    _webViewController?.runJavaScript("setSlideMode('$_pptxSlideMode');");
+  }
+
+  void _nextPageOrSlide() {
+    if (_isPdf && _pdfController != null) {
+      _pdfController!.nextPage(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    } else if (_isPpt && !_usingFallbackView) {
+      _webViewController?.runJavaScript("nextSlide();");
+    } else if (_usingFallbackView && _pageController.hasClients) {
+      _pageController.nextPage(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _prevPageOrSlide() {
+    if (_isPdf && _pdfController != null) {
+      _pdfController!.previousPage(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    } else if (_isPpt && !_usingFallbackView) {
+      _webViewController?.runJavaScript("prevSlide();");
+    } else if (_usingFallbackView && _pageController.hasClients) {
+      _pageController.previousPage(
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    }
+  }
+
+  void _goToPage(int targetPage) {
+    if (targetPage < 1 || targetPage > _actualPageCount) return;
+    setState(() => _currentPage = targetPage);
+
+    if (_isPdf && _pdfController != null) {
+      _pdfController!.animateToPage(
+        pageNumber: targetPage,
+        duration: const Duration(milliseconds: 250),
+        curve: Curves.easeInOut,
+      );
+    } else if (_isPpt && !_usingFallbackView) {
+      _webViewController?.runJavaScript("goToSlide(${targetPage - 1});");
+    } else if (_usingFallbackView && _pageController.hasClients) {
+      _pageController.jumpToPage(targetPage - 1);
+    }
+  }
+
+  void _showJumpToPageDialog() {
+    if (_actualPageCount <= 1) return;
+    int target = _currentPage;
+    final textController = TextEditingController(text: '$_currentPage');
+
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            final isDark = Theme.of(context).brightness == Brightness.dark;
+            return AlertDialog(
+              backgroundColor: isDark ? const Color(0xFF13182C) : Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: Row(
+                children: [
+                  Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: _accentColor.withValues(alpha: 0.12),
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    child: Icon(_isPpt ? Icons.slideshow_rounded : Icons.menu_book_rounded, color: _accentColor, size: 20),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    'Jump to $_itemUnit',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 17,
+                      color: isDark ? Colors.white : Colors.black87,
+                    ),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    'Choose a $_itemUnit between 1 and $_actualPageCount:',
+                    style: TextStyle(
+                      fontSize: 13,
+                      color: isDark ? Colors.white70 : Colors.black54,
+                    ),
+                  ),
+                  const SizedBox(height: 18),
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      IconButton(
+                        onPressed: target > 1
+                            ? () {
+                                setDialogState(() {
+                                  target--;
+                                  textController.text = '$target';
+                                });
+                              }
+                            : null,
+                        icon: const Icon(Icons.remove_circle_outline_rounded),
+                        color: _accentColor,
+                      ),
+                      Container(
+                        width: 76,
+                        margin: const EdgeInsets.symmetric(horizontal: 8),
+                        child: TextField(
+                          controller: textController,
+                          keyboardType: TextInputType.number,
+                          textAlign: TextAlign.center,
+                          style: TextStyle(
+                            fontSize: 18,
+                            fontWeight: FontWeight.w800,
+                            color: isDark ? Colors.white : Colors.black87,
+                          ),
+                          decoration: InputDecoration(
+                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                            filled: true,
+                            fillColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: BorderSide.none,
+                            ),
+                          ),
+                          onChanged: (val) {
+                            final parsed = int.tryParse(val);
+                            if (parsed != null && parsed >= 1 && parsed <= _actualPageCount) {
+                              setDialogState(() => target = parsed);
+                            }
+                          },
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: target < _actualPageCount
+                            ? () {
+                                setDialogState(() {
+                                  target++;
+                                  textController.text = '$target';
+                                });
+                              }
+                            : null,
+                        icon: const Icon(Icons.add_circle_outline_rounded),
+                        color: _accentColor,
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 14),
+                  SliderTheme(
+                    data: SliderTheme.of(context).copyWith(
+                      activeTrackColor: _accentColor,
+                      thumbColor: _accentColor,
+                      overlayColor: _accentColor.withValues(alpha: 0.2),
+                    ),
+                    child: Slider(
+                      value: target.toDouble().clamp(1.0, _actualPageCount.toDouble()),
+                      min: 1.0,
+                      max: _actualPageCount.toDouble(),
+                      divisions: _actualPageCount > 1 ? _actualPageCount - 1 : 1,
+                      label: '$target',
+                      onChanged: (val) {
+                        setDialogState(() {
+                          target = val.round();
+                          textController.text = '$target';
+                        });
+                      },
+                    ),
+                  ),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  child: Text('Cancel', style: TextStyle(color: isDark ? Colors.white60 : Colors.black54)),
+                ),
+                ElevatedButton(
+                  onPressed: () {
+                    Navigator.pop(ctx);
+                    _goToPage(target);
+                  },
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: _accentColor,
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
+                  ),
+                  child: const Text('Go', style: TextStyle(fontWeight: FontWeight.w700)),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
   }
 
   // ============================================================
@@ -706,9 +991,15 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             children: [
               _buildTopBar(isDark),
 
+              if (_showControlsBar && !_isLoading && _errorMessage == null)
+                _buildViewControlsBar(isDark),
+
               Expanded(
                 child: _buildBody(isDark),
               ),
+
+              if (!_isLoading && _errorMessage == null)
+                _buildPageNavigationBar(isDark),
 
               _buildBottomToolbar(isDark),
             ],
@@ -904,6 +1195,267 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   // ============================================================
+  // VIEW CONTROLS BAR (Fit Width, Zoom, Mode, Rotate)
+  // ============================================================
+
+  Widget _buildViewControlsBar(bool isDark) {
+    return Container(
+      height: 46,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0F1428) : const Color(0xFFFAFBFC),
+        border: Border(
+          bottom: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.05)
+                : Colors.black.withValues(alpha: 0.05),
+          ),
+        ),
+      ),
+      child: Row(
+        children: [
+          // Fit Width / Fit Page toggle
+          _buildPillButton(
+            icon: _isFitWidth ? Icons.fit_screen_rounded : Icons.aspect_ratio_rounded,
+            label: _isFitWidth ? 'Fit Width' : 'Full Page',
+            isActive: _isFitWidth,
+            isDark: isDark,
+            onTap: () {
+              setState(() {
+                _isFitWidth = !_isFitWidth;
+                _resetZoom();
+              });
+            },
+          ),
+          const SizedBox(width: 8),
+
+          // DOCX Mode toggle (Page Mode vs Reflow Reader View)
+          if (!_isPdf && !_isPpt)
+            _buildPillButton(
+              icon: _docxViewMode == 'page' ? Icons.pages_rounded : Icons.article_rounded,
+              label: _docxViewMode == 'page' ? 'Page View' : 'Reader View',
+              isActive: _docxViewMode == 'page',
+              isDark: isDark,
+              onTap: _toggleDocxViewMode,
+            ),
+
+          // PPTX Mode toggle (Single Slide vs All Slides List)
+          if (_isPpt)
+            _buildPillButton(
+              icon: _pptxSlideMode == 'slide' ? Icons.slideshow_rounded : Icons.view_agenda_rounded,
+              label: _pptxSlideMode == 'slide' ? 'Slide Show' : 'All Slides',
+              isActive: _pptxSlideMode == 'slide',
+              isDark: isDark,
+              onTap: _togglePptxSlideMode,
+            ),
+
+          const Spacer(),
+
+          // Zoom Out
+          _buildSmallToolIcon(
+            icon: Icons.remove_rounded,
+            isDark: isDark,
+            onTap: _zoomOut,
+          ),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Text(
+              '${(_zoomScale * 100).round()}%',
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: FontWeight.w700,
+                color: isDark ? Colors.white70 : Colors.black87,
+              ),
+            ),
+          ),
+          // Zoom In
+          _buildSmallToolIcon(
+            icon: Icons.add_rounded,
+            isDark: isDark,
+            onTap: _zoomIn,
+          ),
+
+          const SizedBox(width: 6),
+
+          // Rotate 90
+          _buildSmallToolIcon(
+            icon: Icons.rotate_right_rounded,
+            isDark: isDark,
+            onTap: _rotateDocument,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPillButton({
+    required IconData icon,
+    required String label,
+    required bool isActive,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
+          decoration: BoxDecoration(
+            color: isActive
+                ? _accentColor.withValues(alpha: 0.14)
+                : (isDark
+                    ? Colors.white.withValues(alpha: 0.05)
+                    : Colors.black.withValues(alpha: 0.04)),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(
+              color: isActive
+                  ? _accentColor.withValues(alpha: 0.4)
+                  : Colors.transparent,
+              width: 1,
+            ),
+          ),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Icon(
+                icon,
+                size: 14,
+                color: isActive
+                    ? _accentColor
+                    : (isDark ? Colors.white70 : Colors.black54),
+              ),
+              const SizedBox(width: 5),
+              Text(
+                label,
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
+                  color: isActive
+                      ? _accentColor
+                      : (isDark ? Colors.white70 : Colors.black87),
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSmallToolIcon({
+    required IconData icon,
+    required bool isDark,
+    required VoidCallback onTap,
+  }) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(8),
+        child: Container(
+          width: 28,
+          height: 28,
+          decoration: BoxDecoration(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.04),
+            borderRadius: BorderRadius.circular(8),
+          ),
+          child: Icon(
+            icon,
+            size: 16,
+            color: isDark ? Colors.white70 : Colors.black87,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ============================================================
+  // PAGE NAVIGATION BAR
+  // ============================================================
+
+  Widget _buildPageNavigationBar(bool isDark) {
+    if (_actualPageCount <= 1) return const SizedBox.shrink();
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(
+        color: isDark ? const Color(0xFF0D1122) : Colors.white,
+        border: Border(
+          top: BorderSide(
+            color: isDark
+                ? Colors.white.withValues(alpha: 0.06)
+                : Colors.black.withValues(alpha: 0.06),
+          ),
+        ),
+      ),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        children: [
+          // Previous button
+          IconButton(
+            onPressed: _currentPage > 1 ? _prevPageOrSlide : null,
+            icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
+            style: IconButton.styleFrom(
+              backgroundColor: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.04),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+          // Page indicator chip - tap to jump to page!
+          InkWell(
+            onTap: _showJumpToPageDialog,
+            borderRadius: BorderRadius.circular(20),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              decoration: BoxDecoration(
+                color: _accentColor.withValues(alpha: 0.12),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(
+                    _isPpt ? Icons.slideshow_rounded : Icons.menu_book_rounded,
+                    size: 15,
+                    color: _accentColor,
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '$_itemUnit $_currentPage of $_actualPageCount',
+                    style: TextStyle(
+                      color: _accentColor,
+                      fontWeight: FontWeight.w700,
+                      fontSize: 13,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: _accentColor),
+                ],
+              ),
+            ),
+          ),
+          // Next button
+          IconButton(
+            onPressed: _currentPage < _actualPageCount ? _nextPageOrSlide : null,
+            icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
+            style: IconButton.styleFrom(
+              backgroundColor: isDark
+                  ? Colors.white.withValues(alpha: 0.06)
+                  : Colors.black.withValues(alpha: 0.04),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  // ============================================================
   // BODY
   // ============================================================
 
@@ -912,15 +1464,23 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return _buildErrorState(isDark);
     }
 
+    Widget content;
     if (_isPdf) {
-      return _buildPdfViewer(isDark);
+      content = _buildPdfViewer(isDark);
+    } else if (_usingFallbackView && _fallbackImagePaths.isNotEmpty) {
+      content = _buildFallbackImageViewer(isDark);
+    } else {
+      content = _buildOfficeWebViewer(isDark);
     }
 
-    if (_usingFallbackView && _fallbackImagePaths.isNotEmpty) {
-      return _buildFallbackImageViewer(isDark);
+    if (_rotationQuarterTurns != 0) {
+      return RotatedBox(
+        quarterTurns: _rotationQuarterTurns,
+        child: content,
+      );
     }
 
-    return _buildOfficeWebViewer(isDark);
+    return content;
   }
 
   // ============================================================
@@ -1088,12 +1648,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   Widget _buildFallbackImageViewer(bool isDark) {
     return Container(
-      margin: const EdgeInsets.fromLTRB(12, 12, 12, 8),
-      decoration: BoxDecoration(
-        color: isDark ? const Color(0xFF101526) : const Color(0xFFE9EDF4),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      clipBehavior: Clip.antiAlias,
+      color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
+      width: double.infinity,
+      height: double.infinity,
       child: Stack(
         children: [
           PageView.builder(
@@ -1170,21 +1727,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
 
     return Container(
-      margin:
-          const EdgeInsets.fromLTRB(
-        12,
-        12,
-        12,
-        8,
-      ),
-      decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF101526)
-            : const Color(0xFFE9EDF4),
-        borderRadius:
-            BorderRadius.circular(24),
-      ),
-      clipBehavior: Clip.antiAlias,
+      color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
+      width: double.infinity,
+      height: double.infinity,
       child: Stack(
         children: [
           PdfViewPinch(
@@ -1225,9 +1770,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           if (_isLoading)
             Container(
               color: isDark
-                  ? const Color(0xFF0A0D19)
+                  ? const Color(0xFF070A16)
                   : const Color(
-                      0xFFF5F7FB,
+                      0xFFF4F6FA,
                     ),
               child: Center(
                 child:
@@ -1251,19 +1796,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
 
     return Container(
-      margin: const EdgeInsets.fromLTRB(
-        12,
-        12,
-        12,
-        8,
-      ),
-      decoration: BoxDecoration(
-        color: isDark
-            ? const Color(0xFF101526)
-            : const Color(0xFFE9EDF4),
-        borderRadius: BorderRadius.circular(24),
-      ),
-      clipBehavior: Clip.antiAlias,
+      color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
+      width: double.infinity,
+      height: double.infinity,
       child: Stack(
         children: [
           WebViewWidget(controller: _webViewController!),
@@ -1271,8 +1806,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           if (_isLoading)
             Container(
               color: isDark
-                  ? const Color(0xFF0A0D19)
-                  : const Color(0xFFF5F7FB),
+                  ? const Color(0xFF070A16)
+                  : const Color(0xFFF4F6FA),
               child: Center(
                 child: _buildLoadingState(isDark),
               ),

@@ -1,11 +1,13 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=3.0, user-scalable=yes">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=4.0, user-scalable=yes">
+  <title>DocVault Document Viewer</title>
   <style>
     * {
       box-sizing: border-box;
+      -webkit-tap-highlight-color: transparent;
     }
     html, body {
       margin: 0;
@@ -17,40 +19,145 @@
       color: #1a1a24;
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
+      transition: background-color 0.25s ease;
     }
+
+    body.dark-mode {
+      background: #070A16;
+      color: #E6E8F0;
+    }
+
     #container {
       width: 100%;
       min-height: 100vh;
       display: flex;
       flex-direction: column;
       align-items: center;
-      padding: 12px 6px;
+      padding: 12px 8px 48px 8px;
     }
 
-    /* DOCX preview styling */
+    /* ------------------------------------------------------------- */
+    /* DOCX STYLING & PAGE CONTAINERS                               */
+    /* ------------------------------------------------------------- */
     .docx-wrapper {
       background: transparent !important;
       padding: 0 !important;
-      max-width: 100% !important;
+      width: 100% !important;
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
     }
-    .docx-wrapper > section.docx {
-      margin: 8px auto 16px auto !important;
+
+    .docx-page-scaler {
+      display: flex;
+      justify-content: center;
+      align-items: flex-start;
+      margin: 10px auto 18px auto;
+      overflow: visible;
+      position: relative;
+    }
+
+    .docx-wrapper > section.docx,
+    section.docx {
+      margin: 0 auto !important;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12), 0 1px 4px rgba(0, 0, 0, 0.06) !important;
+      border-radius: 8px !important;
+      background: #FFFFFF !important;
+      color: #1A1A1A !important;
+      position: relative;
+      transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+    }
+
+    body.dark-mode .docx-page-scaler > section.docx {
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5) !important;
+    }
+
+    /* Reflow / Reader Mode */
+    .docx-wrapper.reflow-mode section.docx {
+      width: 100% !important;
       max-width: 100% !important;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
-      border-radius: 10px !important;
+      min-height: auto !important;
+      padding: 20px 18px !important;
+      margin: 12px 0 !important;
+      box-shadow: 0 3px 14px rgba(0, 0, 0, 0.08) !important;
+      border-radius: 12px !important;
+      transform: none !important;
       overflow-x: auto !important;
     }
 
-    /* PPTX preview styling */
-    .pptx-preview-container, .pptx-wrapper {
-      max-width: 100% !important;
-      margin: 8px auto !important;
-      box-shadow: 0 4px 18px rgba(0, 0, 0, 0.08) !important;
-      border-radius: 10px !important;
-      overflow: hidden !important;
+    /* ------------------------------------------------------------- */
+    /* PPTX STYLING & PRESENTATION CARDS                            */
+    /* ------------------------------------------------------------- */
+    .pptx-preview-container,
+    .pptx-wrapper {
+      width: 100% !important;
+      margin: 0 auto !important;
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      background: transparent !important;
+    }
+
+    .pptx-slide-card {
+      margin: 10px auto 16px auto;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+      border-radius: 12px;
+      overflow: hidden;
+      background: #FFFFFF;
+      position: relative;
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
+    body.dark-mode .pptx-slide-card {
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    /* PPTX Slide Mode Custom Controls */
+    .pptx-slide-mode-wrap {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      width: 100%;
+    }
+
+    .pptx-slide-badge {
+      display: inline-block;
+      margin-top: 10px;
+      padding: 4px 12px;
+      background: rgba(0, 0, 0, 0.6);
+      color: #FFF;
+      border-radius: 14px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.3px;
+    }
+
+    /* Hide default PPTX internal buttons to use Flutter/Custom controls */
+    .pptx-wrapper .pptx-next,
+    .pptx-wrapper .pptx-pre,
+    .pptx-wrapper .pptx-pagination {
+      display: none !important;
+    }
+
+    /* Loading / Status */
+    #status-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      background: rgba(244, 246, 250, 0.9);
+      z-index: 999;
+      font-size: 13px;
+      font-weight: 600;
+    }
+    body.dark-mode #status-overlay {
+      background: rgba(7, 10, 22, 0.9);
+      color: #FFF;
     }
   </style>
 </head>
@@ -62,26 +169,76 @@
   <script src="pptx-preview.js"></script>
 
   <script>
+    // Global state
+    let currentDocType = null; // 'docx' or 'pptx'
+    let currentZoom = 1.0;
+    let currentViewMode = 'page'; // 'page' | 'reflow'
+    let currentSlideMode = 'slide'; // 'slide' | 'list'
+    let pptxPreviewInstance = null;
+    let pptxData = null;
+    let currentSlideIndex = 0;
+    let totalSlidesCount = 0;
+    let base64Chunks = [];
+
+    // Helper: Base64 -> ArrayBuffer
     function base64ToArrayBuffer(base64) {
       const binary = atob(base64);
-      const bytes = new Uint8Array(binary.length);
-      for (let i = 0; i < binary.length; i++) {
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
         bytes[i] = binary.charCodeAt(i);
       }
       return bytes.buffer;
     }
 
+    // Bridge notifications to Flutter
     function notifySuccess() {
-      if (window.DocumentBridge) DocumentBridge.postMessage('success');
-    }
-    function notifyError(err) {
-      if (window.DocumentBridge) DocumentBridge.postMessage('error:' + err);
-    }
-    function notifyPageCount(count) {
-      if (window.DocumentBridge) DocumentBridge.postMessage('pagecount:' + count);
+      if (window.DocumentBridge) {
+        window.DocumentBridge.postMessage('success');
+      }
     }
 
+    function notifyError(err) {
+      if (window.DocumentBridge) {
+        window.DocumentBridge.postMessage('error:' + err);
+      }
+    }
+
+    function notifyPageCount(count) {
+      if (window.DocumentBridge) {
+        window.DocumentBridge.postMessage('pagecount:' + count);
+      }
+    }
+
+    function notifySlideChanged(curr, total) {
+      if (window.DocumentBridge) {
+        window.DocumentBridge.postMessage('slidechanged:' + curr + ':' + total);
+      }
+    }
+
+    // Chunked receiver for large files (> 2MB)
+    function receiveDocChunk(chunk, isFirst, isLast, isPpt) {
+      if (isFirst) {
+        base64Chunks = [];
+      }
+      base64Chunks.push(chunk);
+      if (isLast) {
+        const fullBase64 = base64Chunks.join('');
+        base64Chunks = [];
+        if (isPpt) {
+          renderPptx(fullBase64);
+        } else {
+          renderDocx(fullBase64);
+        }
+      }
+    }
+
+    // =========================================================================
+    // DOCX RENDERING & SCALING
+    // =========================================================================
+
     async function renderDocx(base64Data) {
+      currentDocType = 'docx';
       try {
         const buffer = base64ToArrayBuffer(base64Data);
         const container = document.getElementById('container');
@@ -92,47 +249,243 @@
           ignoreWidth: false,
           ignoreHeight: false,
           breakPages: true,
-          trimXmlDeclaration: true
+          trimXmlDeclaration: true,
+          useBase64URL: true,
+          renderChanges: false,
+          renderHeaders: true,
+          renderFooters: true,
+          renderFootnotes: true,
+          renderEndnotes: true
         });
 
         // Determine rendered page count
         const pages = document.querySelectorAll('.docx-wrapper > section.docx, section.docx');
         const count = pages.length > 0 ? pages.length : 1;
         notifyPageCount(count);
+
+        // Apply dynamic responsive scaling to fit phone screen
+        applyDocxPageScaling();
+
+        // Listen for orientation changes or resize
+        window.removeEventListener('resize', applyDocxPageScaling);
+        window.addEventListener('resize', applyDocxPageScaling);
+
         notifySuccess();
       } catch (err) {
         notifyError(err.message || String(err));
       }
     }
 
+    function applyDocxPageScaling() {
+      if (currentDocType !== 'docx') return;
+
+      const wrapper = document.querySelector('.docx-wrapper');
+      const pages = document.querySelectorAll('.docx-wrapper > section.docx, section.docx');
+      if (!pages || pages.length === 0) return;
+
+      const screenWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+      // Allow 16px total side breathing room
+      const targetWidth = Math.max(280, screenWidth - 20);
+
+      if (currentViewMode === 'reflow') {
+        if (wrapper) wrapper.classList.add('reflow-mode');
+        pages.forEach(section => {
+          section.style.transform = 'none';
+          const scaler = section.parentElement;
+          if (scaler && scaler.classList.contains('docx-page-scaler')) {
+            scaler.style.width = '100%';
+            scaler.style.height = 'auto';
+          }
+        });
+        return;
+      }
+
+      if (wrapper) wrapper.classList.remove('reflow-mode');
+
+      pages.forEach((section) => {
+        let scaler = section.parentElement;
+        if (!scaler || !scaler.classList.contains('docx-page-scaler')) {
+          scaler = document.createElement('div');
+          scaler.className = 'docx-page-scaler';
+          section.parentNode.insertBefore(scaler, section);
+          scaler.appendChild(section);
+        }
+
+        // Measure natural size without scale
+        section.style.transform = 'none';
+        const nativeWidth = section.offsetWidth || 794;
+        const nativeHeight = section.offsetHeight || 1123;
+
+        // Calculate scale to fit width exactly
+        const baseScale = targetWidth / nativeWidth;
+        const finalScale = baseScale * currentZoom;
+
+        section.style.transformOrigin = 'top center';
+        section.style.transform = 'scale(' + finalScale + ')';
+
+        // Size wrapper to match visually scaled box to eliminate gaps
+        scaler.style.width = Math.round(nativeWidth * finalScale) + 'px';
+        scaler.style.height = Math.round(nativeHeight * finalScale) + 'px';
+        scaler.style.margin = '10px auto 18px auto';
+      });
+    }
+
+    // =========================================================================
+    // PPTX RENDERING & SLIDE MANAGEMENT
+    // =========================================================================
+
     async function renderPptx(base64Data) {
+      currentDocType = 'pptx';
       try {
         const buffer = base64ToArrayBuffer(base64Data);
         const container = document.getElementById('container');
         container.innerHTML = '';
 
-        const clientWidth = window.innerWidth || document.documentElement.clientWidth || 360;
-        const clientHeight = window.innerHeight || document.documentElement.clientHeight || 640;
+        const screenWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+        const targetWidth = Math.max(280, screenWidth - 20);
+        // Standard 16:9 aspect ratio calculation
+        const targetHeight = Math.round(targetWidth * (9 / 16));
 
-        const preview = pptxPreview.init(container, {
-          width: clientWidth,
-          height: clientHeight,
-          mode: 'slide'
+        pptxPreviewInstance = pptxPreview.init(container, {
+          width: targetWidth,
+          height: targetHeight,
+          mode: currentSlideMode // 'slide' or 'list'
         });
 
-        const pptx = await preview.preview(buffer);
+        pptxData = await pptxPreviewInstance.preview(buffer);
+
         let slideCount = 1;
-        if (pptx && pptx.slides && pptx.slides.length > 0) {
-          slideCount = pptx.slides.length;
+        if (pptxData && pptxData.slides && pptxData.slides.length > 0) {
+          slideCount = pptxData.slides.length;
         } else {
           const domSlides = document.querySelectorAll('.pptx-wrapper, .slide, .pptx-slide');
           if (domSlides.length > 0) slideCount = domSlides.length;
         }
 
+        totalSlidesCount = slideCount;
+        currentSlideIndex = 0;
+
         notifyPageCount(slideCount);
+        notifySlideChanged(1, slideCount);
+
+        stylePptxDom(targetWidth, targetHeight);
+        setupSwipeGestures();
+
         notifySuccess();
       } catch (err) {
         notifyError(err.message || String(err));
+      }
+    }
+
+    function stylePptxDom(width, height) {
+      const slides = document.querySelectorAll('.pptx-wrapper, .slide, .pptx-slide, canvas');
+      slides.forEach(el => {
+        el.style.maxWidth = '100%';
+      });
+
+      // Wrap pptx wrapper in neat card
+      const wrapper = document.querySelector('.pptx-wrapper');
+      if (wrapper) {
+        wrapper.classList.add('pptx-slide-card');
+        wrapper.style.width = width + 'px';
+        if (currentSlideMode === 'slide') {
+          wrapper.style.height = height + 'px';
+        } else {
+          wrapper.style.height = 'auto';
+        }
+      }
+    }
+
+    function setupSwipeGestures() {
+      let touchStartX = 0;
+      let touchStartY = 0;
+      const container = document.getElementById('container');
+
+      container.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+        touchStartY = e.changedTouches[0].screenY;
+      }, { passive: true });
+
+      container.addEventListener('touchend', (e) => {
+        if (currentDocType !== 'pptx' || currentSlideMode !== 'slide') return;
+        const diffX = e.changedTouches[0].screenX - touchStartX;
+        const diffY = e.changedTouches[0].screenY - touchStartY;
+
+        if (Math.abs(diffX) > Math.abs(diffY) && Math.abs(diffX) > 45) {
+          if (diffX < 0) {
+            nextSlide();
+          } else {
+            prevSlide();
+          }
+        }
+      }, { passive: true });
+    }
+
+    // Slide navigation methods called by Flutter or gestures
+    function nextSlide() {
+      if (currentDocType !== 'pptx' || !pptxPreviewInstance) return;
+      if (currentSlideIndex < totalSlidesCount - 1) {
+        currentSlideIndex++;
+        if (typeof pptxPreviewInstance.renderSingleSlide === 'function') {
+          pptxPreviewInstance.renderSingleSlide(currentSlideIndex);
+        } else if (typeof pptxPreviewInstance.renderNextSlide === 'function') {
+          pptxPreviewInstance.renderNextSlide();
+        }
+        notifySlideChanged(currentSlideIndex + 1, totalSlidesCount);
+      }
+    }
+
+    function prevSlide() {
+      if (currentDocType !== 'pptx' || !pptxPreviewInstance) return;
+      if (currentSlideIndex > 0) {
+        currentSlideIndex--;
+        if (typeof pptxPreviewInstance.renderSingleSlide === 'function') {
+          pptxPreviewInstance.renderSingleSlide(currentSlideIndex);
+        } else if (typeof pptxPreviewInstance.renderPreSlide === 'function') {
+          pptxPreviewInstance.renderPreSlide();
+        }
+        notifySlideChanged(currentSlideIndex + 1, totalSlidesCount);
+      }
+    }
+
+    function goToSlide(index) {
+      if (currentDocType !== 'pptx' || !pptxPreviewInstance) return;
+      const idx = Math.max(0, Math.min(index, totalSlidesCount - 1));
+      currentSlideIndex = idx;
+      if (typeof pptxPreviewInstance.renderSingleSlide === 'function') {
+        pptxPreviewInstance.renderSingleSlide(currentSlideIndex);
+      }
+      notifySlideChanged(currentSlideIndex + 1, totalSlidesCount);
+    }
+
+    // View & Zoom controls
+    function setZoom(scale) {
+      currentZoom = Math.max(0.5, Math.min(scale, 3.0));
+      if (currentDocType === 'docx') {
+        applyDocxPageScaling();
+      }
+    }
+
+    function setViewMode(mode) {
+      currentViewMode = mode; // 'page' or 'reflow'
+      if (currentDocType === 'docx') {
+        applyDocxPageScaling();
+      }
+    }
+
+    function setSlideMode(mode) {
+      currentSlideMode = mode; // 'slide' or 'list'
+      if (currentDocType === 'pptx' && pptxData) {
+        // Re-render with new mode
+        renderPptx('');
+      }
+    }
+
+    function setTheme(theme) {
+      if (theme === 'dark') {
+        document.body.classList.add('dark-mode');
+      } else {
+        document.body.classList.remove('dark-mode');
       }
     }
   </script>
