@@ -7,6 +7,8 @@ import 'package:uuid/uuid.dart';
 
 import '../utils/file_utils.dart';
 
+import 'image_processing_worker.dart';
+
 /// All available image filters.
 ///
 /// Total: 21 filters.
@@ -366,14 +368,29 @@ class ImageEditorService {
       return inputPath;
     }
 
-    final bytes = await File(inputPath).readAsBytes();
+    final outputPath = await _getNewEditedPath();
 
-    final image = img.decodeImage(bytes);
+    // Processing happens on a background worker isolate. The UI
+    // thread is never blocked, so large photos can no longer ANR or
+    // crash the app.
+    await ImageProcessingWorker.instance.applyFilter(
+      inputPath,
+      filter,
+      outputPath,
+    );
 
-    if (image == null) {
-      throw Exception('Unable to decode image.');
-    }
+    return outputPath;
+  }
 
+  /// Pure, isolate-safe, in-memory filter application.
+  ///
+  /// This is the single source of truth for how every filter is
+  /// computed. It is called by the background worker isolate, so it
+  /// intentionally performs no I/O and never touches Flutter APIs.
+  static img.Image applyFilterToImage(
+    img.Image image,
+    ImageFilterType filter,
+  ) {
     img.Image filtered;
 
     switch (filter) {
@@ -546,7 +563,7 @@ class ImageEditorService {
         break;
     }
 
-    return _saveImage(filtered);
+    return filtered;
   }
 
   // ============================================================

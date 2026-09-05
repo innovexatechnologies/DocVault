@@ -7,9 +7,9 @@ import 'package:provider/provider.dart';
 
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/services/image_editor_service.dart';
+import '../../core/services/image_processing_worker.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/unsaved_changes_dialog.dart';
-import '../../core/services/scan_filter_service.dart';
 
 enum EditorMode {
   none,
@@ -53,6 +53,11 @@ class _ImageEditorScreenState
 
   bool _isProcessing = false;
   bool _hasUnsavedEdits = false;
+
+  /// Monotonic counter bumped on every edit. Used to ignore stale
+  /// async results so an older operation can never overwrite a newer
+  /// one (extra insurance against filter overlap/races).
+  int _editGeneration = 0;
 
   EditorMode _activeMode = EditorMode.none;
 
@@ -206,6 +211,25 @@ class _ImageEditorScreenState
     } catch (_) {}
   }
 
+  /// Deletes an intermediate file that is no longer needed. The base
+  /// image and the original source are NEVER deleted — only preview
+  /// files that this editor session created and then replaced.
+  void _removeStalePreview(String oldPath) {
+    if (oldPath.isEmpty) return;
+    if (oldPath == _baseImagePath) return;
+    if (oldPath == widget.imagePath) return;
+
+    final file = File(oldPath);
+
+    try {
+      if (file.existsSync()) {
+        file.deleteSync();
+      }
+    } catch (_) {
+      // Best effort only; a failed delete is never fatal.
+    }
+  }
+
   // ============================================================
   // ROTATE
   // ============================================================
@@ -232,6 +256,10 @@ class _ImageEditorScreenState
       );
 
       if (!mounted) return;
+
+      // Discard the preview that was shown before this rotation; it
+      // is no longer referenced and would only fill the cache.
+      _removeStalePreview(_currentWorkingPath);
 
       setState(() {
         _baseImagePath = newBasePath;
@@ -282,6 +310,10 @@ class _ImageEditorScreenState
 
       if (!mounted) return;
 
+      // Discard the preview that was shown before this flip; it is no
+      // longer referenced and would only fill the cache.
+      _removeStalePreview(_currentWorkingPath);
+
       setState(() {
         _baseImagePath = newBasePath;
         _currentWorkingPath = preview;
@@ -310,6 +342,10 @@ class _ImageEditorScreenState
     if (_isProcessing) return;
 
     if (filter == ImageFilterType.none) {
+      // Discard the previously shown filter output (if any) so the
+      // cache does not fill up with files nobody displays anymore.
+      _removeStalePreview(_currentWorkingPath);
+
       setState(() {
         _activeFilter =
             ImageFilterType.none;
@@ -328,6 +364,11 @@ class _ImageEditorScreenState
       return;
     }
 
+    // Every edit bumps this counter. If a filter finishes AFTER a
+    // newer operation was started, its (now stale) result is ignored,
+    // so an old preview can never overwrite the current one.
+    final generation = ++_editGeneration;
+
     setState(() {
       _isProcessing = true;
     });
@@ -343,7 +384,13 @@ class _ImageEditorScreenState
         filter,
       );
 
-      if (!mounted) return;
+      if (!mounted || generation != _editGeneration) {
+        return;
+      }
+
+      // Discard the previously shown preview file (it is never the
+      // base image, so this is always safe).
+      _removeStalePreview(_currentWorkingPath);
 
       setState(() {
         _currentWorkingPath = newPath;
@@ -375,29 +422,32 @@ class _ImageEditorScreenState
     });
 
     try {
-      final file =
-          File(_baseImagePath);
+      // Auto-crop runs on the background worker isolate, so the UI
+      // thread is never blocked (it used to freeze on big photos).
+      final outputPath = '${Directory.systemTemp.path}/'
+          'auto_crop_${DateTime.now().millisecondsSinceEpoch}_'
+          '${identityHashCode(_baseImagePath)}.jpg';
 
-      final bytes =
-          await file.readAsBytes();
-
-      final croppedBytes = ScanFilterService.autoCrop(bytes);
-
-      final tempFile =
-          await _writeAutoCropFile(
-        croppedBytes,
+      final croppedPath =
+          await ImageProcessingWorker.instance.autoCrop(
+        _baseImagePath,
+        outputPath,
       );
 
       final preview =
           await _applyActiveFilterTo(
-        tempFile.path,
+        croppedPath,
       );
 
       if (!mounted) return;
 
+      // Discard the previously shown preview file; it is no longer
+      // displayed anywhere and would otherwise fill the cache folder.
+      _removeStalePreview(_currentWorkingPath);
+
       setState(() {
         _baseImagePath =
-            tempFile.path;
+            croppedPath;
 
         _currentWorkingPath =
             preview;
@@ -456,24 +506,6 @@ class _ImageEditorScreenState
         });
       }
     }
-  }
-
-  Future<File> _writeAutoCropFile(
-    List<int> bytes,
-  ) async {
-    final directory =
-        Directory.systemTemp;
-
-    final file = File(
-      '${directory.path}/auto_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
-    );
-
-    await file.writeAsBytes(
-      bytes,
-      flush: true,
-    );
-
-    return file;
   }
 
   // ============================================================

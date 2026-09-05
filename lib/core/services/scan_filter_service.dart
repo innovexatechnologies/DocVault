@@ -1,8 +1,12 @@
-import 'dart:isolate';
+import 'dart:io';
 import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:image/image.dart' as img;
+
+import 'image_editor_service.dart';
+
+import 'image_processing_worker.dart';
 
 enum ScanFilter {
   original,
@@ -29,86 +33,6 @@ enum ScanFilter {
 }
 
 /// ============================================================
-/// ISOLATE POOL - Reuse isolates instead of creating new ones
-/// ============================================================
-
-class _IsolatePool {
-  static const maxPoolSize = 2;
-  final List<Isolate> _available = [];
-  final List<SendPort> _sendPorts = [];
-  int _nextIndex = 0;
-
-  Future<void> init() async {
-    for (int i = 0; i < maxPoolSize; i++) {
-      final receivePort = ReceivePort();
-      final isolate = await Isolate.spawn(
-        _isolateEntryPoint,
-        receivePort.sendPort,
-      );
-
-      _available.add(isolate);
-
-      final sendPort = await receivePort.first as SendPort;
-      _sendPorts.add(sendPort);
-    }
-  }
-
-  Future<Uint8List> execute(
-    ScanFilter filter,
-    Uint8List bytes,
-  ) async {
-    final receivePort = ReceivePort();
-
-    // Use a sendPort from the pool
-    if (_sendPorts.isEmpty) {
-      throw Exception('Isolate pool not initialized');
-    }
-
-    // Round-robin so both isolates in the pool actually get used
-    final sendPort = _sendPorts[_nextIndex];
-    _nextIndex = (_nextIndex + 1) % _sendPorts.length;
-
-    // IMPORTANT: send a List, not a Record — the isolate entry point
-    // checks `message is List`, so a Record would never match and the
-    // isolate would never reply (this was causing the hang/crash).
-    sendPort.send([filter, bytes, receivePort.sendPort]);
-
-    final result = await receivePort.first as Uint8List;
-    return result;
-  }
-
-  void dispose() {
-    for (final isolate in _available) {
-      isolate.kill();
-    }
-    _available.clear();
-    _sendPorts.clear();
-  }
-}
-
-final _pool = _IsolatePool();
-
-void _isolateEntryPoint(SendPort sendPort) {
-  final receivePort = ReceivePort();
-  sendPort.send(receivePort.sendPort);
-
-  receivePort.listen((dynamic message) {
-    if (message is List && message.length == 3) {
-      final filter = message[0] as ScanFilter;
-      final bytes = message[1] as Uint8List;
-      final replyPort = message[2] as SendPort;
-
-      try {
-        final result = ScanFilterService._applyFilterDirect(filter, bytes);
-        replyPort.send(result);
-      } catch (e) {
-        replyPort.send(bytes); // Return original if error
-      }
-    }
-  });
-}
-
-/// ============================================================
 /// FILTER CACHE - Store recently applied filters
 /// ============================================================
 
@@ -116,12 +40,12 @@ class _FilterCache {
   final Map<String, Uint8List> _cache = {};
   static const maxCacheSize = 5;
 
-  String _getCacheKey(ScanFilter filter, int imageHash) {
-    return '${filter.toString()}_$imageHash';
+  String _getCacheKey(ScanFilter filter, int imageIdentity, int byteLength) {
+    return '${filter.toString()}_${byteLength}_$imageIdentity';
   }
 
   Uint8List? get(ScanFilter filter, Uint8List bytes) {
-    final key = _getCacheKey(filter, bytes.hashCode);
+    final key = _getCacheKey(filter, identityHashCode(bytes), bytes.length);
     return _cache[key];
   }
 
@@ -129,7 +53,7 @@ class _FilterCache {
     if (_cache.length >= maxCacheSize) {
       _cache.remove(_cache.keys.first);
     }
-    final key = _getCacheKey(filter, bytes.hashCode);
+    final key = _getCacheKey(filter, identityHashCode(bytes), bytes.length);
     _cache[key] = result;
   }
 
@@ -145,13 +69,14 @@ final _cache = _FilterCache();
 /// ============================================================
 
 class ScanFilterService {
-  // Initialize pool once
+  /// Warms up the shared background worker. Safe to call at startup;
+  /// individual apply() calls also (re)start it lazily.
   static Future<void> initialize() async {
-    await _pool.init();
+    await ImageProcessingWorker.instance.ensureStarted();
   }
 
   static void dispose() {
-    _pool.dispose();
+    ImageProcessingWorker.instance.dispose();
     _cache.clear();
   }
 
@@ -309,127 +234,113 @@ class ScanFilterService {
     ScanFilter filter,
     Uint8List inputBytes,
   ) async {
-    // Check cache first
+    if (filter == ScanFilter.original) {
+      return inputBytes;
+    }
+
+    // Check cache first. The key is based on the identity of the input
+    // bytes object, so re-tapping the same filter on the same bytes is
+    // instant and byte-for-byte identical.
     final cached = _cache.get(filter, inputBytes);
     if (cached != null) {
       return cached;
     }
 
-    // Use isolate pool for processing
-    final result = await _pool.execute(filter, inputBytes);
+    // Route the work through the shared background worker isolate:
+    //   * the UI thread is never blocked (no more ANR/crash),
+    //   * temp files are used instead of shipping full-resolution
+    //     bytes over a SendPort (no more memory blow-ups),
+    //   * results are matched by job id, so a stale filter result can
+    //     never overwrite a newer selection (no more overlapping).
+    final tempDir = Directory.systemTemp;
+    final stamp = '${DateTime.now().microsecondsSinceEpoch}_'
+        '${identityHashCode(inputBytes)}';
 
-    // Cache the result
+    final inputPath = '${tempDir.path}/scan_filter_in_$stamp.jpg';
+    final outputPath = '${tempDir.path}/scan_filter_out_$stamp.jpg';
+
+    Uint8List result;
+
+    try {
+      await File(inputPath).writeAsBytes(inputBytes, flush: true);
+
+      await ImageProcessingWorker.instance.applyFilter(
+        inputPath,
+        _toImageFilter(filter),
+        outputPath,
+      );
+
+      result = await File(outputPath).readAsBytes();
+    } finally {
+      final inFile = File(inputPath);
+      final outFile = File(outputPath);
+
+      if (await inFile.exists()) {
+        try {
+          await inFile.delete();
+        } catch (_) {}
+      }
+
+      if (await outFile.exists()) {
+        try {
+          await outFile.delete();
+        } catch (_) {}
+      }
+    }
+
     _cache.set(filter, inputBytes, result);
 
     return result;
   }
 
-  /// Internal method - runs in isolate
-  static Uint8List _applyFilterDirect(
-    ScanFilter filter,
-    Uint8List inputBytes,
-  ) {
-    img.Image? image = img.decodeImage(inputBytes);
-
-    if (image == null) {
-      throw ArgumentError('Could not decode image bytes.');
-    }
-
+  /// Maps the legacy [ScanFilter] enum onto the shared
+  /// [ImageFilterType] so a single code path (and a single worker)
+  /// processes every filter.
+  static ImageFilterType _toImageFilter(ScanFilter filter) {
     switch (filter) {
       case ScanFilter.original:
-        break;
-
+        return ImageFilterType.none;
       case ScanFilter.grayscale:
-        image = img.grayscale(image);
-        break;
-
+        return ImageFilterType.grayscale;
       case ScanFilter.blackAndWhite:
-        image = _applyBlackAndWhite(image);
-        break;
-
+        return ImageFilterType.blackAndWhite;
       case ScanFilter.enhance:
-        image = _applyEnhance(image);
-        break;
-
+        return ImageFilterType.enhance;
       case ScanFilter.sharpen:
-        image = img.convolution(
-          image,
-          filter: [
-            0, -1, 0,
-            -1, 5, -1,
-            0, -1, 0,
-          ],
-        );
-        break;
-
+        return ImageFilterType.sharpen;
       case ScanFilter.vivid:
-        image = _applyVivid(image);
-        break;
-
+        return ImageFilterType.vivid;
       case ScanFilter.softLight:
-        image = _applySoftLight(image);
-        break;
-
+        return ImageFilterType.softLight;
       case ScanFilter.warmTone:
-        image = _applyWarmTone(image);
-        break;
-
+        return ImageFilterType.warmTone;
       case ScanFilter.coolTone:
-        image = _applyCoolTone(image);
-        break;
-
+        return ImageFilterType.coolTone;
       case ScanFilter.highContrastBW:
-        image = _applyHighContrastBW(image);
-        break;
-
+        return ImageFilterType.highContrastBW;
       case ScanFilter.softBW:
-        image = _applySoftBW(image);
-        break;
-
+        return ImageFilterType.softBW;
       case ScanFilter.sepia:
-        image = _applySepia(image);
-        break;
-
+        return ImageFilterType.sepia;
       case ScanFilter.noirDramatic:
-        image = _applyNoirDramatic(image);
-        break;
-
+        return ImageFilterType.noirDramatic;
       case ScanFilter.brightWhite:
-        image = _applyBrightWhite(image);
-        break;
-
+        return ImageFilterType.brightWhite;
       case ScanFilter.lowLightBoost:
-        image = _applyLowLightBoost(image);
-        break;
-
+        return ImageFilterType.lowLightBoost;
       case ScanFilter.matte:
-        image = _applyMatte(image);
-        break;
-
+        return ImageFilterType.matte;
       case ScanFilter.vintagePaper:
-        image = _applyVintagePaper(image);
-        break;
-
+        return ImageFilterType.vintagePaper;
       case ScanFilter.coldSteel:
-        image = _applyColdSteel(image);
-        break;
-
+        return ImageFilterType.coldSteel;
       case ScanFilter.magicColorPro:
-        image = _applyMagicColorPro(image);
-        break;
-
+        return ImageFilterType.magicColorPro;
       case ScanFilter.invertNegative:
-        image = img.invert(image);
-        break;
-
+        return ImageFilterType.invertNegative;
       case ScanFilter.cleanDocument:
-        image = _applyCleanDocument(image);
-        break;
+        return ImageFilterType.cleanDocument;
     }
-
-    return Uint8List.fromList(
-      img.encodeJpg(image, quality: 92),
-    );
   }
 
   // ============================================================
@@ -812,241 +723,10 @@ class ScanFilterService {
     return math.sqrt((dx * dx) + (dy * dy));
   }
 
-  // ============================================================
-  // FILTER IMPLEMENTATIONS
-  // ============================================================
+  // (filter implementations removed — the live app uses the shared
+  // ImageFilterType path via ImageProcessingWorker / ImageEditorService)
 
-  static img.Image _applyBlackAndWhite(img.Image image) {
-    var result = img.grayscale(image);
-
-    result = img.adjustColor(
-      result,
-      contrast: 1.9,
-      brightness: 1.05,
-    );
-
-    const threshold = 140;
-
-    for (final pixel in result) {
-      final luminance = img.getLuminance(pixel);
-      final value = luminance > threshold ? 255 : 0;
-
-      pixel
-        ..r = value
-        ..g = value
-        ..b = value;
-    }
-
-    return result;
-  }
-
-  static img.Image _applyEnhance(img.Image image) {
-    return img.adjustColor(
-      image,
-      contrast: 1.35,
-      brightness: 1.08,
-      saturation: 1.15,
-    );
-  }
-
-  static img.Image _applyVivid(img.Image image) {
-    var result = img.adjustColor(
-      image,
-      contrast: 1.25,
-      saturation: 1.5,
-      brightness: 1.03,
-    );
-
-    result = img.convolution(
-      result,
-      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
-    );
-
-    return result;
-  }
-
-  static img.Image _applySoftLight(img.Image image) {
-    var result = img.adjustColor(
-      image,
-      contrast: 0.92,
-      brightness: 1.1,
-      saturation: 0.95,
-    );
-
-    return img.gaussianBlur(result, radius: 1);
-  }
-
-  static img.Image _applyWarmTone(img.Image image) {
-    var result = img.adjustColor(
-      image,
-      contrast: 1.1,
-      brightness: 1.04,
-      saturation: 1.05,
-    );
-
-    return img.colorOffset(
-      result,
-      red: 18,
-      green: 6,
-      blue: -14,
-    );
-  }
-
-  static img.Image _applyCoolTone(img.Image image) {
-    var result = img.adjustColor(
-      image,
-      contrast: 1.1,
-      brightness: 1.03,
-    );
-
-    return img.colorOffset(
-      result,
-      red: -12,
-      green: -2,
-      blue: 16,
-    );
-  }
-
-  static img.Image _applyHighContrastBW(img.Image image) {
-    final result = img.grayscale(image);
-
-    return img.adjustColor(
-      result,
-      contrast: 2.4,
-      brightness: 1.02,
-    );
-  }
-
-  static img.Image _applySoftBW(img.Image image) {
-    final result = img.grayscale(image);
-
-    return img.adjustColor(
-      result,
-      contrast: 1.15,
-      brightness: 1.05,
-    );
-  }
-
-  static img.Image _applySepia(img.Image image) {
-    final result = img.grayscale(image);
-
-    for (final pixel in result) {
-      final l = img.getLuminance(pixel);
-
-      pixel
-        ..r = (l * 1.07).clamp(0, 255).toInt()
-        ..g = (l * 0.86).clamp(0, 255).toInt()
-        ..b = (l * 0.63).clamp(0, 255).toInt();
-    }
-
-    return result;
-  }
-
-  static img.Image _applyNoirDramatic(img.Image image) {
-    var result = img.grayscale(image);
-
-    result = img.adjustColor(
-      result,
-      contrast: 1.7,
-      brightness: 0.85,
-    );
-
-    return result;
-  }
-
-  static img.Image _applyBrightWhite(img.Image image) {
-    return img.adjustColor(
-      image,
-      contrast: 1.5,
-      brightness: 1.25,
-      saturation: 0.6,
-    );
-  }
-
-  static img.Image _applyLowLightBoost(img.Image image) {
-    return img.adjustColor(
-      image,
-      brightness: 1.35,
-      contrast: 1.12,
-      gamma: 0.85,
-    );
-  }
-
-  static img.Image _applyMatte(img.Image image) {
-    return img.adjustColor(
-      image,
-      contrast: 0.85,
-      brightness: 1.02,
-      saturation: 0.85,
-    );
-  }
-
-  static img.Image _applyVintagePaper(img.Image image) {
-    var result = img.adjustColor(
-      image,
-      contrast: 0.95,
-      brightness: 1.02,
-      saturation: 0.7,
-    );
-
-    return img.colorOffset(
-      result,
-      red: 20,
-      green: 10,
-      blue: -20,
-    );
-  }
-
-  static img.Image _applyColdSteel(img.Image image) {
-    var result = img.grayscale(image);
-
-    result = img.adjustColor(
-      result,
-      contrast: 1.3,
-      brightness: 1.0,
-    );
-
-    for (final pixel in result) {
-      final l = img.getLuminance(pixel);
-
-      pixel
-        ..r = (l * 0.85).clamp(0, 255).toInt()
-        ..g = (l * 0.95).clamp(0, 255).toInt()
-        ..b = (l * 1.15).clamp(0, 255).toInt();
-    }
-
-    return result;
-  }
-
-  static img.Image _applyMagicColorPro(img.Image image) {
-    var result = img.adjustColor(
-      image,
-      contrast: 1.45,
-      brightness: 1.1,
-      saturation: 1.3,
-    );
-
-    return img.convolution(
-      result,
-      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
-    );
-  }
-
-  static img.Image _applyCleanDocument(img.Image image) {
-    var result = img.gaussianBlur(image, radius: 1);
-
-    result = img.adjustColor(
-      result,
-      contrast: 1.4,
-      brightness: 1.15,
-      saturation: 0.9,
-    );
-
-    return img.convolution(
-      result,
-      filter: [0, -1, 0, -1, 5, -1, 0, -1, 0],
-    );
-  }
+  
 
   static String label(ScanFilter filter) {
     switch (filter) {
