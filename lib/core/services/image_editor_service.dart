@@ -41,12 +41,17 @@ class ImageEditorService {
   // FILE PATH
   // ============================================================
 
-  Future<String> _getNewEditedPath() async {
+  Future<String> _getNewEditedPath({
+    String extension = 'jpg',
+  }) async {
     final cacheDir = await FileUtils.getCacheDirectory();
+
+    final normalizedExtension =
+        extension.toLowerCase().replaceFirst('.', '');
 
     final fileName =
         'edited_${DateTime.now().millisecondsSinceEpoch}_'
-        '${_uuid.v4().substring(0, 8)}.jpg';
+        '${_uuid.v4().substring(0, 8)}.$normalizedExtension';
 
     return '${cacheDir.path}/$fileName';
   }
@@ -134,7 +139,11 @@ class ImageEditorService {
   // CROP
   // ============================================================
 
-  /// Crops image using pixel coordinates.
+  /// Crops an image using integer source-pixel coordinates.
+  ///
+  /// This is a true rectangular crop: pixels are copied directly from
+  /// the decoded source image. No perspective transform, interpolation,
+  /// scaling, padding, or resampling is performed.
   Future<String> cropImage(
     String inputPath, {
     required int x,
@@ -143,42 +152,122 @@ class ImageEditorService {
     required int height,
   }) async {
     final bytes = await File(inputPath).readAsBytes();
-
     final image = img.decodeImage(bytes);
 
     if (image == null) {
       throw Exception('Unable to decode image.');
     }
 
-    final clampX = x.clamp(
-      0,
-      image.width - 1,
-    );
+    if (image.width <= 0 || image.height <= 0) {
+      throw Exception('Image has invalid dimensions.');
+    }
 
-    final clampY = y.clamp(
-      0,
-      image.height - 1,
-    );
+    if (width <= 0 || height <= 0) {
+      throw ArgumentError(
+        'Crop width and height must be greater than zero.',
+      );
+    }
 
-    final clampW = width.clamp(
+    final safeX = x.clamp(0, image.width - 1);
+    final safeY = y.clamp(0, image.height - 1);
+
+    final safeWidth = width.clamp(
       1,
-      image.width - clampX,
+      image.width - safeX,
     );
-
-    final clampH = height.clamp(
+    final safeHeight = height.clamp(
       1,
-      image.height - clampY,
+      image.height - safeY,
     );
 
     final cropped = img.copyCrop(
       image,
-      x: clampX,
-      y: clampY,
-      width: clampW,
-      height: clampH,
+      x: safeX,
+      y: safeY,
+      width: safeWidth,
+      height: safeHeight,
     );
 
-    return _saveImage(cropped);
+    // PNG is lossless. This prevents the crop operation itself from
+    // introducing JPEG compression artefacts.
+    return _saveLosslessCrop(cropped);
+  }
+
+  /// Crops using normalized image coordinates (0.0 -> 1.0).
+  ///
+  /// The normalized values are converted to integer source-pixel
+  /// boundaries exactly once. Left/top/right/bottom are interpreted as
+  /// crop boundaries, with right/bottom being exclusive.
+  Future<String> cropImageNormalized(
+    String inputPath, {
+    required double left,
+    required double top,
+    required double right,
+    required double bottom,
+  }) async {
+    final bytes = await File(inputPath).readAsBytes();
+    final image = img.decodeImage(bytes);
+
+    if (image == null) {
+      throw Exception('Unable to decode image.');
+    }
+
+    if (image.width <= 0 || image.height <= 0) {
+      throw Exception('Image has invalid dimensions.');
+    }
+
+    final l = left.clamp(0.0, 1.0);
+    final t = top.clamp(0.0, 1.0);
+    final r = right.clamp(0.0, 1.0);
+    final b = bottom.clamp(0.0, 1.0);
+
+    if (r <= l || b <= t) {
+      throw ArgumentError(
+        'Invalid crop rectangle.',
+      );
+    }
+
+    // Convert the UI's normalized crop boundaries to source pixels.
+    // round() gives a deterministic nearest-pixel boundary and avoids
+    // accumulating floating-point truncation across multiple edits.
+    var x0 = (l * image.width).round();
+    var y0 = (t * image.height).round();
+    var x1 = (r * image.width).round();
+    var y1 = (b * image.height).round();
+
+    x0 = x0.clamp(0, image.width - 1);
+    y0 = y0.clamp(0, image.height - 1);
+    x1 = x1.clamp(x0 + 1, image.width);
+    y1 = y1.clamp(y0 + 1, image.height);
+
+    final cropped = img.copyCrop(
+      image,
+      x: x0,
+      y: y0,
+      width: x1 - x0,
+      height: y1 - y0,
+    );
+
+    // The crop itself remains lossless.
+    return _saveLosslessCrop(cropped);
+  }
+
+  Future<String> _saveLosslessCrop(
+    img.Image image,
+  ) async {
+    final outPath =
+        await _getNewEditedPath(
+      extension: 'png',
+    );
+
+    final outBytes = img.encodePng(image);
+
+    await File(outPath).writeAsBytes(
+      outBytes,
+      flush: true,
+    );
+
+    return outPath;
   }
 
   // ============================================================
