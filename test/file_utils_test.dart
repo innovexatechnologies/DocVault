@@ -122,5 +122,92 @@ void main() {
       expect(result['filePath'], isNotEmpty);
       expect(File(result['filePath'] as String).existsSync(), isTrue);
     });
+
+    test('uses native cached filePath directly without redundant byte copy', () async {
+      final tempDir = await Directory.systemTemp.createTemp('docvault_native_test');
+      addTearDown(() async {
+        try {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (_) {}
+      });
+
+      final nativeCachedFile = File('${tempDir.path}/Streamed_Doc.docx');
+      await nativeCachedFile.writeAsString('native-streamed-docx-content');
+
+      const channel = MethodChannel('docvault/pdf_intent');
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger
+          .setMockMethodCallHandler(channel, (MethodCall call) async {
+        if (call.method == 'readDocument') {
+          return {
+            'filePath': nativeCachedFile.path,
+            'fileName': 'Streamed_Doc.docx',
+            'fileSize': await nativeCachedFile.length(),
+            'mimeType': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+          };
+        }
+        throw MissingPluginException();
+      });
+
+      final result = await ExternalPdfService.importDocumentFromUri('content://example/Streamed_Doc.docx');
+
+      expect(result['fileName'], 'Streamed_Doc.docx');
+      expect(result['filePath'], nativeCachedFile.path);
+      expect(result['type'], ConversionType.docs);
+    });
+  });
+
+  group('Legacy Office Document Detection & Handling Tests', () {
+    test('detects OLE2 binary header for legacy .doc and .ppt', () {
+      final ole2Bytes = Uint8List.fromList([
+        0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1,
+        0x00, 0x00, 0x00, 0x00,
+      ]);
+      expect(FileUtils.isLegacyOfficeDocument(ole2Bytes), isTrue);
+
+      final zipBytes = Uint8List.fromList([
+        0x50, 0x4B, 0x03, 0x04, 0x14, 0x00, 0x06, 0x00,
+      ]);
+      expect(FileUtils.isLegacyOfficeDocument(zipBytes), isFalse);
+
+      final pdfBytes = Uint8List.fromList([
+        0x25, 0x50, 0x44, 0x46, 0x2D, 0x31, 0x2E, 0x35,
+      ]);
+      expect(FileUtils.isLegacyOfficeDocument(pdfBytes), isFalse);
+    });
+
+    test('extracts fallback preview pages for legacy binary document without crashing', () async {
+      final tempDir = await Directory.systemTemp.createTemp('docvault_legacy_test');
+      addTearDown(() async {
+        try {
+          if (await tempDir.exists()) {
+            await tempDir.delete(recursive: true);
+          }
+        } catch (_) {}
+      });
+
+      TestDefaultBinaryMessengerBinding.instance.defaultBinaryMessenger.setMockMethodCallHandler(
+        const MethodChannel('plugins.flutter.io/path_provider'),
+        (MethodCall methodCall) async {
+          return tempDir.path;
+        },
+      );
+
+      // Create a mock legacy .doc file with OLE2 header and embedded ASCII text
+      final legacyFile = File('${tempDir.path}/OldResume.doc');
+      final bytes = <int>[
+        0xD0, 0xCF, 0x11, 0xE0, 0xA1, 0xB1, 0x1A, 0xE1,
+        ...utf8.encode('John Doe Software Engineer Profile Summary and Experience Details'),
+      ];
+      await legacyFile.writeAsBytes(bytes);
+
+      final pages = await FileUtils.extractPagesFromDocument(legacyFile.path);
+
+      expect(pages, isNotEmpty);
+      expect(File(pages.first).existsSync(), isTrue);
+      expect(File(pages.first).lengthSync(), greaterThan(0));
+    });
   });
 }
+

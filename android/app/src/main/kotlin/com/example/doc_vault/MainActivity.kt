@@ -323,6 +323,32 @@ class MainActivity : FlutterActivity() {
                         val uri =
                             Uri.parse(uriString)
 
+                        val fileName =
+                            getFileName(uri)
+
+                        val mimeType =
+                            getMimeType(
+                                uri,
+                                fileName
+                            )
+
+                        // 1. Fast, low-memory stream directly to cache file
+                        val cachedFile =
+                            copyDocumentToCache(uri, fileName)
+
+                        if (cachedFile != null && cachedFile.exists() && cachedFile.length() > 0) {
+                            result.success(
+                                mapOf(
+                                    "filePath" to cachedFile.absolutePath,
+                                    "fileName" to fileName,
+                                    "mimeType" to mimeType,
+                                    "fileSize" to cachedFile.length()
+                                )
+                            )
+                            return@setMethodCallHandler
+                        }
+
+                        // 2. Fallback to in-memory bytes if direct file stream failed
                         val bytes =
                             readDocumentBytes(uri)
 
@@ -339,15 +365,6 @@ class MainActivity : FlutterActivity() {
 
                             return@setMethodCallHandler
                         }
-
-                        val fileName =
-                            getFileName(uri)
-
-                        val mimeType =
-                            getMimeType(
-                                uri,
-                                fileName
-                            )
 
                         result.success(
                             mapOf(
@@ -607,6 +624,57 @@ class MainActivity : FlutterActivity() {
     }
 
     // =========================================================================
+    // =========================================================================
+    // COPY DOCUMENT DIRECTLY TO CACHE (STREAM CHUNKED)
+    // =========================================================================
+
+    private fun copyDocumentToCache(
+        uri: Uri,
+        targetFileName: String
+    ): File? {
+        return try {
+            val cacheSubDir = File(cacheDir, "external_documents")
+            if (!cacheSubDir.exists()) {
+                cacheSubDir.mkdirs()
+            }
+
+            val safeName = targetFileName.replace(
+                "[\\\\/:*?\"<>|]".toRegex(),
+                "_"
+            )
+
+            val cacheFile = File(
+                cacheSubDir,
+                "${System.currentTimeMillis()}_$safeName"
+            )
+
+            val stream = when (uri.scheme?.lowercase()) {
+                "content" -> contentResolver.openInputStream(uri)
+                "file" -> {
+                    val path = uri.path ?: return null
+                    val f = File(path)
+                    if (f.exists() && f.canRead()) f.inputStream() else null
+                }
+                else -> contentResolver.openInputStream(uri)
+            } ?: return null
+
+            stream.use { input ->
+                cacheFile.outputStream().use { output ->
+                    input.copyTo(output, bufferSize = 16384)
+                }
+            }
+
+            if (cacheFile.exists() && cacheFile.length() > 0) {
+                cacheFile
+            } else {
+                null
+            }
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    // =========================================================================
     // READ DOCUMENT BYTES
     // =========================================================================
 
@@ -671,6 +739,8 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ): String {
 
+        var candidateName: String? = null
+
         if (
             uri.scheme.equals(
                 "content",
@@ -710,7 +780,7 @@ class MainActivity : FlutterActivity() {
                             it.getString(nameIndex)
 
                         if (!name.isNullOrBlank()) {
-                            return name
+                            candidateName = name
                         }
                     }
                 }
@@ -720,7 +790,7 @@ class MainActivity : FlutterActivity() {
             }
         }
 
-        if (
+        if (candidateName.isNullOrBlank() &&
             uri.scheme.equals(
                 "file",
                 ignoreCase = true
@@ -735,27 +805,28 @@ class MainActivity : FlutterActivity() {
                     File(path).name
 
                 if (fileName.isNotBlank()) {
-                    return fileName
+                    candidateName = fileName
                 }
             }
         }
 
-        val lastSegment =
-            uri.lastPathSegment
+        if (candidateName.isNullOrBlank()) {
+            val lastSegment = uri.lastPathSegment
 
-        if (!lastSegment.isNullOrBlank()) {
+            if (!lastSegment.isNullOrBlank()) {
 
-            try {
+                try {
 
-                val decoded =
-                    Uri.decode(lastSegment)
+                    val decoded =
+                        Uri.decode(lastSegment)
 
-                if (decoded.isNotBlank()) {
-                    return decoded
+                    if (decoded.isNotBlank()) {
+                        candidateName = decoded
+                    }
+
+                } catch (_: Exception) {
+                    // Continue.
                 }
-
-            } catch (_: Exception) {
-                // Continue.
             }
         }
 
@@ -768,21 +839,44 @@ class MainActivity : FlutterActivity() {
                 null
             }
 
-        return when {
+        val resolvedName = candidateName?.trim() ?: ""
 
-            mimeType?.contains("pdf") == true ->
-                "Imported_Document.pdf"
+        val lowerName = resolvedName.lowercase()
+        val hasValidExtension =
+            lowerName.endsWith(".pdf") ||
+            lowerName.endsWith(".docx") ||
+            lowerName.endsWith(".doc") ||
+            lowerName.endsWith(".pptx") ||
+            lowerName.endsWith(".ppt")
 
-            mimeType?.contains("word") == true ||
-                    mimeType?.contains("document") == true ->
-                "Imported_Document.docx"
+        if (resolvedName.isNotEmpty() && hasValidExtension) {
+            return resolvedName
+        }
 
-            mimeType?.contains("presentation") == true ||
-                    mimeType?.contains("powerpoint") == true ->
-                "Imported_Presentation.pptx"
+        val extensionFromMime = when {
+            mimeType?.contains("pdf") == true -> "pdf"
+            mimeType?.contains("wordprocessingml") == true -> "docx"
+            mimeType?.contains("msword") == true -> "doc"
+            mimeType?.contains("presentationml") == true -> "pptx"
+            mimeType?.contains("powerpoint") == true -> "ppt"
+            else -> null
+        }
 
-            else ->
-                "Imported_Document"
+        if (resolvedName.isNotEmpty()) {
+            return if (extensionFromMime != null) {
+                "$resolvedName.$extensionFromMime"
+            } else {
+                resolvedName
+            }
+        }
+
+        return when (extensionFromMime) {
+            "pdf" -> "Imported_Document.pdf"
+            "docx" -> "Imported_Document.docx"
+            "doc" -> "Imported_Document.doc"
+            "pptx" -> "Imported_Presentation.pptx"
+            "ppt" -> "Imported_Presentation.ppt"
+            else -> "Imported_Document.pdf"
         }
     }
 
