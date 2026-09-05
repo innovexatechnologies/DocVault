@@ -15,26 +15,9 @@ import java.io.IOException
 
 class MainActivity : FlutterActivity() {
 
-<<<<<<< HEAD
-    private val CHANNEL = "docvault/pdf_intent"
-
-    private var pendingPdfUri: Uri? = null
-
-    // ============================================================
-    // ACTIVITY CREATED
-    // ============================================================
-
-    override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-
-        // Save incoming PDF when DocVault is launched
-        // from another application.
-        pendingPdfUri = getPdfUri(intent)
-=======
     companion object {
         private const val DOCUMENT_CHANNEL = "docvault/pdf_intent"
         private const val CODE_SCANNER_CHANNEL = "docvault/code_scanner"
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
     }
 
     private var methodChannel: MethodChannel? = null
@@ -52,18 +35,6 @@ class MainActivity : FlutterActivity() {
 
         methodChannel = MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,
-<<<<<<< HEAD
-            CHANNEL
-        ).setMethodCallHandler { call, result ->
-
-            when (call.method) {
-
-                // ====================================================
-                // APP CLOSED → OPEN PDF
-                // ====================================================
-
-                "getInitialPdf" -> {
-=======
             DOCUMENT_CHANNEL
         )
 
@@ -80,96 +51,17 @@ class MainActivity : FlutterActivity() {
     }
 
     // =========================================================================
-    // GOOGLE CODE SCANNER (barcode / QR)
+    // GOOGLE CODE SCANNER (BARCODE / QR)
     // =========================================================================
-    // Wraps com.google.mlkit.vision.codescanner.GmsBarcodeScanning, the
-    // Google Play services "code scanner" API. It owns its own camera UI and
-    // never requires the CAMERA permission from this app.
-    // https://developers.google.com/ml-kit/vision/barcode-scanning/code-scanner
 
     private fun setupCodeScannerChannel() {
 
         codeScannerChannel?.setMethodCallHandler { call, result ->
 
             when (call.method) {
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
 
                 "startScan" -> {
 
-<<<<<<< HEAD
-                    if (uri != null) {
-
-                        result.success(
-                            mapOf(
-                                "uri" to uri.toString(),
-                                "fileName" to getFileName(uri)
-                            )
-                        )
-
-                        // Prevent processing the same
-                        // launch intent again.
-                        pendingPdfUri = null
-
-                    } else {
-
-                        result.success(null)
-                    }
-                }
-
-                // ====================================================
-                // READ PDF
-                // ====================================================
-
-                "readPdf" -> {
-
-                    try {
-
-                        val uriString =
-                            call.argument<String>("uri")
-
-                        if (uriString.isNullOrEmpty()) {
-
-                            result.error(
-                                "INVALID_URI",
-                                "PDF URI is missing.",
-                                null
-                            )
-
-                            return@setMethodCallHandler
-                        }
-
-                        val uri =
-                            Uri.parse(uriString)
-
-                        val bytes =
-                            contentResolver
-                                .openInputStream(uri)
-                                ?.use { inputStream ->
-                                    inputStream.readBytes()
-                                }
-
-                        if (bytes == null) {
-
-                            result.error(
-                                "READ_ERROR",
-                                "Unable to read PDF.",
-                                null
-                            )
-
-                            return@setMethodCallHandler
-                        }
-
-                        if (bytes.isEmpty()) {
-
-                            result.error(
-                                "EMPTY_PDF",
-                                "The PDF file is empty.",
-                                null
-                            )
-
-                            return@setMethodCallHandler
-                        }
-=======
                     try {
 
                         val requestedFormats =
@@ -178,7 +70,6 @@ class MainActivity : FlutterActivity() {
                         val enableAutoZoom =
                             call.argument<Boolean>("enableAutoZoom")
                                 ?: true
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
 
                         startCodeScan(
                             requestedFormats,
@@ -189,23 +80,13 @@ class MainActivity : FlutterActivity() {
                     } catch (e: Exception) {
 
                         result.error(
-<<<<<<< HEAD
-                            "READ_ERROR",
-                            e.message
-                                ?: "Failed to read PDF.",
-=======
                             "CODE_SCANNER_START_FAILED",
                             e.message
                                 ?: "Unable to start the code scanner.",
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
                             null
                         )
                     }
                 }
-
-                // ====================================================
-                // UNKNOWN METHOD
-                // ====================================================
 
                 else -> {
                     result.notImplemented()
@@ -214,11 +95,6 @@ class MainActivity : FlutterActivity() {
         }
     }
 
-<<<<<<< HEAD
-    // ============================================================
-    // APP ALREADY OPEN → NEW PDF
-    // ============================================================
-=======
     private fun startCodeScan(
         requestedFormats: List<String>?,
         enableAutoZoom: Boolean,
@@ -254,15 +130,19 @@ class MainActivity : FlutterActivity() {
 
         scanner.startScan()
             .addOnSuccessListener { barcode ->
-                result.success(barcodeToMap(barcode))
+                result.success(
+                    barcodeToMap(barcode)
+                )
             }
             .addOnCanceledListener {
-                // User backed out of the scanner -- not an error.
                 result.success(
-                    mapOf("cancelled" to true)
+                    mapOf(
+                        "cancelled" to true
+                    )
                 )
             }
             .addOnFailureListener { e ->
+
                 result.error(
                     "CODE_SCANNER_FAILED",
                     e.message
@@ -318,9 +198,14 @@ class MainActivity : FlutterActivity() {
         )
     }
 
+    // =========================================================================
+    // BARCODE FORMAT FROM NAME
+    // =========================================================================
+
     private fun barcodeFormatFromName(
         name: String
     ): Int? = when (name.uppercase()) {
+
         "CODE_128" -> Barcode.FORMAT_CODE_128
         "CODE_39" -> Barcode.FORMAT_CODE_39
         "CODE_93" -> Barcode.FORMAT_CODE_93
@@ -335,12 +220,18 @@ class MainActivity : FlutterActivity() {
         "PDF417" -> Barcode.FORMAT_PDF417
         "AZTEC" -> Barcode.FORMAT_AZTEC
         "ALL_FORMATS" -> Barcode.FORMAT_ALL_FORMATS
+
         else -> null
     }
+
+    // =========================================================================
+    // BARCODE FORMAT TO NAME
+    // =========================================================================
 
     private fun barcodeFormatToName(
         format: Int
     ): String = when (format) {
+
         Barcode.FORMAT_CODE_128 -> "CODE_128"
         Barcode.FORMAT_CODE_39 -> "CODE_39"
         Barcode.FORMAT_CODE_93 -> "CODE_93"
@@ -354,12 +245,18 @@ class MainActivity : FlutterActivity() {
         Barcode.FORMAT_UPC_E -> "UPC_E"
         Barcode.FORMAT_PDF417 -> "PDF417"
         Barcode.FORMAT_AZTEC -> "AZTEC"
+
         else -> "UNKNOWN"
     }
+
+    // =========================================================================
+    // BARCODE VALUE TYPE TO NAME
+    // =========================================================================
 
     private fun barcodeValueTypeToName(
         valueType: Int
     ): String = when (valueType) {
+
         Barcode.TYPE_CONTACT_INFO -> "CONTACT_INFO"
         Barcode.TYPE_EMAIL -> "EMAIL"
         Barcode.TYPE_ISBN -> "ISBN"
@@ -372,6 +269,7 @@ class MainActivity : FlutterActivity() {
         Barcode.TYPE_GEO -> "GEO"
         Barcode.TYPE_CALENDAR_EVENT -> "CALENDAR_EVENT"
         Barcode.TYPE_DRIVER_LICENSE -> "DRIVER_LICENSE"
+
         else -> "UNKNOWN"
     }
 
@@ -394,8 +292,9 @@ class MainActivity : FlutterActivity() {
 
                     try {
 
-                        val uri = pendingDocumentUri
-                            ?: getDocumentUri(intent)
+                        val uri =
+                            pendingDocumentUri
+                                ?: getDocumentUri(intent)
 
                         if (uri == null) {
                             result.success(null)
@@ -452,11 +351,19 @@ class MainActivity : FlutterActivity() {
                                 fileName
                             )
 
-                        // 1. Fast, low-memory stream directly to cache file
+                        // 1. Stream document directly to cache.
                         val cachedFile =
-                            copyDocumentToCache(uri, fileName)
+                            copyDocumentToCache(
+                                uri,
+                                fileName
+                            )
 
-                        if (cachedFile != null && cachedFile.exists() && cachedFile.length() > 0) {
+                        if (
+                            cachedFile != null &&
+                            cachedFile.exists() &&
+                            cachedFile.length() > 0
+                        ) {
+
                             result.success(
                                 mapOf(
                                     "filePath" to cachedFile.absolutePath,
@@ -465,10 +372,11 @@ class MainActivity : FlutterActivity() {
                                     "fileSize" to cachedFile.length()
                                 )
                             )
+
                             return@setMethodCallHandler
                         }
 
-                        // 2. Fallback to in-memory bytes if direct file stream failed
+                        // 2. Fallback to in-memory bytes.
                         val bytes =
                             readDocumentBytes(uri)
 
@@ -532,7 +440,6 @@ class MainActivity : FlutterActivity() {
     // =========================================================================
     // NEW INTENT
     // =========================================================================
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
 
     override fun onNewIntent(
         intent: Intent
@@ -561,32 +468,6 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ) {
 
-<<<<<<< HEAD
-        val engine =
-            flutterEngine ?: return
-
-        MethodChannel(
-            engine.dartExecutor.binaryMessenger,
-            CHANNEL
-        ).invokeMethod(
-            "newPdf",
-            mapOf(
-                "uri" to uri.toString(),
-                "fileName" to getFileName(uri)
-            )
-        )
-    }
-
-    // ============================================================
-    // GET PDF URI
-    // ============================================================
-
-    private fun getPdfUri(
-        intent: Intent?
-    ): Uri? {
-
-        if (intent == null) {
-=======
         methodChannel?.invokeMethod(
             "newDocument",
             createDocumentMap(uri)
@@ -648,7 +529,8 @@ class MainActivity : FlutterActivity() {
             Intent.ACTION_SEND -> {
 
                 uri =
-                    if (android.os.Build.VERSION.SDK_INT >=
+                    if (
+                        android.os.Build.VERSION.SDK_INT >=
                         android.os.Build.VERSION_CODES.TIRAMISU
                     ) {
 
@@ -668,7 +550,6 @@ class MainActivity : FlutterActivity() {
         }
 
         if (uri == null) {
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
             return null
         }
 
@@ -676,7 +557,7 @@ class MainActivity : FlutterActivity() {
             return null
         }
 
-        // Try to persist permission.
+        // Try to persist permission for content URIs.
         if (
             uri.scheme.equals(
                 "content",
@@ -718,17 +599,6 @@ class MainActivity : FlutterActivity() {
         uri: Uri
     ): Boolean {
 
-<<<<<<< HEAD
-        // First check MIME type.
-        val mimeType =
-            intent.type
-
-        if (
-            mimeType.equals(
-                "application/pdf",
-                ignoreCase = true
-            )
-=======
         val fileName =
             getFileName(uri)
                 .lowercase()
@@ -739,45 +609,42 @@ class MainActivity : FlutterActivity() {
             fileName.endsWith(".docx") ||
             fileName.endsWith(".ppt") ||
             fileName.endsWith(".pptx")
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
         ) {
             return true
         }
 
-<<<<<<< HEAD
-        // Fallback for file managers
-        // that don't provide MIME type.
-        val uriString =
-            uri.toString().lowercase()
+        val uriPath =
+            uri.path?.lowercase() ?: ""
 
-        return uriString.endsWith(".pdf") ||
-                uriString.contains(".pdf?")
-    }
-
-    // ============================================================
-=======
-        val uriPath = uri.path?.lowercase() ?: ""
         if (
             uriPath.endsWith(".pdf") ||
-            uriPath.endsWith(".docx") ||
             uriPath.endsWith(".doc") ||
-            uriPath.endsWith(".pptx") ||
-            uriPath.endsWith(".ppt")
+            uriPath.endsWith(".docx") ||
+            uriPath.endsWith(".ppt") ||
+            uriPath.endsWith(".pptx")
         ) {
             return true
         }
 
         val rawMimeType =
             try {
+
                 contentResolver
                     .getType(uri)
                     ?.lowercase()
                     ?.trim()
+
             } catch (_: Exception) {
+
                 null
             }
 
-        val cleanMime = rawMimeType?.split(";")?.firstOrNull()?.trim() ?: ""
+        val cleanMime =
+            rawMimeType
+                ?.split(";")
+                ?.firstOrNull()
+                ?.trim()
+                ?: ""
 
         return cleanMime == "application/pdf" ||
                 cleanMime == "application/x-pdf" ||
@@ -797,52 +664,93 @@ class MainActivity : FlutterActivity() {
     }
 
     // =========================================================================
-    // =========================================================================
-    // COPY DOCUMENT DIRECTLY TO CACHE (STREAM CHUNKED)
+    // COPY DOCUMENT DIRECTLY TO CACHE
     // =========================================================================
 
     private fun copyDocumentToCache(
         uri: Uri,
         targetFileName: String
     ): File? {
+
         return try {
-            val cacheSubDir = File(cacheDir, "external_documents")
+
+            val cacheSubDir =
+                File(
+                    cacheDir,
+                    "external_documents"
+                )
+
             if (!cacheSubDir.exists()) {
                 cacheSubDir.mkdirs()
             }
 
-            val safeName = targetFileName.replace(
-                "[\\\\/:*?\"<>|]".toRegex(),
-                "_"
-            )
+            val safeName =
+                targetFileName.replace(
+                    Regex("""[\\/:*?"<>|]"""),
+                    "_"
+                )
 
-            val cacheFile = File(
-                cacheSubDir,
-                "${System.currentTimeMillis()}_$safeName"
-            )
+            val cacheFile =
+                File(
+                    cacheSubDir,
+                    "${System.currentTimeMillis()}_$safeName"
+                )
 
-            val stream = when (uri.scheme?.lowercase()) {
-                "content" -> contentResolver.openInputStream(uri)
-                "file" -> {
-                    val path = uri.path ?: return null
-                    val f = File(path)
-                    if (f.exists() && f.canRead()) f.inputStream() else null
-                }
-                else -> contentResolver.openInputStream(uri)
-            } ?: return null
+            val stream =
+                when (uri.scheme?.lowercase()) {
+
+                    "content" -> {
+                        contentResolver
+                            .openInputStream(uri)
+                    }
+
+                    "file" -> {
+
+                        val path =
+                            uri.path
+                                ?: return null
+
+                        val file =
+                            File(path)
+
+                        if (
+                            file.exists() &&
+                            file.canRead()
+                        ) {
+                            file.inputStream()
+                        } else {
+                            null
+                        }
+                    }
+
+                    else -> {
+                        contentResolver
+                            .openInputStream(uri)
+                    }
+                } ?: return null
 
             stream.use { input ->
+
                 cacheFile.outputStream().use { output ->
-                    input.copyTo(output, bufferSize = 16384)
+
+                    input.copyTo(
+                        output,
+                        bufferSize = 16384
+                    )
                 }
             }
 
-            if (cacheFile.exists() && cacheFile.length() > 0) {
+            if (
+                cacheFile.exists() &&
+                cacheFile.length() > 0
+            ) {
                 cacheFile
             } else {
                 null
             }
-        } catch (e: Exception) {
+
+        } catch (_: Exception) {
+
             null
         }
     }
@@ -900,12 +808,12 @@ class MainActivity : FlutterActivity() {
             }
 
         } catch (_: Exception) {
+
             null
         }
     }
 
     // =========================================================================
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
     // GET FILE NAME
     // =========================================================================
 
@@ -914,6 +822,10 @@ class MainActivity : FlutterActivity() {
     ): String {
 
         var candidateName: String? = null
+
+        // ---------------------------------------------------------------------
+        // CONTENT URI
+        // ---------------------------------------------------------------------
 
         if (
             uri.scheme.equals(
@@ -933,27 +845,12 @@ class MainActivity : FlutterActivity() {
                     contentResolver.query(
                         uri,
                         projection,
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
                         null,
                         null,
                         null
                     )
 
                 cursor?.use {
-<<<<<<< HEAD
-
-                    if (it.moveToFirst()) {
-
-                        val index =
-                            it.getColumnIndex(
-                                "_display_name"
-                            )
-
-                        if (index >= 0) {
-
-                            fileName =
-                                it.getString(index)
-=======
 
                     val nameIndex =
                         it.getColumnIndex(
@@ -975,18 +872,24 @@ class MainActivity : FlutterActivity() {
                 }
 
             } catch (_: Exception) {
-                // Continue.
+                // Continue with other methods.
             }
         }
 
-        if (candidateName.isNullOrBlank() &&
+        // ---------------------------------------------------------------------
+        // FILE URI
+        // ---------------------------------------------------------------------
+
+        if (
+            candidateName.isNullOrBlank() &&
             uri.scheme.equals(
                 "file",
                 ignoreCase = true
             )
         ) {
 
-            val path = uri.path
+            val path =
+                uri.path
 
             if (!path.isNullOrBlank()) {
 
@@ -999,8 +902,14 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // ---------------------------------------------------------------------
+        // LAST PATH SEGMENT
+        // ---------------------------------------------------------------------
+
         if (candidateName.isNullOrBlank()) {
-            val lastSegment = uri.lastPathSegment
+
+            val lastSegment =
+                uri.lastPathSegment
 
             if (!lastSegment.isNullOrBlank()) {
 
@@ -1019,53 +928,105 @@ class MainActivity : FlutterActivity() {
             }
         }
 
+        // ---------------------------------------------------------------------
+        // MIME TYPE
+        // ---------------------------------------------------------------------
+
         val mimeType =
             try {
+
                 contentResolver
                     .getType(uri)
                     ?.lowercase()
+
             } catch (_: Exception) {
+
                 null
             }
 
-        val resolvedName = candidateName?.trim() ?: ""
+        val resolvedName =
+            candidateName
+                ?.trim()
+                ?: ""
 
-        val lowerName = resolvedName.lowercase()
+        val lowerName =
+            resolvedName.lowercase()
+
         val hasValidExtension =
             lowerName.endsWith(".pdf") ||
-            lowerName.endsWith(".docx") ||
-            lowerName.endsWith(".doc") ||
-            lowerName.endsWith(".pptx") ||
-            lowerName.endsWith(".ppt")
+                    lowerName.endsWith(".docx") ||
+                    lowerName.endsWith(".doc") ||
+                    lowerName.endsWith(".pptx") ||
+                    lowerName.endsWith(".ppt")
 
-        if (resolvedName.isNotEmpty() && hasValidExtension) {
+        if (
+            resolvedName.isNotEmpty() &&
+            hasValidExtension
+        ) {
             return resolvedName
         }
 
-        val extensionFromMime = when {
-            mimeType?.contains("pdf") == true -> "pdf"
-            mimeType?.contains("wordprocessingml") == true -> "docx"
-            mimeType?.contains("msword") == true -> "doc"
-            mimeType?.contains("presentationml") == true -> "pptx"
-            mimeType?.contains("powerpoint") == true -> "ppt"
-            else -> null
-        }
+        // ---------------------------------------------------------------------
+        // GET EXTENSION FROM MIME
+        // ---------------------------------------------------------------------
+
+        val extensionFromMime =
+            when {
+
+                mimeType?.contains("pdf") == true ->
+                    "pdf"
+
+                mimeType?.contains("wordprocessingml") == true ->
+                    "docx"
+
+                mimeType?.contains("msword") == true ->
+                    "doc"
+
+                mimeType?.contains("presentationml") == true ->
+                    "pptx"
+
+                mimeType?.contains("powerpoint") == true ->
+                    "ppt"
+
+                else ->
+                    null
+            }
 
         if (resolvedName.isNotEmpty()) {
+
             return if (extensionFromMime != null) {
+
                 "$resolvedName.$extensionFromMime"
+
             } else {
+
                 resolvedName
             }
         }
 
+        // ---------------------------------------------------------------------
+        // DEFAULT FILE NAME
+        // ---------------------------------------------------------------------
+
         return when (extensionFromMime) {
-            "pdf" -> "Imported_Document.pdf"
-            "docx" -> "Imported_Document.docx"
-            "doc" -> "Imported_Document.doc"
-            "pptx" -> "Imported_Presentation.pptx"
-            "ppt" -> "Imported_Presentation.ppt"
-            else -> "Imported_Document.pdf"
+
+            "pdf" ->
+                "Imported_Document.pdf"
+
+            "docx" ->
+                "Imported_Document.docx"
+
+            "doc" ->
+                "Imported_Document.doc"
+
+            "pptx" ->
+                "Imported_Presentation.pptx"
+
+            "ppt" ->
+                "Imported_Presentation.ppt"
+
+            else ->
+                "Imported_Document.pdf"
         }
     }
 
@@ -1088,7 +1049,7 @@ class MainActivity : FlutterActivity() {
             }
 
         } catch (_: Exception) {
-            // Extension fallback.
+            // Use extension fallback.
         }
 
         val lowerName =
@@ -1114,6 +1075,5 @@ class MainActivity : FlutterActivity() {
             else ->
                 "application/octet-stream"
         }
->>>>>>> e06f7158bedf2baeb2c9c16bed1c85b6f23b900e
     }
 }
