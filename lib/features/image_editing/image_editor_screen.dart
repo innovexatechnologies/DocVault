@@ -976,26 +976,6 @@ class _ImageEditorScreenState
     });
   }
 
-  static const double _minCornerGap = 0.08;
-
-  Offset _clampCorner(
-    Offset corner, {
-    required double minX,
-    required double maxX,
-    required double minY,
-    required double maxY,
-  }) {
-    // Guard against inverted bounds (which would otherwise throw)
-    // when two corners have been dragged very close together.
-    final safeMaxX = math.max(minX, maxX);
-    final safeMaxY = math.max(minY, maxY);
-
-    return Offset(
-      corner.dx.clamp(minX, safeMaxX),
-      corner.dy.clamp(minY, safeMaxY),
-    );
-  }
-
   /// The rect (in canvas-local pixels) where the image is actually
   /// drawn, given BoxFit.contain letterboxing. Returns the full
   /// canvas as a fallback if the image size isn't known yet.

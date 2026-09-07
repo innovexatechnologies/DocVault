@@ -29,6 +29,14 @@ subprojects {
     project.evaluationDependsOn(":app")
 }
 
+subprojects {
+    tasks.configureEach {
+        if (name.startsWith("cleanMerge") && (name.endsWith("Assets") || name.endsWith("Resources"))) {
+            enabled = false
+        }
+    }
+}
+
 tasks.register<Delete>("clean") {
     delete(rootProject.layout.buildDirectory)
 }

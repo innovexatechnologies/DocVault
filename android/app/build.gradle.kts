@@ -41,6 +41,16 @@ android {
                 signingConfigs.getByName("debug")
         }
     }
+
+    packaging {
+        resources {
+            excludes += "/META-INF/{AL2.0,LGPL2.1}"
+        }
+        jniLibs {
+            pickFirsts += "**/libc++_shared.so"
+            pickFirsts += "**/libflutter.so"
+        }
+    }
 }
 
 dependencies {
@@ -57,3 +67,26 @@ dependencies {
 flutter {
     source = "../.."
 }
+
+tasks.configureEach {
+    if (name.startsWith("cleanMerge") && (name.endsWith("Assets") || name.endsWith("Resources"))) {
+        enabled = false
+    }
+}
+
+tasks.matching { it.name.contains("NativeLibs") || it.name.contains("Assets") }.configureEach {
+    doFirst {
+        val buildDir = project.layout.buildDirectory.asFile.get()
+        if (buildDir.exists()) {
+            listOf("intermediates/merged_native_libs", "intermediates/assets").forEach { sub ->
+                val dir = File(buildDir, sub)
+                if (dir.exists()) {
+                    dir.walkBottomUp().forEach { f ->
+                        f.setWritable(true)
+                    }
+                }
+            }
+        }
+    }
+}
+
