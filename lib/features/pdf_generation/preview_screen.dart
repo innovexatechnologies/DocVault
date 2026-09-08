@@ -110,6 +110,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
     );
 
     if (result != null && mounted) {
+      PaintingBinding.instance.imageCache.evict(FileImage(File(result)));
+      PaintingBinding.instance.imageCache.evict(FileImage(File(imagePath)));
+      PaintingBinding.instance.imageCache.clearLiveImages();
       setState(() {});
     }
   }
@@ -606,34 +609,30 @@ class _PreviewScreenState extends State<PreviewScreen> {
                     // IMAGE
                     // ==========================================
 
-                    Center(
-                      child: Image.file(
-                        File(imagePath),
-
-                        // IMPORTANT:
-                        // Never stretch the image.
-                        fit: BoxFit.contain,
-
-                        width:
-                            documentWidth,
-
-                        height:
-                            documentHeight,
-
-                        filterQuality:
-                            FilterQuality.high,
-
-                        key: ValueKey(
-                          imagePath,
+                    InteractiveViewer(
+                      minScale: 1.0,
+                      maxScale: 4.5,
+                      clipBehavior: Clip.none,
+                      panEnabled: true,
+                      scaleEnabled: true,
+                      child: Center(
+                        child: Image.file(
+                          File(imagePath),
+                          fit: BoxFit.contain,
+                          width: documentWidth,
+                          height: documentHeight,
+                          filterQuality: FilterQuality.high,
+                          key: ValueKey(
+                            imagePath,
+                          ),
+                          errorBuilder: (
+                            context,
+                            error,
+                            stackTrace,
+                          ) {
+                            return _buildImageError();
+                          },
                         ),
-
-                        errorBuilder: (
-                          context,
-                          error,
-                          stackTrace,
-                        ) {
-                          return _buildImageError();
-                        },
                       ),
                     ),
 

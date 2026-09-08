@@ -1,11 +1,27 @@
 import 'dart:io';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:image/image.dart' as img;
 import 'package:uuid/uuid.dart';
 
 import '../utils/file_utils.dart';
+
+/// Normalized 4-point document corners (0.0 -> 1.0).
+class DocumentCorners {
+  final Offset topLeft;
+  final Offset topRight;
+  final Offset bottomRight;
+  final Offset bottomLeft;
+
+  const DocumentCorners({
+    required this.topLeft,
+    required this.topRight,
+    required this.bottomRight,
+    required this.bottomLeft,
+  });
+}
 
 /// All available image filters.
 ///
@@ -292,71 +308,46 @@ class ImageEditorService {
     required Offset bottomLeft,
     required Offset bottomRight,
   }) async {
-    final bytes = await File(inputPath).readAsBytes();
-
-    final image = img.decodeImage(bytes);
-
-    if (image == null) {
-      throw Exception('Unable to decode image.');
-    }
-
-    img.Point toPixel(Offset normalized) {
-      final px = (normalized.dx * image.width)
-          .round()
-          .clamp(0, image.width - 1);
-
-      final py = (normalized.dy * image.height)
-          .round()
-          .clamp(0, image.height - 1);
-
-      return img.Point(px, py);
-    }
-
-    final pTopLeft = toPixel(topLeft);
-    final pTopRight = toPixel(topRight);
-    final pBottomLeft = toPixel(bottomLeft);
-    final pBottomRight = toPixel(bottomRight);
-
-    // Guard against a degenerate/collapsed quad (e.g. all four
-    // corners dragged to nearly the same point) before we ask the
-    // image library to rectify it.
-    final minSpanX = math.max(
-      (pTopRight.x - pTopLeft.x).abs(),
-      (pBottomRight.x - pBottomLeft.x).abs(),
+    final outPath = await _getNewEditedPath();
+    await compute(
+      _perspectiveCropWorker,
+      _PerspectiveCropParams(
+        inputPath: inputPath,
+        outputPath: outPath,
+        topLeft: topLeft,
+        topRight: topRight,
+        bottomLeft: bottomLeft,
+        bottomRight: bottomRight,
+      ),
     );
-
-    final minSpanY = math.max(
-      (pBottomLeft.y - pTopLeft.y).abs(),
-      (pBottomRight.y - pTopRight.y).abs(),
-    );
-
-    if (minSpanX < 10 || minSpanY < 10) {
-      throw Exception(
-        'Crop area is too small. Drag the corners further apart.',
-      );
-    }
-
-    final rectified = img.copyRectify(
-      image,
-      topLeft: pTopLeft,
-      topRight: pTopRight,
-      bottomLeft: pBottomLeft,
-      bottomRight: pBottomRight,
-      interpolation: img.Interpolation.cubic,
-    );
-
-    if (rectified.width < 10 || rectified.height < 10) {
-      throw Exception('Crop result is too small.');
-    }
-
-    return _saveImage(rectified);
+    return outPath;
   }
 
   // ============================================================
-  // APPLY FILTER
+  // AUTO CROP CORNERS DETECTION
   // ============================================================
 
-  /// Applies one of the 21 image filters.
+  /// Asynchronously detects document corners in a background isolate.
+  Future<DocumentCorners> detectDocumentCorners(String inputPath) async {
+    return compute(_detectDocumentCornersWorker, inputPath);
+  }
+
+  // ============================================================
+  // GENERATE ALL FILTER THUMBNAILS (NON-BLOCKING)
+  // ============================================================
+
+  /// Generates preview thumbnails for all filters in a background isolate.
+  Future<Map<ImageFilterType, Uint8List>> generateAllFilterThumbnails(
+    String inputPath,
+  ) async {
+    return compute(_generateThumbnailsWorker, inputPath);
+  }
+
+  // ============================================================
+  // APPLY FILTER (NON-BLOCKING)
+  // ============================================================
+
+  /// Applies one of the 21 image filters in a background isolate.
   Future<String> applyFilter(
     String inputPath,
     ImageFilterType filter,
@@ -366,187 +357,69 @@ class ImageEditorService {
       return inputPath;
     }
 
-    final bytes = await File(inputPath).readAsBytes();
+    final outPath = await _getNewEditedPath();
 
-    final image = img.decodeImage(bytes);
+    await compute(
+      _applyFilterWorker,
+      _FilterWorkerParams(
+        inputPath: inputPath,
+        outputPath: outPath,
+        filter: filter,
+      ),
+    );
 
-    if (image == null) {
-      throw Exception('Unable to decode image.');
-    }
+    return outPath;
+  }
 
-    img.Image filtered;
-
+  /// Pure synchronous direct filter dispatch for isolates and workers.
+  static img.Image applyFilterDirect(
+    img.Image image,
+    ImageFilterType filter,
+  ) {
     switch (filter) {
-      // ----------------------------------------------------------
-      // 1. GRAYSCALE
-      // ----------------------------------------------------------
-
       case ImageFilterType.grayscale:
-        filtered = _applyGrayscale(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 2. BLACK & WHITE
-      // ----------------------------------------------------------
-
+        return _applyGrayscale(image);
       case ImageFilterType.blackAndWhite:
-        filtered = _applyBlackAndWhite(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 3. ENHANCE
-      // ----------------------------------------------------------
-
+        return _applyBlackAndWhite(image);
       case ImageFilterType.enhance:
-        filtered = _applyEnhance(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 4. SHARPEN
-      // ----------------------------------------------------------
-
+        return _applyEnhance(image);
       case ImageFilterType.sharpen:
-        filtered = _applySharpen(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 5. VIVID
-      // ----------------------------------------------------------
-
+        return _applySharpen(image);
       case ImageFilterType.vivid:
-        filtered = _applyVivid(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 6. SOFT LIGHT
-      // ----------------------------------------------------------
-
+        return _applyVivid(image);
       case ImageFilterType.softLight:
-        filtered = _applySoftLight(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 7. WARM TONE
-      // ----------------------------------------------------------
-
+        return _applySoftLight(image);
       case ImageFilterType.warmTone:
-        filtered = _applyWarmTone(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 8. COOL TONE
-      // ----------------------------------------------------------
-
+        return _applyWarmTone(image);
       case ImageFilterType.coolTone:
-        filtered = _applyCoolTone(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 9. HIGH CONTRAST B&W
-      // ----------------------------------------------------------
-
+        return _applyCoolTone(image);
       case ImageFilterType.highContrastBW:
-        filtered = _applyHighContrastBW(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 10. SOFT B&W
-      // ----------------------------------------------------------
-
+        return _applyHighContrastBW(image);
       case ImageFilterType.softBW:
-        filtered = _applySoftBW(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 11. SEPIA
-      // ----------------------------------------------------------
-
+        return _applySoftBW(image);
       case ImageFilterType.sepia:
-        filtered = _applySepia(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 12. NOIR
-      // ----------------------------------------------------------
-
+        return _applySepia(image);
       case ImageFilterType.noirDramatic:
-        filtered = _applyNoirDramatic(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 13. BRIGHT WHITE
-      // ----------------------------------------------------------
-
+        return _applyNoirDramatic(image);
       case ImageFilterType.brightWhite:
-        filtered = _applyBrightWhite(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 14. LOW LIGHT BOOST
-      // ----------------------------------------------------------
-
+        return _applyBrightWhite(image);
       case ImageFilterType.lowLightBoost:
-        filtered = _applyLowLightBoost(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 15. MATTE
-      // ----------------------------------------------------------
-
+        return _applyLowLightBoost(image);
       case ImageFilterType.matte:
-        filtered = _applyMatte(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 16. VINTAGE PAPER
-      // ----------------------------------------------------------
-
+        return _applyMatte(image);
       case ImageFilterType.vintagePaper:
-        filtered = _applyVintagePaper(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 17. COLD STEEL
-      // ----------------------------------------------------------
-
+        return _applyVintagePaper(image);
       case ImageFilterType.coldSteel:
-        filtered = _applyColdSteel(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 18. MAGIC COLOR PRO
-      // ----------------------------------------------------------
-
+        return _applyColdSteel(image);
       case ImageFilterType.magicColorPro:
-        filtered = _applyMagicColorPro(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 19. NEGATIVE
-      // ----------------------------------------------------------
-
+        return _applyMagicColorPro(image);
       case ImageFilterType.invertNegative:
-        filtered = img.invert(image);
-        break;
-
-      // ----------------------------------------------------------
-      // 20. CLEAN DOCUMENT
-      // ----------------------------------------------------------
-
+        return img.invert(image);
       case ImageFilterType.cleanDocument:
-        filtered = _applyCleanDocument(image);
-        break;
-
-      // ----------------------------------------------------------
-      // ORIGINAL
-      // ----------------------------------------------------------
-
+        return _applyCleanDocument(image);
       case ImageFilterType.none:
-        filtered = image;
-        break;
+        return image;
     }
-
-    return _saveImage(filtered);
   }
 
   // ============================================================
@@ -1668,4 +1541,275 @@ class _CropCandidate {
     required this.bottom,
     required this.score,
   });
+}
+
+// ================================================================
+// ISOLATE WORKERS AND PARAMS
+// ================================================================
+
+class _PerspectiveCropParams {
+  final String inputPath;
+  final String outputPath;
+  final Offset topLeft;
+  final Offset topRight;
+  final Offset bottomLeft;
+  final Offset bottomRight;
+
+  const _PerspectiveCropParams({
+    required this.inputPath,
+    required this.outputPath,
+    required this.topLeft,
+    required this.topRight,
+    required this.bottomLeft,
+    required this.bottomRight,
+  });
+}
+
+void _perspectiveCropWorker(_PerspectiveCropParams params) {
+  final bytes = File(params.inputPath).readAsBytesSync();
+  final image = img.decodeImage(bytes);
+  if (image == null) {
+    throw Exception('Unable to decode image for perspective crop.');
+  }
+
+  final p0 = img.Point(
+    (params.topLeft.dx * image.width).round().clamp(0, image.width - 1),
+    (params.topLeft.dy * image.height).round().clamp(0, image.height - 1),
+  );
+  final p1 = img.Point(
+    (params.topRight.dx * image.width).round().clamp(0, image.width - 1),
+    (params.topRight.dy * image.height).round().clamp(0, image.height - 1),
+  );
+  final p2 = img.Point(
+    (params.bottomRight.dx * image.width).round().clamp(0, image.width - 1),
+    (params.bottomRight.dy * image.height).round().clamp(0, image.height - 1),
+  );
+  final p3 = img.Point(
+    (params.bottomLeft.dx * image.width).round().clamp(0, image.width - 1),
+    (params.bottomLeft.dy * image.height).round().clamp(0, image.height - 1),
+  );
+
+  final topW = math.sqrt(math.pow(p1.x - p0.x, 2) + math.pow(p1.y - p0.y, 2));
+  final botW = math.sqrt(math.pow(p2.x - p3.x, 2) + math.pow(p2.y - p3.y, 2));
+  final leftH = math.sqrt(math.pow(p3.x - p0.x, 2) + math.pow(p3.y - p0.y, 2));
+  final rightH = math.sqrt(math.pow(p2.x - p1.x, 2) + math.pow(p2.y - p1.y, 2));
+
+  final targetW = math.max(topW, botW).round().clamp(50, image.width * 2);
+  final targetH = math.max(leftH, rightH).round().clamp(50, image.height * 2);
+
+  final targetImage = img.Image(
+    width: targetW,
+    height: targetH,
+  );
+
+  final rectified = img.copyRectify(
+    image,
+    topLeft: p0,
+    topRight: p1,
+    bottomLeft: p3,
+    bottomRight: p2,
+    toImage: targetImage,
+    interpolation: img.Interpolation.cubic,
+  );
+
+  final outBytes = img.encodePng(rectified);
+  File(params.outputPath).writeAsBytesSync(outBytes, flush: true);
+}
+
+class _FilterWorkerParams {
+  final String inputPath;
+  final String outputPath;
+  final ImageFilterType filter;
+
+  const _FilterWorkerParams({
+    required this.inputPath,
+    required this.outputPath,
+    required this.filter,
+  });
+}
+
+void _applyFilterWorker(_FilterWorkerParams params) {
+  final bytes = File(params.inputPath).readAsBytesSync();
+  final image = img.decodeImage(bytes);
+  if (image == null) {
+    throw Exception('Unable to decode image for filter.');
+  }
+
+  final filtered = ImageEditorService.applyFilterDirect(image, params.filter);
+  final outBytes = img.encodeJpg(filtered, quality: 92);
+  File(params.outputPath).writeAsBytesSync(outBytes, flush: true);
+}
+
+Map<ImageFilterType, Uint8List> _generateThumbnailsWorker(String inputPath) {
+  final bytes = File(inputPath).readAsBytesSync();
+  final original = img.decodeImage(bytes);
+  if (original == null) {
+    throw Exception('Unable to decode image for thumbnails.');
+  }
+
+  final scale = 140.0 / math.max(original.width, original.height);
+  final thumbW = (original.width * (scale < 1.0 ? scale : 1.0)).round().clamp(10, original.width);
+  final thumbH = (original.height * (scale < 1.0 ? scale : 1.0)).round().clamp(10, original.height);
+
+  final baseThumb = img.copyResize(
+    original,
+    width: thumbW,
+    height: thumbH,
+    interpolation: img.Interpolation.linear,
+  );
+
+  final results = <ImageFilterType, Uint8List>{};
+  final originalJpg = Uint8List.fromList(img.encodeJpg(baseThumb, quality: 80));
+  results[ImageFilterType.none] = originalJpg;
+
+  for (final filter in ImageFilterType.values) {
+    if (filter == ImageFilterType.none) continue;
+    try {
+      final copy = baseThumb.clone();
+      final filtered = ImageEditorService.applyFilterDirect(copy, filter);
+      results[filter] = Uint8List.fromList(img.encodeJpg(filtered, quality: 80));
+    } catch (_) {
+      results[filter] = originalJpg;
+    }
+  }
+
+  return results;
+}
+
+class _Point {
+  final double x;
+  final double y;
+  const _Point(this.x, this.y);
+}
+
+DocumentCorners _detectDocumentCornersWorker(String inputPath) {
+  final bytes = File(inputPath).readAsBytesSync();
+  final image = img.decodeImage(bytes);
+  if (image == null) {
+    return const DocumentCorners(
+      topLeft: Offset(0.06, 0.06),
+      topRight: Offset(0.94, 0.06),
+      bottomRight: Offset(0.94, 0.94),
+      bottomLeft: Offset(0.06, 0.94),
+    );
+  }
+
+  const maxDim = 600;
+  final scale = maxDim / math.max(image.width, image.height);
+  final analysisW = (image.width * (scale < 1.0 ? scale : 1.0)).round().clamp(10, image.width);
+  final analysisH = (image.height * (scale < 1.0 ? scale : 1.0)).round().clamp(10, image.height);
+
+  final analysis = img.copyResize(
+    image,
+    width: analysisW,
+    height: analysisH,
+    interpolation: img.Interpolation.linear,
+  );
+  final gray = img.grayscale(analysis);
+
+  final w = gray.width;
+  final h = gray.height;
+  final edgePoints = <_Point>[];
+
+  final marginX = (w * 0.03).round();
+  final marginY = (h * 0.03).round();
+  final step = math.max(2, math.min(w, h) ~/ 200);
+
+  for (var y = marginY + 1; y < h - marginY - 1; y += step) {
+    for (var x = marginX + 1; x < w - marginX - 1; x += step) {
+      final pRight = gray.getPixel(x + 1, y).r;
+      final pLeft = gray.getPixel(x - 1, y).r;
+      final pDown = gray.getPixel(x, y + 1).r;
+      final pUp = gray.getPixel(x, y - 1).r;
+
+      final gx = (pRight - pLeft).abs();
+      final gy = (pDown - pUp).abs();
+      final mag = gx + gy;
+
+      if (mag > 45) {
+        edgePoints.add(_Point(x.toDouble(), y.toDouble()));
+      }
+    }
+  }
+
+  if (edgePoints.length < 30) {
+    return const DocumentCorners(
+      topLeft: Offset(0.06, 0.06),
+      topRight: Offset(0.94, 0.06),
+      bottomRight: Offset(0.94, 0.94),
+      bottomLeft: Offset(0.06, 0.94),
+    );
+  }
+
+  _Point? tl, tr, br, bl;
+  double minTL = double.infinity;
+  double minTR = double.infinity;
+  double minBR = double.infinity;
+  double minBL = double.infinity;
+
+  for (final pt in edgePoints) {
+    final sTL = pt.x + pt.y;
+    if (sTL < minTL) {
+      minTL = sTL;
+      tl = pt;
+    }
+
+    final sTR = -pt.x + pt.y;
+    if (sTR < minTR) {
+      minTR = sTR;
+      tr = pt;
+    }
+
+    final sBR = -pt.x - pt.y;
+    if (sBR < minBR) {
+      minBR = sBR;
+      br = pt;
+    }
+
+    final sBL = pt.x - pt.y;
+    if (sBL < minBL) {
+      minBL = sBL;
+      bl = pt;
+    }
+  }
+
+  if (tl == null || tr == null || br == null || bl == null) {
+    return const DocumentCorners(
+      topLeft: Offset(0.06, 0.06),
+      topRight: Offset(0.94, 0.06),
+      bottomRight: Offset(0.94, 0.94),
+      bottomLeft: Offset(0.06, 0.94),
+    );
+  }
+
+  var normTL = Offset((tl.x / w).clamp(0.02, 0.98), (tl.y / h).clamp(0.02, 0.98));
+  var normTR = Offset((tr.x / w).clamp(0.02, 0.98), (tr.y / h).clamp(0.02, 0.98));
+  var normBR = Offset((br.x / w).clamp(0.02, 0.98), (br.y / h).clamp(0.02, 0.98));
+  var normBL = Offset((bl.x / w).clamp(0.02, 0.98), (bl.y / h).clamp(0.02, 0.98));
+
+  final widthTop = (normTR.dx - normTL.dx).abs();
+  final widthBottom = (normBR.dx - normBL.dx).abs();
+  final heightLeft = (normBL.dy - normTL.dy).abs();
+  final heightRight = (normBR.dy - normTR.dy).abs();
+
+  if (widthTop < 0.25 || widthBottom < 0.25 || heightLeft < 0.25 || heightRight < 0.25) {
+    return const DocumentCorners(
+      topLeft: Offset(0.06, 0.06),
+      topRight: Offset(0.94, 0.06),
+      bottomRight: Offset(0.94, 0.94),
+      bottomLeft: Offset(0.06, 0.94),
+    );
+  }
+
+  normTL = Offset((normTL.dx - 0.015).clamp(0.0, 1.0), (normTL.dy - 0.015).clamp(0.0, 1.0));
+  normTR = Offset((normTR.dx + 0.015).clamp(0.0, 1.0), (normTR.dy - 0.015).clamp(0.0, 1.0));
+  normBR = Offset((normBR.dx + 0.015).clamp(0.0, 1.0), (normBR.dy + 0.015).clamp(0.0, 1.0));
+  normBL = Offset((normBL.dx - 0.015).clamp(0.0, 1.0), (normBL.dy + 0.015).clamp(0.0, 1.0));
+
+  return DocumentCorners(
+    topLeft: normTL,
+    topRight: normTR,
+    bottomRight: normBR,
+    bottomLeft: normBL,
+  );
 }

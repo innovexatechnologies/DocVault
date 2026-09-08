@@ -277,6 +277,9 @@ class _ReviewScreenState extends State<ReviewScreen> {
     if (!mounted) return;
 
     if (updatedPath != null) {
+      PaintingBinding.instance.imageCache.evict(FileImage(File(updatedPath)));
+      PaintingBinding.instance.imageCache.evict(FileImage(File(imagePath)));
+      PaintingBinding.instance.imageCache.clearLiveImages();
       setState(() {});
     }
   }

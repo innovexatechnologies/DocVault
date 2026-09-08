@@ -1,5 +1,6 @@
  import 'dart:io';
 import 'dart:math' as math;
+import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
@@ -9,7 +10,6 @@ import '../../core/providers/image_selection_provider.dart';
 import '../../core/services/image_editor_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/widgets/unsaved_changes_dialog.dart';
-import '../../core/services/scan_filter_service.dart';
 
 enum EditorMode {
   none,
@@ -143,6 +143,25 @@ class _ImageEditorScreenState
   ImageFilterType _activeFilter =
       ImageFilterType.none;
 
+  Map<ImageFilterType, Uint8List>? _filterThumbnails;
+  bool _isLoadingThumbnails = false;
+
+  Future<void> _loadFilterThumbnails() async {
+    if (_isLoadingThumbnails) return;
+    _isLoadingThumbnails = true;
+    try {
+      final thumbs =
+          await _editorService.generateAllFilterThumbnails(_baseImagePath);
+      if (!mounted) return;
+      setState(() {
+        _filterThumbnails = thumbs;
+      });
+    } catch (_) {
+    } finally {
+      _isLoadingThumbnails = false;
+    }
+  }
+
   /// Produces the preview path for [basePath] under the currently
   /// active filter. Used both by the filter picker itself and by
   /// every structural edit (rotate/flip/crop/text), so that after a
@@ -178,6 +197,7 @@ class _ImageEditorScreenState
         widget.imagePath;
 
     _loadImageSize();
+    _loadFilterThumbnails();
   }
 
   Future<void> _loadImageSize() async {
@@ -240,6 +260,7 @@ class _ImageEditorScreenState
       });
 
       await _loadImageSize();
+      _loadFilterThumbnails();
     } catch (e) {
       _showError(
         'Rotation failed: $e',
@@ -287,6 +308,9 @@ class _ImageEditorScreenState
         _currentWorkingPath = preview;
         _hasUnsavedEdits = true;
       });
+
+      await _loadImageSize();
+      _loadFilterThumbnails();
     } catch (e) {
       _showError(
         'Flip failed: $e',
@@ -375,79 +399,48 @@ class _ImageEditorScreenState
     });
 
     try {
-      final file =
-          File(_baseImagePath);
-
-      final bytes =
-          await file.readAsBytes();
-
-      final croppedBytes = ScanFilterService.autoCrop(bytes);
-
-      final tempFile =
-          await _writeAutoCropFile(
-        croppedBytes,
-      );
-
-      final preview =
-          await _applyActiveFilterTo(
-        tempFile.path,
-      );
+      final corners =
+          await _editorService.detectDocumentCorners(_baseImagePath);
 
       if (!mounted) return;
 
       setState(() {
-        _baseImagePath =
-            tempFile.path;
-
-        _currentWorkingPath =
-            preview;
-
-        _hasUnsavedEdits = true;
-
-        _activeMode =
-            EditorMode.none;
-
-        _selectedCropRatio =
-            'Free';
-
-        _resetCropCorners();
+        _activeMode = EditorMode.crop;
+        _selectedCropRatio = 'Free';
+        _cropTopLeft = corners.topLeft;
+        _cropTopRight = corners.topRight;
+        _cropBottomRight = corners.bottomRight;
+        _cropBottomLeft = corners.bottomLeft;
       });
 
-      await _loadImageSize();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(
-          SnackBar(
-            content: const Row(
-              children: [
-                Icon(
-                  Icons.auto_awesome_rounded,
-                  color: Colors.white,
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: const Row(
+            children: [
+              Icon(
+                Icons.auto_awesome_rounded,
+                color: Colors.white,
+              ),
+              SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'Document corners detected. Drag corners to adjust.',
                 ),
-                SizedBox(width: 8),
-                Text(
-                  'Document automatically cropped',
-                ),
-              ],
-            ),
-            backgroundColor:
-                AppTheme.primaryColor,
-            behavior:
-                SnackBarBehavior.floating,
-            margin:
-                const EdgeInsets.all(16),
-            shape:
-                RoundedRectangleBorder(
-              borderRadius:
-                  BorderRadius.circular(14),
-            ),
+              ),
+            ],
           ),
-        );
-      }
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+      );
     } catch (e) {
       _showError(
-        'Auto Crop failed: $e',
+        'Auto-detect failed: $e',
       );
     } finally {
       if (mounted) {
@@ -456,24 +449,6 @@ class _ImageEditorScreenState
         });
       }
     }
-  }
-
-  Future<File> _writeAutoCropFile(
-    List<int> bytes,
-  ) async {
-    final directory =
-        Directory.systemTemp;
-
-    final file = File(
-      '${directory.path}/auto_crop_${DateTime.now().millisecondsSinceEpoch}.jpg',
-    );
-
-    await file.writeAsBytes(
-      bytes,
-      flush: true,
-    );
-
-    return file;
   }
 
   // ============================================================
@@ -552,20 +527,32 @@ class _ImageEditorScreenState
     });
 
     try {
-      // SIMPLE CROP:
-      // The four UI corners are always kept axis-aligned. We pass the
-      // normalized image coordinates to the service, which converts
-      // them to integer source-pixel boundaries and performs a direct
-      // copyCrop. No perspective transform, interpolation, stretching,
-      // padding, or resizing is involved.
-      final newBasePath =
-          await _editorService.cropImageNormalized(
-        _baseImagePath,
-        left: _cropTopLeft.dx,
-        top: _cropTopLeft.dy,
-        right: _cropTopRight.dx,
-        bottom: _cropBottomLeft.dy,
-      );
+      // If quad is skewed/rotated, use perspectiveCropQuad with rectification.
+      // If rectangular/axis-aligned, use fast lossless cropImageNormalized.
+      final isAxisAligned =
+          (_cropTopLeft.dy - _cropTopRight.dy).abs() < 0.005 &&
+          (_cropBottomLeft.dy - _cropBottomRight.dy).abs() < 0.005 &&
+          (_cropTopLeft.dx - _cropBottomLeft.dx).abs() < 0.005 &&
+          (_cropTopRight.dx - _cropBottomRight.dx).abs() < 0.005;
+
+      final String newBasePath;
+      if (isAxisAligned) {
+        newBasePath = await _editorService.cropImageNormalized(
+          _baseImagePath,
+          left: math.min(_cropTopLeft.dx, _cropBottomLeft.dx),
+          top: math.min(_cropTopLeft.dy, _cropTopRight.dy),
+          right: math.max(_cropTopRight.dx, _cropBottomRight.dx),
+          bottom: math.max(_cropBottomLeft.dy, _cropBottomRight.dy),
+        );
+      } else {
+        newBasePath = await _editorService.perspectiveCropQuad(
+          _baseImagePath,
+          topLeft: _cropTopLeft,
+          topRight: _cropTopRight,
+          bottomLeft: _cropBottomLeft,
+          bottomRight: _cropBottomRight,
+        );
+      }
 
       final preview =
           await _applyActiveFilterTo(
@@ -588,6 +575,7 @@ class _ImageEditorScreenState
       });
 
       await _loadImageSize();
+      _loadFilterThumbnails();
     } catch (e) {
       _showError(
         'Crop failed: $e',
@@ -804,92 +792,36 @@ class _ImageEditorScreenState
     final ratio = _ratioValue(_selectedCropRatio);
 
     if (ratio == null) {
-      // FREE MODE is a normal rectangular crop.
-      // All four corners remain axis-aligned:
-      //
-      //   TL -------- TR
-      //   |            |
-      //   |   CROP     |
-      //   |            |
-      //   BL -------- BR
-      //
-      // This is intentionally NOT a perspective/quad crop. Every
-      // screen movement is converted through the displayed image rect
-      // and ultimately becomes an integer source-pixel boundary.
-      final rect = _cropBoundingRect;
-
-      var left = rect.left;
-      var top = rect.top;
-      var right = rect.right;
-      var bottom = rect.bottom;
-
-      switch (handle) {
-        case _CropHandle.topLeft:
-          left += d.dx;
-          top += d.dy;
-          break;
-
-        case _CropHandle.topRight:
-          right += d.dx;
-          top += d.dy;
-          break;
-
-        case _CropHandle.bottomLeft:
-          left += d.dx;
-          bottom += d.dy;
-          break;
-
-        case _CropHandle.bottomRight:
-          right += d.dx;
-          bottom += d.dy;
-          break;
-      }
-
-      const minSize = 0.01;
-
-      left = left.clamp(0.0, 1.0 - minSize);
-      right = right.clamp(minSize, 1.0);
-      top = top.clamp(0.0, 1.0 - minSize);
-      bottom = bottom.clamp(minSize, 1.0);
-
-      // Preserve the dragged side while guaranteeing a valid rectangle.
-      if (right - left < minSize) {
-        switch (handle) {
-          case _CropHandle.topLeft:
-          case _CropHandle.bottomLeft:
-            left = right - minSize;
-            break;
-          case _CropHandle.topRight:
-          case _CropHandle.bottomRight:
-            right = left + minSize;
-            break;
-        }
-      }
-
-      if (bottom - top < minSize) {
-        switch (handle) {
-          case _CropHandle.topLeft:
-          case _CropHandle.topRight:
-            top = bottom - minSize;
-            break;
-          case _CropHandle.bottomLeft:
-          case _CropHandle.bottomRight:
-            bottom = top + minSize;
-            break;
-        }
-      }
-
-      left = left.clamp(0.0, 1.0 - minSize);
-      right = right.clamp(left + minSize, 1.0);
-      top = top.clamp(0.0, 1.0 - minSize);
-      bottom = bottom.clamp(top + minSize, 1.0);
-
+      // FREE MODE: Independent 4-corner perspective quad adjustment.
+      // Each corner can move freely anywhere within [0.0, 1.0].
       setState(() {
-        _setCropFromRect(
-          Rect.fromLTRB(left, top, right, bottom),
-        );
+        switch (handle) {
+          case _CropHandle.topLeft:
+            _cropTopLeft = Offset(
+              (_cropTopLeft.dx + d.dx).clamp(0.0, 1.0),
+              (_cropTopLeft.dy + d.dy).clamp(0.0, 1.0),
+            );
+            break;
+          case _CropHandle.topRight:
+            _cropTopRight = Offset(
+              (_cropTopRight.dx + d.dx).clamp(0.0, 1.0),
+              (_cropTopRight.dy + d.dy).clamp(0.0, 1.0),
+            );
+            break;
+          case _CropHandle.bottomLeft:
+            _cropBottomLeft = Offset(
+              (_cropBottomLeft.dx + d.dx).clamp(0.0, 1.0),
+              (_cropBottomLeft.dy + d.dy).clamp(0.0, 1.0),
+            );
+            break;
+          case _CropHandle.bottomRight:
+            _cropBottomRight = Offset(
+              (_cropBottomRight.dx + d.dx).clamp(0.0, 1.0),
+              (_cropBottomRight.dy + d.dy).clamp(0.0, 1.0),
+            );
+            break;
+        }
       });
-
       return;
     }
 
@@ -1782,13 +1714,6 @@ class _ImageEditorScreenState
               ),
             ),
 
-            Container(
-              color: Colors.black
-                  .withValues(
-                alpha: 0.48,
-              ),
-            ),
-
             Positioned.fill(
               child:
                   GestureDetector(
@@ -1953,52 +1878,51 @@ class _ImageEditorScreenState
             corner.dy * displayedRect.height;
 
     return Positioned(
-      left: left - 17,
-      top: top - 17,
-      child:
-          GestureDetector(
-        behavior:
-            HitTestBehavior.opaque,
-        onPanUpdate:
-            (details) {
+      left: left - 24,
+      top: top - 24,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onPanUpdate: (details) {
           _resizeCrop(
             handle,
             details.delta,
             size,
           );
         },
-        child:
-            Container(
-          width: 34,
-          height: 34,
-          decoration:
-              BoxDecoration(
-            color: Colors.white,
-            shape:
-                BoxShape.circle,
-            border:
-                Border.all(
-              color: AppTheme
-                  .primaryColor,
-              width: 3,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black
-                    .withValues(
-                  alpha: 0.30,
-                ),
-                blurRadius: 8,
+        child: Container(
+          width: 48,
+          height: 48,
+          alignment: Alignment.center,
+          child: Container(
+            width: 30,
+            height: 30,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: AppTheme.primaryColor,
+                width: 3.5,
               ),
-            ],
-          ),
-          child:
-              Icon(
-            Icons
-                .open_in_full_rounded,
-            size: 16,
-            color: AppTheme
-                .primaryColor,
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withValues(
+                    alpha: 0.35,
+                  ),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ],
+            ),
+            child: Center(
+              child: Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: AppTheme.primaryColor,
+                  shape: BoxShape.circle,
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -2441,44 +2365,57 @@ class _ImageEditorScreenState
                 ),
               ),
               const Spacer(),
-              Flexible(
-                child: FittedBox(
-                  fit: BoxFit.scaleDown,
-                  child: OutlinedButton.icon(
-                    onPressed:
-                        _handleAutoCrop,
-                    icon:
-                        const Icon(
-                      Icons
-                          .auto_awesome_rounded,
-                      size: 17,
+              Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  TextButton.icon(
+                    onPressed: () {
+                      setState(() {
+                        _selectedCropRatio = 'Free';
+                        _resetCropCorners();
+                      });
+                    },
+                    icon: const Icon(
+                      Icons.fullscreen_rounded,
+                      size: 18,
                     ),
-                    label:
-                        const Text(
-                      'Auto Crop',
-                    ),
-                    style:
-                        OutlinedButton
-                            .styleFrom(
-                      foregroundColor:
-                          AppTheme
-                              .primaryColor,
-                      side:
-                          const BorderSide(
-                        color: AppTheme
-                            .primaryColor,
-                      ),
-                      shape:
-                          RoundedRectangleBorder(
-                        borderRadius:
-                            BorderRadius
-                                .circular(
-                          12,
-                        ),
+                    label: const Text('Reset'),
+                    style: TextButton.styleFrom(
+                      foregroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 8,
+                        vertical: 4,
                       ),
                     ),
                   ),
-                ),
+                  const SizedBox(width: 4),
+                  ElevatedButton.icon(
+                    onPressed: _handleAutoCrop,
+                    icon: const Icon(
+                      Icons.auto_awesome_rounded,
+                      size: 16,
+                      color: Colors.white,
+                    ),
+                    label: const Text(
+                      'Auto Detect',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontWeight: FontWeight.w700,
+                        fontSize: 12,
+                      ),
+                    ),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppTheme.primaryColor,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 12,
+                        vertical: 7,
+                      ),
+                      shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ],
           ),
@@ -2681,10 +2618,10 @@ class _ImageEditorScreenState
                     padding:
                         const EdgeInsets
                             .only(
-                      right: 8,
+                      right: 10,
                     ),
                     child:
-                        _filterButton(
+                        _buildFilterCard(
                       ImageEditorService
                           .label(
                         filter,
@@ -2702,76 +2639,103 @@ class _ImageEditorScreenState
     );
   }
 
-  Widget _filterButton(
+  Widget _buildFilterCard(
     String label,
     ImageFilterType type,
     bool isDark,
   ) {
-    final selected =
-        _activeFilter == type;
+    final selected = _activeFilter == type;
+    final thumbBytes = _filterThumbnails?[type];
 
     return GestureDetector(
-      onTap: () =>
-          _handleFilter(
-        type,
-      ),
-      child:
-          AnimatedContainer(
-        duration:
-            const Duration(
-          milliseconds: 180,
-        ),
-        padding:
-            const EdgeInsets
-                .symmetric(
-          horizontal: 16,
-          vertical: 10,
-        ),
-        decoration:
-            BoxDecoration(
-          color: selected
-              ? AppTheme
-                  .primaryColor
-              : isDark
-                  ? AppTheme
-                      .cardDark
-                  : AppTheme
-                      .bgLight,
-          borderRadius:
-              BorderRadius.circular(
-            13,
-          ),
-          border:
-              Border.all(
-            color: selected
-                ? AppTheme
-                    .primaryColor
-                : Theme.of(
-                    context,
-                  )
-                    .colorScheme
-                    .outline
-                    .withValues(
-                    alpha: 0.16,
-                  ),
-          ),
-        ),
-        child:
+      onTap: () => _handleFilter(type),
+      child: AnimatedContainer(
+        duration: const Duration(milliseconds: 180),
+        width: 72,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 70,
+              height: 84,
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(
+                  color: selected
+                      ? AppTheme.primaryColor
+                      : (isDark ? AppTheme.dividerDark : AppTheme.dividerColor),
+                  width: selected ? 2.5 : 1,
+                ),
+                boxShadow: selected
+                    ? [
+                        BoxShadow(
+                          color: AppTheme.primaryColor.withValues(alpha: 0.35),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ]
+                    : null,
+              ),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(10),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    if (thumbBytes != null)
+                      Image.memory(
+                        thumbBytes,
+                        fit: BoxFit.cover,
+                      )
+                    else
+                      Container(
+                        color: isDark ? AppTheme.cardDark : AppTheme.bgLight,
+                        child: const Center(
+                          child: SizedBox(
+                            width: 18,
+                            height: 18,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 2,
+                              color: AppTheme.primaryColor,
+                            ),
+                          ),
+                        ),
+                      ),
+                    if (selected)
+                      Positioned(
+                        top: 4,
+                        right: 4,
+                        child: Container(
+                          padding: const EdgeInsets.all(2),
+                          decoration: const BoxDecoration(
+                            color: AppTheme.primaryColor,
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(
+                            Icons.check_rounded,
+                            size: 12,
+                            color: Colors.white,
+                          ),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 6),
             Text(
-          label,
-          style:
-              TextStyle(
-            fontSize: 12,
-            fontWeight:
-                FontWeight.w700,
-            color: selected
-                ? Colors.white
-                : Theme.of(
-                    context,
-                  )
-                    .colorScheme
-                    .onSurface,
-          ),
+              label,
+              textAlign: TextAlign.center,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                fontWeight: selected ? FontWeight.w700 : FontWeight.w500,
+                color: selected
+                    ? AppTheme.primaryColor
+                    : (isDark ? Colors.white70 : Colors.black87),
+              ),
+            ),
+          ],
         ),
       ),
     );
@@ -3071,7 +3035,7 @@ class _CropPainter
         Paint()
           ..color = Colors.black
               .withValues(
-            alpha: 0.35,
+            alpha: 0.45,
           );
 
     final full =
