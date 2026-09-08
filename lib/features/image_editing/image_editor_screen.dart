@@ -142,13 +142,19 @@ class _ImageEditorScreenState
 
   ImageFilterType _activeFilter =
       ImageFilterType.none;
+  ImageFilterType _stagedFilter =
+      ImageFilterType.none;
+  bool _isStagingPreview = false;
+  int _previewRequestId = 0;
 
   Map<ImageFilterType, Uint8List>? _filterThumbnails;
   bool _isLoadingThumbnails = false;
 
-  Future<void> _loadFilterThumbnails() async {
+  Future<void> _loadFilterThumbnails({bool showFeedback = false}) async {
     if (_isLoadingThumbnails) return;
-    _isLoadingThumbnails = true;
+    setState(() {
+      _isLoadingThumbnails = true;
+    });
     try {
       final thumbs =
           await _editorService.generateAllFilterThumbnails(_baseImagePath);
@@ -156,9 +162,34 @@ class _ImageEditorScreenState
       setState(() {
         _filterThumbnails = thumbs;
       });
+      if (showFeedback && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Row(
+              children: [
+                Icon(
+                  Icons.check_circle_rounded,
+                  color: Colors.white,
+                  size: 18,
+                ),
+                SizedBox(width: 8),
+                Text('All 21 filters downloaded and ready offline!'),
+              ],
+            ),
+            backgroundColor: AppTheme.primaryColor,
+            behavior: SnackBarBehavior.floating,
+            duration: Duration(seconds: 2),
+            margin: EdgeInsets.all(16),
+          ),
+        );
+      }
     } catch (_) {
     } finally {
-      _isLoadingThumbnails = false;
+      if (mounted) {
+        setState(() {
+          _isLoadingThumbnails = false;
+        });
+      }
     }
   }
 
@@ -328,27 +359,78 @@ class _ImageEditorScreenState
   // FILTER
   // ============================================================
 
+  // ============================================================
+  // FILTER PREVIEW & APPLY
+  // ============================================================
+
   Future<void> _handleFilter(
     ImageFilterType filter,
   ) async {
     if (_isProcessing) return;
 
+    setState(() {
+      _stagedFilter = filter;
+    });
+
     if (filter == ImageFilterType.none) {
       setState(() {
-        _activeFilter =
-            ImageFilterType.none;
-
-        // Restore the untouched (pre-filter) source instead of
-        // leaving whatever the last filter produced on screen.
-        _currentWorkingPath =
-            _baseImagePath;
-
-        _hasUnsavedEdits = true;
+        _currentWorkingPath = _baseImagePath;
       });
       return;
     }
 
-    if (_activeFilter == filter) {
+    final requestId = ++_previewRequestId;
+    setState(() {
+      _isStagingPreview = true;
+    });
+
+    try {
+      final newPath = await _editorService.applyFilterFastPreview(
+        _baseImagePath,
+        filter,
+      );
+
+      if (!mounted || requestId != _previewRequestId) return;
+
+      setState(() {
+        _currentWorkingPath = newPath;
+        _isStagingPreview = false;
+      });
+    } catch (e) {
+      if (mounted && requestId == _previewRequestId) {
+        setState(() {
+          _isStagingPreview = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleApplyFilter() async {
+    if (_isProcessing) return;
+
+    if (_stagedFilter == _activeFilter) {
+      setState(() {
+        _activeMode = EditorMode.none;
+      });
+      return;
+    }
+
+    if (_stagedFilter == ImageFilterType.none) {
+      setState(() {
+        _activeFilter = ImageFilterType.none;
+        _currentWorkingPath = _baseImagePath;
+        _hasUnsavedEdits = true;
+        _activeMode = EditorMode.none;
+      });
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Filter reset to Original'),
+          behavior: SnackBarBehavior.floating,
+          duration: Duration(seconds: 1),
+          margin: EdgeInsets.all(16),
+        ),
+      );
       return;
     }
 
@@ -357,27 +439,84 @@ class _ImageEditorScreenState
     });
 
     try {
-      // Always filter the original/base image, never the current
-      // (possibly already-filtered) preview -- otherwise switching
-      // B/W -> Grayscale would apply grayscale on top of B/W instead
-      // of computing grayscale fresh from the source.
-      final newPath =
-          await _editorService.applyFilter(
+      final newPath = await _editorService.applyFilter(
         _baseImagePath,
-        filter,
+        _stagedFilter,
+        maxDimension: 2560,
       );
 
       if (!mounted) return;
 
       setState(() {
         _currentWorkingPath = newPath;
-        _activeFilter = filter;
+        _activeFilter = _stagedFilter;
         _hasUnsavedEdits = true;
+        _activeMode = EditorMode.none;
       });
-    } catch (e) {
-      _showError(
-        'Filter application failed: $e',
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Row(
+            children: [
+              const Icon(
+                Icons.check_circle_rounded,
+                color: Colors.white,
+                size: 18,
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '${ImageEditorService.label(_activeFilter)} filter applied!',
+              ),
+            ],
+          ),
+          backgroundColor: AppTheme.primaryColor,
+          behavior: SnackBarBehavior.floating,
+          duration: const Duration(seconds: 2),
+          margin: const EdgeInsets.all(16),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
       );
+    } catch (e) {
+      _showError('Failed to apply filter: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _handleCancelFilter() async {
+    if (_stagedFilter == _activeFilter) {
+      setState(() {
+        _activeMode = EditorMode.none;
+      });
+      return;
+    }
+
+    setState(() {
+      _isProcessing = true;
+    });
+
+    try {
+      final restoredPath = await _applyActiveFilterTo(_baseImagePath);
+      if (!mounted) return;
+      setState(() {
+        _stagedFilter = _activeFilter;
+        _currentWorkingPath = restoredPath;
+        _activeMode = EditorMode.none;
+      });
+    } catch (_) {
+      if (mounted) {
+        setState(() {
+          _stagedFilter = _activeFilter;
+          _currentWorkingPath = _baseImagePath;
+          _activeMode = EditorMode.none;
+        });
+      }
     } finally {
       if (mounted) {
         setState(() {
@@ -949,7 +1088,12 @@ class _ImageEditorScreenState
   // SAVE
   // ============================================================
 
-  void _saveAndExit() {
+  Future<void> _saveAndExit() async {
+    if (_activeMode == EditorMode.filters &&
+        _stagedFilter != _activeFilter) {
+      await _handleApplyFilter();
+    }
+
     if (_hasUnsavedEdits) {
       context
           .read<ImageSelectionProvider>()
@@ -959,8 +1103,9 @@ class _ImageEditorScreenState
           );
     }
 
-    Navigator.of(context)
-        .pop(_currentWorkingPath);
+    if (mounted) {
+      Navigator.of(context).pop(_currentWorkingPath);
+    }
   }
 
   // ============================================================
@@ -1679,6 +1824,43 @@ class _ImageEditorScreenState
                   ),
                 ),
               ),
+            if (_isStagingPreview)
+              Positioned(
+                top: 14,
+                right: 14,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withValues(alpha: 0.65),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 12,
+                        height: 12,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Colors.white,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Previewing...',
+                        style: TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
           ],
         ),
       ),
@@ -2149,6 +2331,13 @@ class _ImageEditorScreenState
 
                 _resetCropCorners();
               }
+
+              if (mode == EditorMode.filters) {
+                _stagedFilter = _activeFilter;
+                if (_filterThumbnails == null) {
+                  _loadFilterThumbnails();
+                }
+              }
             });
           },
       child:
@@ -2582,21 +2771,119 @@ class _ImageEditorScreenState
               const SizedBox(
                 width: 7,
               ),
-              Text(
-                'Choose Filter',
-                style:
-                    TextStyle(
-                  fontWeight:
-                      FontWeight
-                          .w800,
-                  color:
-                      Theme.of(
-                    context,
-                  )
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    'Filters',
+                    style: TextStyle(
+                      fontWeight: FontWeight.w800,
+                      fontSize: 15,
+                      color: Theme.of(context).colorScheme.onSurface,
+                    ),
+                  ),
+                  Text(
+                    'Tap to preview • Tap Apply to save',
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context)
                           .colorScheme
-                          .onSurface,
-                ),
+                          .onSurface
+                          .withValues(alpha: 0.6),
+                    ),
+                  ),
+                ],
               ),
+              const Spacer(),
+              if (_isLoadingThumbnails)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: AppTheme.primaryColor.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                      SizedBox(width: 6),
+                      Text(
+                        'Preparing...',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: AppTheme.primaryColor,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else if (_filterThumbnails != null)
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 5,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.green.withValues(alpha: 0.12),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: const Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(
+                        Icons.check_circle_rounded,
+                        size: 15,
+                        color: Colors.green,
+                      ),
+                      SizedBox(width: 5),
+                      Text(
+                        '21 Ready',
+                        style: TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.w700,
+                          color: Colors.green,
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              else
+                OutlinedButton.icon(
+                  onPressed: () => _loadFilterThumbnails(showFeedback: true),
+                  icon: const Icon(
+                    Icons.download_rounded,
+                    size: 15,
+                  ),
+                  label: const Text(
+                    'Download Previews',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: AppTheme.primaryColor,
+                    side: const BorderSide(color: AppTheme.primaryColor),
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
             ],
           ),
           const SizedBox(
@@ -2634,6 +2921,40 @@ class _ImageEditorScreenState
               ).toList(),
             ),
           ),
+          const SizedBox(height: 12),
+          Row(
+            children: [
+              Expanded(
+                child: OutlinedButton(
+                  onPressed: _handleCancelFilter,
+                  child: const Text('Cancel'),
+                ),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: ElevatedButton.icon(
+                  onPressed: _handleApplyFilter,
+                  icon: const Icon(
+                    Icons.check_rounded,
+                    size: 18,
+                  ),
+                  label: const Text(
+                    'Apply Filter',
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(
+                      vertical: 12,
+                    ),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(
+                        13,
+                      ),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
         ],
       ),
     );
@@ -2644,7 +2965,7 @@ class _ImageEditorScreenState
     ImageFilterType type,
     bool isDark,
   ) {
-    final selected = _activeFilter == type;
+    final selected = _stagedFilter == type;
     final thumbBytes = _filterThumbnails?[type];
 
     return GestureDetector(
