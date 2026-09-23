@@ -1,8 +1,11 @@
+import 'dart:io';
 import 'dart:isolate';
 import 'dart:math' as math;
 import 'dart:typed_data';
-
+import 'package:google_mlkit_text_recognition/google_mlkit_text_recognition.dart';
 import 'package:image/image.dart' as img;
+import 'package:path_provider/path_provider.dart';
+import 'package:pdf/widgets.dart' as pw;
 
 enum ScanFilter {
   original,
@@ -59,18 +62,13 @@ class _IsolatePool {
   ) async {
     final receivePort = ReceivePort();
 
-    // Use a sendPort from the pool
     if (_sendPorts.isEmpty) {
       throw Exception('Isolate pool not initialized');
     }
 
-    // Round-robin so both isolates in the pool actually get used
     final sendPort = _sendPorts[_nextIndex];
     _nextIndex = (_nextIndex + 1) % _sendPorts.length;
 
-    // IMPORTANT: send a List, not a Record — the isolate entry point
-    // checks `message is List`, so a Record would never match and the
-    // isolate would never reply (this was causing the hang/crash).
     sendPort.send([filter, bytes, receivePort.sendPort]);
 
     final result = await receivePort.first as Uint8List;
@@ -102,7 +100,7 @@ void _isolateEntryPoint(SendPort sendPort) {
         final result = ScanFilterService._applyFilterDirect(filter, bytes);
         replyPort.send(result);
       } catch (e) {
-        replyPort.send(bytes); // Return original if error
+        replyPort.send(bytes);
       }
     }
   });
@@ -145,6 +143,8 @@ final _cache = _FilterCache();
 /// ============================================================
 
 class ScanFilterService {
+  static final TextRecognizer _textRecognizer = TextRecognizer();
+
   // Initialize pool once
   static Future<void> initialize() async {
     await _pool.init();
@@ -153,6 +153,52 @@ class ScanFilterService {
   static void dispose() {
     _pool.dispose();
     _cache.clear();
+    _textRecognizer.close();
+  }
+
+  // ============================================================
+  // OCR & PDF EXPORT FEATURES
+  // ============================================================
+
+  /// Uint8List (Image Bytes) se text extract karne ke liye
+  static Future<String> extractTextFromBytes(Uint8List imageBytes) async {
+    final tempDir = await getTemporaryDirectory();
+    final tempFile = File('${tempDir.path}/temp_ocr_image.jpg');
+    await tempFile.writeAsBytes(imageBytes);
+
+    final inputImage = InputImage.fromFile(tempFile);
+    final recognizedText = await _textRecognizer.processImage(inputImage);
+    
+    // Clean up temporary file
+    if (await tempFile.exists()) {
+      await tempFile.delete();
+    }
+
+    return recognizedText.text;
+  }
+
+  /// Text se PDF generate karke file return karne ke liye
+  static Future<File> generatePdfFromText(String text) async {
+    final pdf = pw.Document();
+
+    pdf.addPage(
+      pw.Page(
+        build: (pw.Context context) {
+          return pw.Padding(
+            padding: const pw.EdgeInsets.all(20),
+            child: pw.Text(
+              text,
+              style: const pw.TextStyle(fontSize: 14),
+            ),
+          );
+        },
+      ),
+    );
+
+    final outputDir = await getApplicationDocumentsDirectory();
+    final file = File("${outputDir.path}/DocVault_Text_${DateTime.now().millisecondsSinceEpoch}.pdf");
+    await file.writeAsBytes(await pdf.save());
+    return file;
   }
 
   // ============================================================
@@ -294,31 +340,18 @@ class ScanFilterService {
   // ============================================================
   // MAIN FILTER APPLICATION - WITH CACHING
   // ============================================================
-  //
-  // IMPORTANT (overlap fix): `inputBytes` passed here must ALWAYS be
-  // the ORIGINAL, unmodified image bytes — never the result of a
-  // previously applied filter. If your UI/widget code keeps
-  // overwriting the "current image" variable with each filter result
-  // and then passes that into apply() again, filters will visually
-  // stack/overlap on top of each other. Keep a separate, never
-  // mutated `originalBytes` variable and always call:
-  //   apply(selectedFilter, originalBytes)
-  // ============================================================
 
   static Future<Uint8List> apply(
     ScanFilter filter,
     Uint8List inputBytes,
   ) async {
-    // Check cache first
     final cached = _cache.get(filter, inputBytes);
     if (cached != null) {
       return cached;
     }
 
-    // Use isolate pool for processing
     final result = await _pool.execute(filter, inputBytes);
 
-    // Cache the result
     _cache.set(filter, inputBytes, result);
 
     return result;

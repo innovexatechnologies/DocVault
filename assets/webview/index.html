@@ -8,6 +8,14 @@
   >
   <title>DocVault Document Viewer</title>
 
+  <!-- PDF.js Library for PDF Rendering -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script>
+    if (window.pdfjsLib) {
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+
   <style>
     * {
       box-sizing: border-box;
@@ -106,10 +114,6 @@
 
       position: relative;
 
-      /*
-       * Keep the original document page dimensions.
-       * JavaScript scales the complete page to fit the screen.
-       */
       flex-shrink: 0;
 
       transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
@@ -120,10 +124,6 @@
         0 8px 30px rgba(0, 0, 0, 0.5) !important;
     }
 
-    /*
-     * Prevent the document content itself from causing
-     * horizontal scrolling.
-     */
     .docx-wrapper table,
     .docx-wrapper img,
     .docx-wrapper svg,
@@ -135,10 +135,7 @@
       height: auto;
     }
 
-    /* ------------------------------------------------------------- */
-    /* DOCX Reflow / Reader Mode                                    */
-    /* ------------------------------------------------------------- */
-
+    /* Reflow / Reader Mode */
     .docx-wrapper.reflow-mode {
       width: 100% !important;
       max-width: 100% !important;
@@ -161,6 +158,25 @@
       transform: none !important;
 
       overflow-x: auto !important;
+    }
+
+    /* ============================================================= */
+    /* PDF STYLING                                                   */
+    /* ============================================================= */
+
+    .pdf-canvas-page {
+      display: block;
+      margin: 10px auto 18px auto;
+      max-width: 100% !important;
+      height: auto !important;
+      border-radius: 8px;
+      box-shadow: 0 6px 24px rgba(0, 0, 0, 0.12);
+      background: #FFFFFF;
+      transition: transform 0.2s ease;
+    }
+
+    body.dark-mode .pdf-canvas-page {
+      box-shadow: 0 8px 30px rgba(0, 0, 0, 0.5);
     }
 
     /* ============================================================= */
@@ -197,9 +213,6 @@
 
       position: relative;
 
-      /*
-       * Never allow the card to become wider than the viewport.
-       */
       max-width: calc(100vw - 20px) !important;
 
       flex-shrink: 0;
@@ -214,10 +227,6 @@
         0 8px 30px rgba(0, 0, 0, 0.5);
     }
 
-    /*
-     * PPT list mode:
-     * Every slide stays one below another.
-     */
     .pptx-preview-container,
     .pptx-wrapper {
       flex-direction: column !important;
@@ -250,16 +259,12 @@
       letter-spacing: 0.3px;
     }
 
-    /* Hide default PPTX internal buttons */
     .pptx-wrapper .pptx-next,
     .pptx-wrapper .pptx-pre,
     .pptx-wrapper .pptx-pagination {
       display: none !important;
     }
 
-    /*
-     * Keep PPT content inside the available slide width.
-     */
     .pptx-wrapper canvas,
     .pptx-wrapper img,
     .pptx-wrapper svg {
@@ -313,15 +318,12 @@
     // GLOBAL STATE
     // =============================================================
 
-    let currentDocType = null; // 'docx' or 'pptx'
+    let currentDocType = null; // 'docx', 'pptx', or 'pdf'
 
     let currentZoom = 1.0;
 
     let currentViewMode = 'page'; // 'page' | 'reflow'
 
-    /*
-     * PPT now opens in vertical list mode.
-     */
     let currentSlideMode = 'list'; // 'slide' | 'list'
 
     let pptxPreviewInstance = null;
@@ -334,13 +336,6 @@
 
     let base64Chunks = [];
 
-    /*
-     * IMPORTANT:
-     * Keep the original PPTX base64 data.
-     *
-     * This fixes the old problem where setSlideMode()
-     * called renderPptx('') and caused a blank/error state.
-     */
     let pptxBase64Data = null;
 
 
@@ -398,7 +393,7 @@
     // CHUNKED RECEIVER FOR LARGE FILES
     // =============================================================
 
-    function receiveDocChunk(chunk, isFirst, isLast, isPpt) {
+    function receiveDocChunk(chunk, isFirst, isLast, docType) {
       if (isFirst) {
         base64Chunks = [];
       }
@@ -410,11 +405,81 @@
 
         base64Chunks = [];
 
-        if (isPpt) {
+        // docType handling (boolean true/isPpt support or explicit string)
+        if (docType === true || docType === 'pptx') {
           renderPptx(fullBase64);
+        } else if (docType === 'pdf') {
+          renderPdf(fullBase64);
         } else {
           renderDocx(fullBase64);
         }
+      }
+    }
+
+
+    // =============================================================
+    // PDF RENDERING
+    // =============================================================
+
+    async function renderPdf(base64Data) {
+      currentDocType = 'pdf';
+
+      pptxPreviewInstance = null;
+      pptxData = null;
+      pptxBase64Data = null;
+
+      try {
+        if (!base64Data || base64Data.length === 0) {
+          throw new Error('PDF data is empty.');
+        }
+
+        const buffer = base64ToArrayBuffer(base64Data);
+
+        const container = document.getElementById('container');
+        container.innerHTML = '';
+
+        if (typeof pdfjsLib === 'undefined') {
+          throw new Error('PDF.js library is not loaded properly.');
+        }
+
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+        const numPages = pdf.numPages;
+
+        notifyPageCount(numPages);
+
+        const screenWidth = window.innerWidth || document.documentElement.clientWidth || 360;
+        const targetWidth = Math.max(280, screenWidth - 20);
+
+        for (let pageNum = 1; pageNum <= numPages; pageNum++) {
+          const page = await pdf.getPage(pageNum);
+          const unscaledViewport = page.getViewport({ scale: 1.0 });
+
+          const scale = (targetWidth / unscaledViewport.width) * currentZoom;
+          const viewport = page.getViewport({ scale: scale });
+
+          const canvas = document.createElement('canvas');
+          canvas.className = 'pdf-canvas-page';
+          const context = canvas.getContext('2d');
+
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          container.appendChild(canvas);
+
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise;
+        }
+
+        notifySuccess();
+
+      } catch (err) {
+        notifyError(
+          err && err.message
+            ? err.message
+            : String(err)
+        );
       }
     }
 
@@ -426,9 +491,6 @@
     async function renderDocx(base64Data) {
       currentDocType = 'docx';
 
-      /*
-       * Reset PPT state when opening DOCX.
-       */
       pptxPreviewInstance = null;
       pptxData = null;
       pptxBase64Data = null;
@@ -441,50 +503,27 @@
         const buffer = base64ToArrayBuffer(base64Data);
 
         const container = document.getElementById('container');
-
-        /*
-         * Clear previous document completely.
-         */
         container.innerHTML = '';
 
-        /*
-         * Render DOCX.
-         */
         await docx.renderAsync(
           buffer,
           container,
           null,
           {
             inWrapper: true,
-
-            /*
-             * Keep original page size.
-             * JavaScript will fit the complete page to screen width.
-             */
             ignoreWidth: false,
             ignoreHeight: false,
-
             breakPages: true,
-
             trimXmlDeclaration: true,
-
             useBase64URL: true,
-
             renderChanges: false,
-
             renderHeaders: true,
-
             renderFooters: true,
-
             renderFootnotes: true,
-
             renderEndnotes: true
           }
         );
 
-        /*
-         * Find rendered pages.
-         */
         const pages = document.querySelectorAll(
           '.docx-wrapper > section.docx, section.docx'
         );
@@ -493,14 +532,8 @@
 
         notifyPageCount(count);
 
-        /*
-         * Fit complete pages inside available width.
-         */
         applyDocxPageScaling();
 
-        /*
-         * Make sure resize does not create duplicate listeners.
-         */
         window.removeEventListener(
           'resize',
           applyDocxPageScaling
@@ -549,16 +582,8 @@
         document.documentElement.clientWidth ||
         360;
 
-      /*
-       * Keep a small margin on both sides.
-       */
       const targetWidth =
         Math.max(280, screenWidth - 20);
-
-
-      // -----------------------------------------------------------
-      // REFLOW MODE
-      // -----------------------------------------------------------
 
       if (currentViewMode === 'reflow') {
         if (wrapper) {
@@ -583,20 +608,11 @@
         return;
       }
 
-
-      // -----------------------------------------------------------
-      // NORMAL PAGE MODE
-      // -----------------------------------------------------------
-
       if (wrapper) {
         wrapper.classList.remove('reflow-mode');
       }
 
-
       pages.forEach((section) => {
-        /*
-         * Create scaler wrapper if needed.
-         */
         let scaler = section.parentElement;
 
         if (
@@ -615,59 +631,26 @@
           scaler.appendChild(section);
         }
 
-
-        /*
-         * First remove transform so we can measure
-         * the original/native page dimensions.
-         */
         section.style.transform = 'none';
 
         section.style.transformOrigin =
           'top center';
 
-
-        /*
-         * Measure original page.
-         */
         const nativeWidth =
           section.offsetWidth || 794;
 
         const nativeHeight =
           section.offsetHeight || 1123;
 
-
-        /*
-         * Fit the COMPLETE page inside available width.
-         *
-         * We deliberately do NOT use cover/cropping.
-         *
-         * The entire document page remains visible.
-         */
         const widthScale =
           targetWidth / nativeWidth;
 
-
-        /*
-         * Respect Flutter/WebView zoom.
-         */
         const finalScale =
           widthScale * currentZoom;
 
-
-        /*
-         * Apply scale.
-         */
         section.style.transform =
           'scale(' + finalScale + ')';
 
-
-        /*
-         * IMPORTANT:
-         * Reserve the actual scaled height.
-         *
-         * Without this, the next page can overlap
-         * or the page can appear blank/cut.
-         */
         scaler.style.width =
           Math.round(
             nativeWidth * finalScale
@@ -707,17 +690,10 @@
       currentDocType = 'pptx';
 
       try {
-        /*
-         * Only replace stored data when actual data
-         * has been supplied.
-         */
         if (base64Data && base64Data.length > 0) {
           pptxBase64Data = base64Data;
         }
 
-        /*
-         * If no new data was supplied, use the stored data.
-         */
         const dataToRender =
           base64Data && base64Data.length > 0
             ? base64Data
@@ -727,22 +703,14 @@
           throw new Error('PPTX data is empty.');
         }
 
-
         const buffer =
           base64ToArrayBuffer(dataToRender);
 
         const container =
           document.getElementById('container');
 
-        /*
-         * Clear previous document.
-         */
         container.innerHTML = '';
 
-
-        /*
-         * Calculate available width.
-         */
         const screenWidth =
           window.innerWidth ||
           document.documentElement.clientWidth ||
@@ -751,46 +719,25 @@
         const targetWidth =
           Math.max(280, screenWidth - 20);
 
-
-        /*
-         * Standard 16:9 slide ratio.
-         */
         const targetHeight =
           Math.round(
             targetWidth * (9 / 16)
           );
 
-
-        /*
-         * Initialize PPTX preview.
-         *
-         * currentSlideMode is now "list" by default.
-         */
         pptxPreviewInstance =
           pptxPreview.init(
             container,
             {
               width: targetWidth,
-
               height: targetHeight,
-
               mode: currentSlideMode
             }
           );
 
-
-        /*
-         * Render PPTX.
-         */
         pptxData =
           await pptxPreviewInstance.preview(
             buffer
           );
-
-
-        // ---------------------------------------------------------
-        // Determine slide count
-        // ---------------------------------------------------------
 
         let slideCount = 1;
 
@@ -813,37 +760,14 @@
           }
         }
 
-
-        totalSlidesCount =
-          slideCount;
-
+        totalSlidesCount = slideCount;
         currentSlideIndex = 0;
 
+        notifyPageCount(slideCount);
+        notifySlideChanged(1, slideCount);
 
-        notifyPageCount(
-          slideCount
-        );
-
-        notifySlideChanged(
-          1,
-          slideCount
-        );
-
-
-        /*
-         * Style the generated PPT DOM.
-         */
-        stylePptxDom(
-          targetWidth,
-          targetHeight
-        );
-
-
-        /*
-         * Swipe is only active in slide mode.
-         */
+        stylePptxDom(targetWidth, targetHeight);
         setupSwipeGestures();
-
 
         notifySuccess();
 
@@ -867,28 +791,19 @@
           '.pptx-wrapper, .slide, .pptx-slide, canvas'
         );
 
-
       slides.forEach((el) => {
-        /*
-         * Never allow the generated content to exceed
-         * the available viewport width.
-         */
-        el.style.maxWidth =
-          '100%';
+        el.style.maxWidth = '100%';
       });
-
 
       const wrapper =
         document.querySelector(
           '.pptx-wrapper'
         );
 
-
       if (wrapper) {
         wrapper.classList.add(
           'pptx-slide-card'
         );
-
 
         wrapper.style.width =
           Math.min(
@@ -896,13 +811,6 @@
             window.innerWidth - 20
           ) + 'px';
 
-
-        /*
-         * Slide mode = one fixed slide.
-         *
-         * List mode = natural height so all slides
-         * can appear vertically.
-         */
         if (currentSlideMode === 'slide') {
           wrapper.style.height =
             height + 'px';
@@ -920,7 +828,6 @@
 
     function setupSwipeGestures() {
       let touchStartX = 0;
-
       let touchStartY = 0;
 
       const container =
@@ -928,16 +835,11 @@
           'container'
         );
 
-
-      /*
-       * No horizontal swipe behavior in list mode.
-       */
       if (
         currentSlideMode !== 'slide'
       ) {
         return;
       }
-
 
       container.addEventListener(
         'touchstart',
@@ -948,11 +850,8 @@
           touchStartY =
             e.changedTouches[0].screenY;
         },
-        {
-          passive: true
-        }
+        { passive: true }
       );
-
 
       container.addEventListener(
         'touchend',
@@ -964,7 +863,6 @@
             return;
           }
 
-
           const diffX =
             e.changedTouches[0].screenX -
             touchStartX;
@@ -972,7 +870,6 @@
           const diffY =
             e.changedTouches[0].screenY -
             touchStartY;
-
 
           if (
             Math.abs(diffX) >
@@ -986,9 +883,7 @@
             }
           }
         },
-        {
-          passive: true
-        }
+        { passive: true }
       );
     }
 
@@ -1005,13 +900,11 @@
         return;
       }
 
-
       if (
         currentSlideIndex <
         totalSlidesCount - 1
       ) {
         currentSlideIndex++;
-
 
         if (
           typeof pptxPreviewInstance.renderSingleSlide ===
@@ -1020,7 +913,6 @@
           pptxPreviewInstance.renderSingleSlide(
             currentSlideIndex
           );
-
         } else if (
           typeof pptxPreviewInstance.renderNextSlide ===
           'function'
@@ -1028,14 +920,12 @@
           pptxPreviewInstance.renderNextSlide();
         }
 
-
         notifySlideChanged(
           currentSlideIndex + 1,
           totalSlidesCount
         );
       }
     }
-
 
     function prevSlide() {
       if (
@@ -1045,10 +935,8 @@
         return;
       }
 
-
       if (currentSlideIndex > 0) {
         currentSlideIndex--;
-
 
         if (
           typeof pptxPreviewInstance.renderSingleSlide ===
@@ -1057,14 +945,12 @@
           pptxPreviewInstance.renderSingleSlide(
             currentSlideIndex
           );
-
         } else if (
           typeof pptxPreviewInstance.renderPreSlide ===
           'function'
         ) {
           pptxPreviewInstance.renderPreSlide();
         }
-
 
         notifySlideChanged(
           currentSlideIndex + 1,
@@ -1073,7 +959,6 @@
       }
     }
 
-
     function goToSlide(index) {
       if (
         currentDocType !== 'pptx' ||
@@ -1081,7 +966,6 @@
       ) {
         return;
       }
-
 
       const idx =
         Math.max(
@@ -1092,10 +976,7 @@
           )
         );
 
-
-      currentSlideIndex =
-        idx;
-
+      currentSlideIndex = idx;
 
       if (
         typeof pptxPreviewInstance.renderSingleSlide ===
@@ -1105,7 +986,6 @@
           currentSlideIndex
         );
       }
-
 
       notifySlideChanged(
         currentSlideIndex + 1,
@@ -1128,49 +1008,22 @@
           )
         );
 
-
-      if (
-        currentDocType === 'docx'
-      ) {
+      if (currentDocType === 'docx') {
         applyDocxPageScaling();
       }
     }
-
 
     function setViewMode(mode) {
-      currentViewMode =
-        mode; // 'page' or 'reflow'
+      currentViewMode = mode;
 
-
-      if (
-        currentDocType === 'docx'
-      ) {
+      if (currentDocType === 'docx') {
         applyDocxPageScaling();
       }
     }
 
-
-    // =============================================================
-    // PPTX SLIDE MODE
-    // =============================================================
-
     function setSlideMode(mode) {
-      currentSlideMode =
-        mode; // 'slide' or 'list'
+      currentSlideMode = mode;
 
-
-      /*
-       * IMPORTANT FIX:
-       *
-       * Previously this used:
-       *
-       * renderPptx('');
-       *
-       * which sent empty data and could cause
-       * a blank PPT viewer.
-       *
-       * Now we reuse the original PPTX data.
-       */
       if (
         currentDocType === 'pptx' &&
         pptxBase64Data
@@ -1188,13 +1041,9 @@
 
     function setTheme(theme) {
       if (theme === 'dark') {
-        document.body.classList.add(
-          'dark-mode'
-        );
+        document.body.classList.add('dark-mode');
       } else {
-        document.body.classList.remove(
-          'dark-mode'
-        );
+        document.body.classList.remove('dark-mode');
       }
     }
   </script>
