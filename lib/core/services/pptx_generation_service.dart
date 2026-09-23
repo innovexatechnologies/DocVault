@@ -18,16 +18,12 @@ class PptxGenerationService {
   ///
   /// FEATURES:
   /// - Every image becomes one slide.
-  /// - STANDARD WIDESCREEN 16:9 slides - a real PowerPoint deck that
-  ///   fills the screen when presenting (the CamScanner / MS Office
-  ///   "scan to slides" look), NOT a PDF-style portrait page.
-  /// - Images fill the COMPLETE slide edge-to-edge (full-bleed).
-  /// - No white bars / letterboxing around the image.
+  /// - STANDARD WIDESCREEN 16:9 slides.
   /// - Images are NEVER stretched or distorted.
-  /// - When the image ratio matches the slide (16:9) it is placed with
-  ///   ZERO cropping.
-  /// - For other ratios a centered cover-crop keeps the full-bleed look.
-  /// - White slide background is used behind the full-bleed image.
+  /// - The COMPLETE image is visible on every slide.
+  /// - No part of the image is cropped.
+  /// - Images are centered when their aspect ratio differs from 16:9.
+  /// - White slide background is used behind the image.
   /// - Large images are resized for performance.
   /// - JPEG quality is optimized for PPTX size/quality.
   /// - Heavy processing runs in a background isolate.
@@ -157,11 +153,7 @@ Uint8List _generatePptxInBackground(
   // ==========================================================================
   // POWERPOINT SLIDE SIZE
   //
-  // STANDARD WIDESCREEN 16:9 (12192000 x 6858000 EMU).
-  //
-  // This is the default modern PowerPoint slide size. The generated deck is
-  // a real PPT (slides), not a PDF-style portrait page. Every image fills
-  // the complete slide edge-to-edge, so there are no white margins.
+  // STANDARD WIDESCREEN 16:9
   // ==========================================================================
 
   const int slideWidthEmu = 12192000;
@@ -245,10 +237,6 @@ Uint8List _generatePptxInBackground(
 
     // ------------------------------------------------------------------------
     // READ IMAGE
-    //
-    // File.readAsBytesSync() returns Uint8List.
-    // We explicitly keep the type as Uint8List because image package
-    // decodeImage/decodeNamedImage expects Uint8List.
     // ------------------------------------------------------------------------
 
     final Uint8List bytes =
@@ -262,15 +250,6 @@ Uint8List _generatePptxInBackground(
 
     // ------------------------------------------------------------------------
     // DECODE IMAGE
-    //
-    // decodeNamedImage() uses the file extension to select the decoder.
-    //
-    // Example:
-    // .jpg  -> JPEG decoder
-    // .png  -> PNG decoder
-    // .webp -> WebP decoder
-    //
-    // This avoids the List<int> vs Uint8List problem.
     // ------------------------------------------------------------------------
 
     img.Image? decoded =
@@ -380,14 +359,7 @@ Uint8List _generatePptxInBackground(
     // ==========================================================================
     // PIXELS -> EMU
     //
-    // 96 DPI:
-    //
-    // 1 inch = 96 pixels
-    // 1 inch = 914400 EMU
-    //
-    // Therefore:
-    //
-    // 1 pixel = 9525 EMU
+    // 1 pixel = 9525 EMU at 96 DPI.
     // ==========================================================================
 
     final double imageWidthEmu =
@@ -404,105 +376,74 @@ Uint8List _generatePptxInBackground(
     }
 
     // ==========================================================================
-    // FULL-PAGE PLACEMENT
+    // FULL IMAGE PLACEMENT
     //
-    // The image ALWAYS fills the complete slide (CamScanner / MS Office view).
+    // IMPORTANT:
     //
-    // - If the image matches the 16:9 slide aspect ratio it exactly covers the
-    //   slide: NO crop and NO gap.
-    // - If the ratio differs (e.g. a portrait document), a centered cover-fit
-    //   is used instead: the image is scaled up until the whole slide is
-    //   covered. The overflow extending past the slide edges is clipped by the
-    //   slide boundary, so no white bar can ever appear.
+    // Use CONTAIN / FIT instead of COVER.
     //
-    // The image is NEVER stretched or distorted.
+    // This guarantees:
+    // - The complete image is visible.
+    // - No text is cropped.
+    // - No part of the document is cut off.
+    // - Original aspect ratio is preserved.
+    // - The image is never stretched or distorted.
+    //
+    // If the image ratio is different from 16:9, empty space may remain
+    // around the image. This is intentional because showing the complete
+    // image is more important than cropping it.
     // ==========================================================================
 
-    final double slideAspect =
+    final double scaleX =
         slideWidthEmu /
-            slideHeightEmu;
+            imageWidthEmu;
 
-    final double imageAspect =
-        imageWidthEmu /
+    final double scaleY =
+        slideHeightEmu /
             imageHeightEmu;
 
-    const double ratioTolerance = 0.01;
+    // Use the SMALLER scale so the ENTIRE image fits inside the slide.
+    final double fitScale =
+        scaleX < scaleY
+            ? scaleX
+            : scaleY;
 
-    final double aspectDifference =
-        (imageAspect - slideAspect)
-                .abs() /
-            slideAspect;
-
-    int renderedWidthEmu;
-    int renderedHeightEmu;
-    int offsetX;
-    int offsetY;
-
-    if (aspectDifference <= ratioTolerance) {
-      // ----------------------------------------------------------------------
-      // FULL-PAGE MATCH
-      //
-      // Image covers the slide exactly - same look as CamScanner / MS Office.
-      // ----------------------------------------------------------------------
-
-      renderedWidthEmu = slideWidthEmu;
-      renderedHeightEmu = slideHeightEmu;
-      offsetX = 0;
-      offsetY = 0;
-    } else {
-      // ----------------------------------------------------------------------
-      // COVER-FIT
-      //
-      // Image is scaled so the complete slide stays covered. The overflow
-      // outside the slide is clipped, so no white bar can appear.
-      // ----------------------------------------------------------------------
-
-      final double scaleX =
-          slideWidthEmu /
-              imageWidthEmu;
-
-      final double scaleY =
-          slideHeightEmu /
-              imageHeightEmu;
-
-      final double coverScale =
-          scaleX > scaleY
-              ? scaleX
-              : scaleY;
-
-      if (coverScale <= 0) {
-        throw Exception(
-          'Invalid image scale: $imagePath',
-        );
-      }
-
-      renderedWidthEmu =
-          (imageWidthEmu * coverScale)
-              .round();
-
-      renderedHeightEmu =
-          (imageHeightEmu * coverScale)
-              .round();
-
-      if (renderedWidthEmu <= 0 ||
-          renderedHeightEmu <= 0) {
-        throw Exception(
-          'Invalid rendered image dimensions: $imagePath',
-        );
-      }
-
-      offsetX =
-          ((slideWidthEmu -
-                      renderedWidthEmu) /
-                  2)
-              .round();
-
-      offsetY =
-          ((slideHeightEmu -
-                      renderedHeightEmu) /
-                  2)
-              .round();
+    if (fitScale <= 0) {
+      throw Exception(
+        'Invalid image scale: $imagePath',
+      );
     }
+
+    final int renderedWidthEmu =
+        (imageWidthEmu * fitScale)
+            .round();
+
+    final int renderedHeightEmu =
+        (imageHeightEmu * fitScale)
+            .round();
+
+    if (renderedWidthEmu <= 0 ||
+        renderedHeightEmu <= 0) {
+      throw Exception(
+        'Invalid rendered image dimensions: $imagePath',
+      );
+    }
+
+    // --------------------------------------------------------------------------
+    // CENTER THE COMPLETE IMAGE ON THE SLIDE
+    // --------------------------------------------------------------------------
+
+    final int offsetX =
+        ((slideWidthEmu -
+                    renderedWidthEmu) /
+                2)
+            .round();
+
+    final int offsetY =
+        ((slideHeightEmu -
+                    renderedHeightEmu) /
+                2)
+            .round();
 
     // ==========================================================================
     // ADD IMAGE TO PPTX
@@ -612,19 +553,11 @@ String _buildContentTypesXml(
     'xmlns="http://schemas.openxmlformats.org/package/2006/content-types">',
   );
 
-  // --------------------------------------------------------------------------
-  // RELATIONSHIPS
-  // --------------------------------------------------------------------------
-
   sb.writeln(
     '<Default '
     'Extension="rels" '
     'ContentType="application/vnd.openxmlformats-package.relationships+xml"/>',
   );
-
-  // --------------------------------------------------------------------------
-  // XML
-  // --------------------------------------------------------------------------
 
   sb.writeln(
     '<Default '
@@ -632,19 +565,11 @@ String _buildContentTypesXml(
     'ContentType="application/xml"/>',
   );
 
-  // --------------------------------------------------------------------------
-  // JPEG
-  // --------------------------------------------------------------------------
-
   sb.writeln(
     '<Default '
     'Extension="jpeg" '
     'ContentType="image/jpeg"/>',
   );
-
-  // --------------------------------------------------------------------------
-  // PRESENTATION
-  // --------------------------------------------------------------------------
 
   sb.writeln(
     '<Override '
@@ -652,19 +577,11 @@ String _buildContentTypesXml(
     'ContentType="application/vnd.openxmlformats-officedocument.presentationml.presentation.main+xml"/>',
   );
 
-  // --------------------------------------------------------------------------
-  // SLIDE MASTER
-  // --------------------------------------------------------------------------
-
   sb.writeln(
     '<Override '
     'PartName="/ppt/slideMasters/slideMaster1.xml" '
     'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideMaster+xml"/>',
   );
-
-  // --------------------------------------------------------------------------
-  // SLIDE LAYOUT
-  // --------------------------------------------------------------------------
 
   sb.writeln(
     '<Override '
@@ -672,19 +589,11 @@ String _buildContentTypesXml(
     'ContentType="application/vnd.openxmlformats-officedocument.presentationml.slideLayout+xml"/>',
   );
 
-  // --------------------------------------------------------------------------
-  // THEME
-  // --------------------------------------------------------------------------
-
   sb.writeln(
     '<Override '
     'PartName="/ppt/theme/theme1.xml" '
-    'ContentType="application/vnd.openxmlformats-officedocument.theme+xml"/>',
+    'ContentType="application/vnd.openxmlformats-officedocument.presentationml.theme+xml"/>',
   );
-
-  // --------------------------------------------------------------------------
-  // SLIDES
-  // --------------------------------------------------------------------------
 
   for (int i = 1; i <= slideCount; i++) {
     sb.writeln(
@@ -780,8 +689,6 @@ String _buildPresentationXml(
 
   // ==========================================================================
   // SLIDE SIZE
-  //
-  // Standard widescreen 16:9 (the default modern PowerPoint slide size).
   // ==========================================================================
 
   sb.writeln(
