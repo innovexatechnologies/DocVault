@@ -115,34 +115,10 @@ Future<Uint8List> _generatePdfInBackground(
 ) async {
   final pdf = pw.Document();
 
-  // ================================================================
-  // PDF PAGE BASE WIDTH
-  // ================================================================
-  //
-  // We use A4 width as the base physical width.
-  //
-  // IMPORTANT:
-  // Height is calculated from the ORIGINAL IMAGE ASPECT RATIO.
-  //
-  // Therefore:
-  //
-  // image ratio == PDF page ratio
-  //
-  // No unnecessary white margins.
-  //
-
   final basePageWidth = PdfPageFormat.a4.width;
-
-  // ================================================================
-  // IMAGE LIMIT
-  // ================================================================
 
   const maxImageWidth = 1800;
   const maxImageHeight = 2400;
-
-  // ================================================================
-  // PROCESS EACH IMAGE
-  // ================================================================
 
   for (int i = 0; i < imagePaths.length; i++) {
     final imagePath = imagePaths[i];
@@ -155,10 +131,6 @@ Future<Uint8List> _generatePdfInBackground(
       );
     }
 
-    // --------------------------------------------------------------
-    // READ IMAGE
-    // --------------------------------------------------------------
-
     final originalBytes = imageFile.readAsBytesSync();
 
     if (originalBytes.isEmpty) {
@@ -166,10 +138,6 @@ Future<Uint8List> _generatePdfInBackground(
         'Image file is empty: $imagePath',
       );
     }
-
-    // --------------------------------------------------------------
-    // DECODE IMAGE
-    // --------------------------------------------------------------
 
     final decodedImage = img.decodeImage(originalBytes);
 
@@ -185,10 +153,6 @@ Future<Uint8List> _generatePdfInBackground(
         'Invalid image dimensions: $imagePath',
       );
     }
-
-    // --------------------------------------------------------------
-    // RESIZE LARGE IMAGE
-    // --------------------------------------------------------------
 
     img.Image processedImage = decodedImage;
 
@@ -222,10 +186,6 @@ Future<Uint8List> _generatePdfInBackground(
       );
     }
 
-    // --------------------------------------------------------------
-    // ENCODE JPEG
-    // --------------------------------------------------------------
-
     final jpegBytes = img.encodeJpg(
       processedImage,
       quality: 82,
@@ -237,35 +197,9 @@ Future<Uint8List> _generatePdfInBackground(
       );
     }
 
-    // --------------------------------------------------------------
-    // PDF IMAGE
-    // --------------------------------------------------------------
-
     final pdfImage = pw.MemoryImage(
       Uint8List.fromList(jpegBytes),
     );
-
-    // ==============================================================
-    // CALCULATE EXACT PAGE SIZE
-    // ==============================================================
-    //
-    // This is the IMPORTANT FIX.
-    //
-    // Instead of:
-    //
-    // A4 width + A4 height
-    //
-    // we calculate the PDF height from the image ratio.
-    //
-    // Example:
-    //
-    // Image = 1080 x 1920
-    //
-    // Page width  = 595.28
-    // Page height = 595.28 * 1920 / 1080
-    //
-    // So PDF page has exactly the same ratio as the image.
-    //
 
     final imageWidth =
         processedImage.width.toDouble();
@@ -280,31 +214,24 @@ Future<Uint8List> _generatePdfInBackground(
         imageHeight /
         imageWidth;
 
-    // --------------------------------------------------------------
-    // CUSTOM PAGE FORMAT
-    // --------------------------------------------------------------
-
     final pageFormat = PdfPageFormat(
       pageWidth,
       pageHeight,
     );
 
-    // --------------------------------------------------------------
-    // ADD IMAGE AS FULL PAGE
-    // --------------------------------------------------------------
+    // ==============================================================
+    // FIX HERE: pw.FullPage use kiya hai taaki overflow se blank page na bane
+    // ==============================================================
 
     pdf.addPage(
       pw.Page(
         pageFormat: pageFormat,
         margin: pw.EdgeInsets.zero,
         build: (context) {
-          return pw.SizedBox(
-            width: pageWidth,
-            height: pageHeight,
+          return pw.FullPage(
+            ignoreMargins: true,
             child: pw.Image(
               pdfImage,
-              width: pageWidth,
-              height: pageHeight,
               fit: pw.BoxFit.fill,
             ),
           );
@@ -312,10 +239,6 @@ Future<Uint8List> _generatePdfInBackground(
       ),
     );
   }
-
-  // ================================================================
-  // SAVE PDF
-  // ================================================================
 
   final List<int> encodedPdf = await pdf.save();
 
