@@ -4,7 +4,7 @@ import 'dart:convert';
 import 'package:webview_flutter/webview_flutter.dart';
 import 'package:flutter/material.dart';
 import 'package:open_file/open_file.dart';
-import 'package:pdfx/pdfx.dart';
+import 'package:flutter_pdfview/flutter_pdfview.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -34,7 +34,7 @@ class PdfViewerScreen extends StatefulWidget {
 class _PdfViewerScreenState extends State<PdfViewerScreen> {
   late final ConversionType _docType;
 
-  PdfControllerPinch? _pdfController;
+  PDFViewController? _pdfViewController;
   WebViewController? _webViewController;
   late final PageController _pageController;
 
@@ -59,11 +59,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   final bool _showControlsBar = true;
 
   bool get _isPdf => _docType == ConversionType.pdf;
-
   bool get _isPpt => _docType == ConversionType.ppt;
-
   String get _itemUnit => _isPpt ? 'Slide' : 'Page';
-
   Color get _accentColor => _docType.badgeColor;
 
   // ============================================================
@@ -99,18 +96,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     _renderTimeoutTimer?.cancel();
     try {
       if (_isPdf) {
-        _pdfController = PdfControllerPinch(
-          document: PdfDocument.openFile(
-            widget.filePath,
-          ),
-        );
-
         if (mounted) {
           setState(() {
-            _isLoading = true;
+            _isLoading = false; // PDFView widget handles loading internally
           });
         }
-
         return;
       }
 
@@ -177,7 +167,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       if (!mounted) return;
 
       if (base64Data.length > 400000) {
-        // Transfer in safe 350KB chunks to prevent Android evaluateJavascript IPC buffer limit
         const chunkSize = 350000;
         for (int i = 0; i < base64Data.length; i += chunkSize) {
           if (!mounted) return;
@@ -319,11 +308,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   void _nextPageOrSlide() {
-    if (_isPdf && _pdfController != null) {
-      _pdfController!.nextPage(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
+    if (_isPdf && _pdfViewController != null && _currentPage < _actualPageCount) {
+      _pdfViewController!.setPage(_currentPage);
     } else if (_isPpt && !_usingFallbackView) {
       _webViewController?.runJavaScript("nextSlide();");
     } else if (_usingFallbackView && _pageController.hasClients) {
@@ -335,11 +321,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   void _prevPageOrSlide() {
-    if (_isPdf && _pdfController != null) {
-      _pdfController!.previousPage(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
+    if (_isPdf && _pdfViewController != null && _currentPage > 1) {
+      _pdfViewController!.setPage(_currentPage - 2);
     } else if (_isPpt && !_usingFallbackView) {
       _webViewController?.runJavaScript("prevSlide();");
     } else if (_usingFallbackView && _pageController.hasClients) {
@@ -354,12 +337,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     if (!mounted || targetPage < 1 || targetPage > _actualPageCount) return;
     setState(() => _currentPage = targetPage);
 
-    if (_isPdf && _pdfController != null) {
-      _pdfController!.animateToPage(
-        pageNumber: targetPage,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
+    if (_isPdf && _pdfViewController != null) {
+      _pdfViewController!.setPage(targetPage - 1);
     } else if (_isPpt && !_usingFallbackView) {
       _webViewController?.runJavaScript("goToSlide(${targetPage - 1});");
     } else if (_usingFallbackView && _pageController.hasClients) {
@@ -908,7 +887,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   @override
   void dispose() {
     _renderTimeoutTimer?.cancel();
-    _pdfController?.dispose();
     _pageController.dispose();
     super.dispose();
   }
@@ -1548,46 +1526,48 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   // ============================================================
-  // PDF VIEWER
+  // PDF VIEWER (FLUTTER_PDFVIEW IMPLEMENTATION)
   // ============================================================
 
   Widget _buildPdfViewer(bool isDark) {
-    if (_pdfController == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
-    }
-
     return Container(
       color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
       width: double.infinity,
       height: double.infinity,
       child: Stack(
         children: [
-          PdfViewPinch(
-            controller: _pdfController!,
-            onDocumentLoaded: (document) {
+          PDFView(
+            filePath: widget.filePath,
+            enableSwipe: true,
+            swipeHorizontal: false,
+            autoSpacing: true,
+            pageFling: true,
+            pageSnap: true,
+            fitPolicy: FitPolicy.WIDTH,
+            onViewCreated: (PDFViewController pdfViewController) {
+              _pdfViewController = pdfViewController;
+            },
+            onRender: (pages) {
               if (!mounted) return;
-
               setState(() {
-                _actualPageCount = document.pagesCount;
-                _currentPage = 1;
+                _actualPageCount = pages ?? 0;
                 _isLoading = false;
               });
             },
-            onPageChanged: (page) {
+            onError: (error) {
               if (!mounted) return;
-
-              setState(() {
-                _currentPage = page;
-              });
-            },
-            onDocumentError: (error) {
-              if (!mounted) return;
-
               setState(() {
                 _errorMessage = 'Failed to display PDF: $error';
                 _isLoading = false;
+              });
+            },
+            onPageChanged: (page, total) {
+              if (!mounted) return;
+              setState(() {
+                _currentPage = (page ?? 0) + 1;
+                if (total != null && total > 0) {
+                  _actualPageCount = total;
+                }
               });
             },
           ),
