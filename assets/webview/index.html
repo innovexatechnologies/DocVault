@@ -1,43 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8">
+  <meta charset="UTF-8">
+
   <meta
     name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=4.0, user-scalable=yes"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
   >
+
   <title>DocVault Document Viewer</title>
 
   <style>
     * {
       box-sizing: border-box;
-      -webkit-tap-highlight-color: transparent;
     }
 
     html,
     body {
       margin: 0;
       padding: 0;
+
       width: 100%;
       min-height: 100%;
-      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-        Helvetica, Arial, sans-serif;
-      background: #f4f6fa;
-      color: #1a1a24;
-      -webkit-font-smoothing: antialiased;
 
-      /* Horizontal overflow must never appear */
       overflow-x: hidden;
-
-      /* Vertical scrolling is allowed */
       overflow-y: auto;
 
-      transition: background-color 0.25s ease;
+      background: #F5F5F5;
+
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
     }
 
     body.dark-mode {
-      background: #070A16;
-      color: #E6E8F0;
+      background: #0B1220;
+      color: #FFFFFF;
     }
 
     #container {
@@ -46,126 +48,86 @@
 
       display: flex;
       flex-direction: column;
-      align-items: center;
 
-      padding: 12px 8px 48px 8px;
-
-      /* Important for document scrolling */
       overflow-x: hidden;
       overflow-y: visible;
     }
 
-    /* ============================================================= */
-    /* DOCX STYLING & PAGE CONTAINERS                               */
-    /* ============================================================= */
+    /* =========================================================
+       GENERAL DOCUMENT STYLES
+       ========================================================= */
 
-    .docx-wrapper {
-      background: transparent !important;
-      padding: 0 !important;
+    .document-container {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto;
 
-      width: 100% !important;
-      max-width: 100% !important;
+      padding: 10px;
 
-      display: flex !important;
-      flex-direction: column !important;
-      align-items: center !important;
-
-      overflow: visible !important;
+      overflow-x: hidden;
+      overflow-y: visible;
     }
 
-    .docx-page-scaler {
-      display: flex;
-
-      justify-content: center;
-      align-items: flex-start;
-
+    .page {
       width: 100%;
       max-width: 100%;
 
-      margin: 10px auto 18px auto;
+      margin: 0 auto 16px auto;
 
-      overflow: visible;
+      background: #FFFFFF;
 
-      position: relative;
+      overflow: hidden;
 
-      flex-shrink: 0;
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.10);
+
+      border-radius: 8px;
     }
 
-    .docx-wrapper > section.docx,
-    section.docx {
+    body.dark-mode .page {
+      background: #141D2E;
+    }
+
+    /* =========================================================
+       DOCX
+       ========================================================= */
+
+    .docx-preview-container,
+    .docx-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+
       margin: 0 auto !important;
 
-      box-shadow:
-        0 6px 24px rgba(0, 0, 0, 0.12),
-        0 1px 4px rgba(0, 0, 0, 0.06) !important;
-
-      border-radius: 8px !important;
-
-      background: #FFFFFF !important;
-      color: #1A1A1A !important;
-
-      position: relative;
-
-      /*
-       * Keep the original document page dimensions.
-       * JavaScript scales the complete page to fit the screen.
-       */
-      flex-shrink: 0;
-
-      transition: transform 0.2s cubic-bezier(0.2, 0, 0, 1);
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
     }
 
-    body.dark-mode .docx-page-scaler > section.docx {
-      box-shadow:
-        0 8px 30px rgba(0, 0, 0, 0.5) !important;
+    .docx-wrapper {
+      background: transparent !important;
     }
 
-    /*
-     * Prevent the document content itself from causing
-     * horizontal scrolling.
-     */
-    .docx-wrapper table,
-    .docx-wrapper img,
-    .docx-wrapper svg,
-    .docx-wrapper canvas {
-      max-width: 100%;
-    }
-
-    .docx-wrapper img {
-      height: auto;
-    }
-
-    /* ------------------------------------------------------------- */
-    /* DOCX Reflow / Reader Mode                                    */
-    /* ------------------------------------------------------------- */
-
-    .docx-wrapper.reflow-mode {
+    .docx-page {
       width: 100% !important;
       max-width: 100% !important;
-    }
 
-    .docx-wrapper.reflow-mode section.docx {
-      width: 100% !important;
-      max-width: 100% !important;
-      min-height: auto !important;
+      margin: 0 auto 16px auto !important;
 
-      padding: 20px 18px !important;
-
-      margin: 12px 0 !important;
+      overflow: hidden !important;
 
       box-shadow:
-        0 3px 14px rgba(0, 0, 0, 0.08) !important;
+        0 4px 16px rgba(0, 0, 0, 0.10);
 
-      border-radius: 12px !important;
-
-      transform: none !important;
-
-      overflow-x: auto !important;
+      background: #FFFFFF;
     }
 
-    /* ============================================================= */
-    /* PPTX STYLING & PRESENTATION CARDS                            */
-    /* ============================================================= */
+    body.dark-mode .docx-page {
+      background: #141D2E;
+    }
+
+    /* =========================================================
+       PPTX
+       ========================================================= */
 
     .pptx-preview-container,
     .pptx-wrapper {
@@ -177,36 +139,42 @@
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
+      justify-content: flex-start !important;
 
       background: transparent !important;
 
       overflow: visible !important;
+      overflow-x: visible !important;
+      overflow-y: visible !important;
+
+      height: auto !important;
+
+      touch-action: pan-y !important;
+      overscroll-behavior-x: none !important;
     }
 
     .pptx-slide-card {
-      margin: 10px auto 16px auto;
+      width: 100% !important;
+      max-width: 100% !important;
+
+      margin: 10px auto 16px auto !important;
+
+      flex: 0 0 auto !important;
 
       box-shadow:
         0 6px 24px rgba(0, 0, 0, 0.12);
 
       border-radius: 12px;
 
-      overflow: hidden;
+      overflow: hidden !important;
 
       background: #FFFFFF;
 
       position: relative;
 
-      /*
-       * Never allow the card to become wider than the viewport.
-       */
-      max-width: calc(100vw - 20px) !important;
+      transform: none !important;
 
-      flex-shrink: 0;
-
-      transition:
-        transform 0.25s ease,
-        box-shadow 0.25s ease;
+      touch-action: pan-y !important;
     }
 
     body.dark-mode .pptx-slide-card {
@@ -225,8 +193,11 @@
 
     .pptx-slide-mode-wrap {
       display: flex;
+
       flex-direction: column;
+
       align-items: center;
+
       width: 100%;
     }
 
@@ -251,6 +222,7 @@
     }
 
     /* Hide default PPTX internal buttons */
+
     .pptx-wrapper .pptx-next,
     .pptx-wrapper .pptx-pre,
     .pptx-wrapper .pptx-pagination {
@@ -258,71 +230,253 @@
     }
 
     /*
-     * Keep PPT content inside the available slide width.
+     * Keep PPT content inside available slide width.
      */
+
     .pptx-wrapper canvas,
     .pptx-wrapper img,
     .pptx-wrapper svg {
       max-width: 100% !important;
     }
 
-    /* ============================================================= */
-    /* LOADING / STATUS                                             */
-    /* ============================================================= */
+    .pptx-wrapper canvas {
+      display: block;
+      height: auto;
+    }
 
-    #status-overlay {
-      position: fixed;
+    /* =========================================================
+       TOOLBAR
+       ========================================================= */
+
+    #toolbar {
+      width: 100%;
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      padding: 10px 12px;
+
+      background: #FFFFFF;
+
+      border-bottom: 1px solid #E5E7EB;
+
+      position: sticky;
 
       top: 0;
-      left: 0;
-      right: 0;
-      bottom: 0;
 
-      display: none;
+      z-index: 100;
+    }
+
+    body.dark-mode #toolbar {
+      background: #141D2E;
+
+      border-bottom-color: #263247;
+    }
+
+    #toolbar button {
+      border: none;
+
+      background: transparent;
+
+      padding: 8px;
+
+      cursor: pointer;
+
+      border-radius: 8px;
+    }
+
+    #toolbar button:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    body.dark-mode #toolbar button:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* =========================================================
+       LOADING
+       ========================================================= */
+
+    #loading {
+      width: 100%;
+
+      min-height: 200px;
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: center;
 
       flex-direction: column;
 
-      align-items: center;
-      justify-content: center;
+      gap: 12px;
 
-      background: rgba(244, 246, 250, 0.9);
-
-      z-index: 999;
-
-      font-size: 13px;
-
-      font-weight: 600;
+      color: #555;
     }
 
-    body.dark-mode #status-overlay {
-      background: rgba(7, 10, 22, 0.9);
-      color: #FFF;
+    body.dark-mode #loading {
+      color: #CCC;
+    }
+
+    .spinner {
+      width: 34px;
+
+      height: 34px;
+
+      border-radius: 50%;
+
+      border: 4px solid #DDD;
+
+      border-top-color: #555;
+
+      animation:
+        spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to {
+        transform: rotate(360deg);
+      }
+    }
+
+    /* =========================================================
+       ERROR
+       ========================================================= */
+
+    #error {
+      display: none;
+
+      padding: 20px;
+
+      text-align: center;
+
+      color: #B00020;
+    }
+
+    body.dark-mode #error {
+      color: #FF8A9B;
+    }
+
+    /* =========================================================
+       IMAGE VIEWER
+       ========================================================= */
+
+    .image-preview {
+      width: 100%;
+
+      display: flex;
+
+      justify-content: center;
+
+      align-items: center;
+
+      padding: 10px;
+
+      overflow: hidden;
+    }
+
+    .image-preview img {
+      max-width: 100%;
+
+      height: auto;
+
+      display: block;
+
+      object-fit: contain;
+    }
+
+    /* =========================================================
+       PDF
+       ========================================================= */
+
+    .pdf-preview-container {
+      width: 100%;
+
+      overflow-x: hidden;
+
+      overflow-y: visible;
+    }
+
+    .pdf-page {
+      width: 100%;
+
+      margin: 0 auto 16px auto;
+
+      background: #FFFFFF;
+
+      overflow: hidden;
+    }
+
+    /* =========================================================
+       ZOOM
+       ========================================================= */
+
+    .zoom-container {
+      transform-origin: top center;
+
+      transition:
+        transform 0.15s ease;
+    }
+
+    /* =========================================================
+       MOBILE
+       ========================================================= */
+
+    @media (max-width: 600px) {
+      .document-container {
+        padding: 10px;
+      }
+
+      .pptx-slide-card {
+        border-radius: 8px;
+
+        margin:
+          8px auto 14px auto !important;
+      }
     }
   </style>
 </head>
 
 <body>
-  <div id="container"></div>
 
-  <script src="jszip.min.js"></script>
-  <script src="docx-preview.js"></script>
-  <script src="pptx-preview.js"></script>
+  <div id="container">
+
+    <div id="loading">
+      <div class="spinner"></div>
+
+      <div>
+        Loading document...
+      </div>
+    </div>
+
+    <div id="error"></div>
+
+  </div>
+
+  <script src="js/pptx-preview.js"></script>
 
   <script>
-    // =============================================================
-    // GLOBAL STATE
-    // =============================================================
+    /* =========================================================
+       GLOBAL STATE
+       ========================================================= */
 
-    let currentDocType = null; // 'docx' or 'pptx'
+    let currentDocType = null;
 
     let currentZoom = 1.0;
 
-    let currentViewMode = 'page'; // 'page' | 'reflow'
+    let currentViewMode = 'page';
 
     /*
-     * PPT now opens in vertical list mode.
+     * PPT MUST remain in list mode.
+     *
+     * list = all slides vertically
+     * slide = one slide at a time
      */
-    let currentSlideMode = 'list'; // 'slide' | 'list'
+    let currentSlideMode = 'list';
 
     let pptxPreviewInstance = null;
 
@@ -334,650 +488,703 @@
 
     let base64Chunks = [];
 
-    /*
-     * IMPORTANT:
-     * Keep the original PPTX base64 data.
-     *
-     * This fixes the old problem where setSlideMode()
-     * called renderPptx('') and caused a blank/error state.
-     */
     let pptxBase64Data = null;
 
 
-    // =============================================================
-    // HELPER: BASE64 -> ARRAY BUFFER
-    // =============================================================
+    /* =========================================================
+       UTILITY FUNCTIONS
+       ========================================================= */
+
+    function getContainer() {
+      return document.getElementById('container');
+    }
+
+
+    function showLoading() {
+      const loading =
+        document.getElementById('loading');
+
+      if (loading) {
+        loading.style.display = 'flex';
+      }
+    }
+
+
+    function hideLoading() {
+      const loading =
+        document.getElementById('loading');
+
+      if (loading) {
+        loading.style.display = 'none';
+      }
+    }
+
+
+    function showError(message) {
+      hideLoading();
+
+      const error =
+        document.getElementById('error');
+
+      if (!error) {
+        return;
+      }
+
+      error.textContent =
+        message || 'Unable to load document.';
+
+      error.style.display =
+        'block';
+    }
+
+
+    /* =========================================================
+       BASE64
+       ========================================================= */
 
     function base64ToArrayBuffer(base64) {
-      const binary = atob(base64);
+      const binaryString =
+        atob(base64);
 
-      const len = binary.length;
+      const len =
+        binaryString.length;
 
-      const bytes = new Uint8Array(len);
+      const bytes =
+        new Uint8Array(len);
 
-      for (let i = 0; i < len; i++) {
-        bytes[i] = binary.charCodeAt(i);
+      for (
+        let i = 0;
+        i < len;
+        i++
+      ) {
+        bytes[i] =
+          binaryString.charCodeAt(i);
       }
 
       return bytes.buffer;
     }
 
 
-    // =============================================================
-    // BRIDGE NOTIFICATIONS TO FLUTTER
-    // =============================================================
+    /* =========================================================
+       DOCUMENT CLEAR
+       ========================================================= */
 
-    function notifySuccess() {
-      if (window.DocumentBridge) {
-        window.DocumentBridge.postMessage('success');
-      }
-    }
+    function clearContainer() {
+      const container =
+        getContainer();
 
-    function notifyError(err) {
-      if (window.DocumentBridge) {
-        window.DocumentBridge.postMessage('error:' + err);
+      if (!container) {
+        return;
       }
-    }
 
-    function notifyPageCount(count) {
-      if (window.DocumentBridge) {
-        window.DocumentBridge.postMessage('pagecount:' + count);
-      }
-    }
-
-    function notifySlideChanged(curr, total) {
-      if (window.DocumentBridge) {
-        window.DocumentBridge.postMessage(
-          'slidechanged:' + curr + ':' + total
-        );
-      }
+      container.innerHTML = '';
     }
 
 
-    // =============================================================
-    // CHUNKED RECEIVER FOR LARGE FILES
-    // =============================================================
+    /* =========================================================
+       GENERIC DOCUMENT RENDER
+       ========================================================= */
 
-    function receiveDocChunk(chunk, isFirst, isLast, isPpt) {
-      if (isFirst) {
-        base64Chunks = [];
-      }
+    function renderDocument(
+      type,
+      base64Data
+    ) {
+      currentDocType =
+        type;
 
-      base64Chunks.push(chunk);
-
-      if (isLast) {
-        const fullBase64 = base64Chunks.join('');
-
-        base64Chunks = [];
-
-        if (isPpt) {
-          renderPptx(fullBase64);
-        } else {
-          renderDocx(fullBase64);
-        }
-      }
-    }
-
-
-    // =============================================================
-    // DOCX RENDERING
-    // =============================================================
-
-    async function renderDocx(base64Data) {
-      currentDocType = 'docx';
-
-      /*
-       * Reset PPT state when opening DOCX.
-       */
-      pptxPreviewInstance = null;
-      pptxData = null;
-      pptxBase64Data = null;
+      showLoading();
 
       try {
-        if (!base64Data || base64Data.length === 0) {
-          throw new Error('DOCX data is empty.');
+        if (type === 'pptx') {
+          renderPptx(base64Data);
+
+          return;
         }
 
-        const buffer = base64ToArrayBuffer(base64Data);
+        if (type === 'docx') {
+          renderDocx(base64Data);
 
-        const container = document.getElementById('container');
+          return;
+        }
 
-        /*
-         * Clear previous document completely.
-         */
-        container.innerHTML = '';
+        if (type === 'image') {
+          renderImage(base64Data);
 
-        /*
-         * Render DOCX.
-         */
-        await docx.renderAsync(
-          buffer,
-          container,
-          null,
-          {
-            inWrapper: true,
+          return;
+        }
 
-            /*
-             * Keep original page size.
-             * JavaScript will fit the complete page to screen width.
-             */
-            ignoreWidth: false,
-            ignoreHeight: false,
-
-            breakPages: true,
-
-            trimXmlDeclaration: true,
-
-            useBase64URL: true,
-
-            renderChanges: false,
-
-            renderHeaders: true,
-
-            renderFooters: true,
-
-            renderFootnotes: true,
-
-            renderEndnotes: true
-          }
+        showError(
+          'Unsupported document type.'
         );
+      } catch (error) {
+        console.error(error);
 
-        /*
-         * Find rendered pages.
-         */
-        const pages = document.querySelectorAll(
-          '.docx-wrapper > section.docx, section.docx'
-        );
-
-        const count = pages.length > 0 ? pages.length : 1;
-
-        notifyPageCount(count);
-
-        /*
-         * Fit complete pages inside available width.
-         */
-        applyDocxPageScaling();
-
-        /*
-         * Make sure resize does not create duplicate listeners.
-         */
-        window.removeEventListener(
-          'resize',
-          applyDocxPageScaling
-        );
-
-        window.addEventListener(
-          'resize',
-          applyDocxPageScaling
-        );
-
-        notifySuccess();
-
-      } catch (err) {
-        notifyError(
-          err && err.message
-            ? err.message
-            : String(err)
+        showError(
+          error.message ||
+          'Unable to render document.'
         );
       }
     }
 
 
-    // =============================================================
-    // DOCX PAGE SCALING
-    // =============================================================
+    /* =========================================================
+       IMAGE RENDER
+       ========================================================= */
 
-    function applyDocxPageScaling() {
-      if (currentDocType !== 'docx') {
-        return;
-      }
+    function renderImage(base64Data) {
+      clearContainer();
+
+      const container =
+        getContainer();
 
       const wrapper =
-        document.querySelector('.docx-wrapper');
+        document.createElement('div');
 
-      const pages =
-        document.querySelectorAll(
-          '.docx-wrapper > section.docx, section.docx'
-        );
+      wrapper.className =
+        'image-preview';
 
-      if (!pages || pages.length === 0) {
-        return;
-      }
+      const image =
+        document.createElement('img');
 
-      const screenWidth =
-        window.innerWidth ||
-        document.documentElement.clientWidth ||
-        360;
+      image.src =
+        'data:image/png;base64,' +
+        base64Data;
 
-      /*
-       * Keep a small margin on both sides.
-       */
-      const targetWidth =
-        Math.max(280, screenWidth - 20);
+      wrapper.appendChild(
+        image
+      );
+
+      container.appendChild(
+        wrapper
+      );
+
+      hideLoading();
+    }
 
 
-      // -----------------------------------------------------------
-      // REFLOW MODE
-      // -----------------------------------------------------------
+    /* =========================================================
+       DOCX RENDER
+       ========================================================= */
 
-      if (currentViewMode === 'reflow') {
-        if (wrapper) {
-          wrapper.classList.add('reflow-mode');
+    async function renderDocx(base64Data) {
+      clearContainer();
+
+      const container =
+        getContainer();
+
+      const wrapper =
+        document.createElement('div');
+
+      wrapper.className =
+        'docx-preview-container';
+
+      container.appendChild(
+        wrapper
+      );
+
+      try {
+        if (
+          typeof docxPreview ===
+          'undefined'
+        ) {
+          throw new Error(
+            'DOCX preview library not loaded.'
+          );
         }
 
-        pages.forEach((section) => {
-          section.style.transform = 'none';
-
-          const scaler = section.parentElement;
-
-          if (
-            scaler &&
-            scaler.classList.contains('docx-page-scaler')
-          ) {
-            scaler.style.width = '100%';
-            scaler.style.height = 'auto';
-            scaler.style.margin = '12px 0';
-          }
-        });
-
-        return;
-      }
-
-
-      // -----------------------------------------------------------
-      // NORMAL PAGE MODE
-      // -----------------------------------------------------------
-
-      if (wrapper) {
-        wrapper.classList.remove('reflow-mode');
-      }
-
-
-      pages.forEach((section) => {
-        /*
-         * Create scaler wrapper if needed.
-         */
-        let scaler = section.parentElement;
-
-        if (
-          !scaler ||
-          !scaler.classList.contains('docx-page-scaler')
-        ) {
-          scaler = document.createElement('div');
-
-          scaler.className = 'docx-page-scaler';
-
-          section.parentNode.insertBefore(
-            scaler,
-            section
+        const buffer =
+          base64ToArrayBuffer(
+            base64Data
           );
 
-          scaler.appendChild(section);
+        await docxPreview.renderAsync(
+          buffer,
+          wrapper
+        );
+
+        hideLoading();
+      } catch (error) {
+        console.error(error);
+
+        showError(
+          'Unable to preview DOCX: ' +
+          error.message
+        );
+      }
+    }
+
+
+    /* =========================================================
+       PPTX RENDER
+       ========================================================= */
+
+    async function renderPptx(base64Data) {
+      pptxBase64Data =
+        base64Data;
+
+      clearContainer();
+
+      const container =
+        getContainer();
+
+      if (!container) {
+        return;
+      }
+
+      /*
+       * Width is based on the available
+       * mobile/desktop viewport.
+       */
+      const screenWidth =
+        window.innerWidth;
+
+      const targetWidth =
+        Math.max(
+          280,
+          screenWidth - 20
+        );
+
+      /*
+       * PPT slides are 16:9.
+       */
+      const targetHeight =
+        targetWidth * 9 / 16;
+
+      try {
+        if (
+          typeof pptxPreview ===
+          'undefined'
+        ) {
+          throw new Error(
+            'PPTX preview library not loaded.'
+          );
         }
 
-
-        /*
-         * First remove transform so we can measure
-         * the original/native page dimensions.
-         */
-        section.style.transform = 'none';
-
-        section.style.transformOrigin =
-          'top center';
-
-
-        /*
-         * Measure original page.
-         */
-        const nativeWidth =
-          section.offsetWidth || 794;
-
-        const nativeHeight =
-          section.offsetHeight || 1123;
-
-
-        /*
-         * Fit the COMPLETE page inside available width.
-         *
-         * We deliberately do NOT use cover/cropping.
-         *
-         * The entire document page remains visible.
-         */
-        const widthScale =
-          targetWidth / nativeWidth;
-
-
-        /*
-         * Respect Flutter/WebView zoom.
-         */
-        const finalScale =
-          widthScale * currentZoom;
-
-
-        /*
-         * Apply scale.
-         */
-        section.style.transform =
-          'scale(' + finalScale + ')';
-
+        const buffer =
+          base64ToArrayBuffer(
+            base64Data
+          );
 
         /*
          * IMPORTANT:
-         * Reserve the actual scaled height.
+         * Always initialize PPTX in list mode.
          *
-         * Without this, the next page can overlap
-         * or the page can appear blank/cut.
-         */
-        scaler.style.width =
-          Math.round(
-            nativeWidth * finalScale
-          ) + 'px';
-
-        scaler.style.height =
-          Math.round(
-            nativeHeight * finalScale
-          ) + 'px';
-
-        scaler.style.margin =
-          '10px auto 18px auto';
-
-        scaler.style.display =
-          'flex';
-
-        scaler.style.justifyContent =
-          'center';
-
-        scaler.style.alignItems =
-          'flex-start';
-
-        scaler.style.overflow =
-          'visible';
-
-        scaler.style.flexShrink =
-          '0';
-      });
-    }
-
-
-    // =============================================================
-    // PPTX RENDERING
-    // =============================================================
-
-    async function renderPptx(base64Data) {
-      currentDocType = 'pptx';
-
-      try {
-        /*
-         * Only replace stored data when actual data
-         * has been supplied.
-         */
-        if (base64Data && base64Data.length > 0) {
-          pptxBase64Data = base64Data;
-        }
-
-        /*
-         * If no new data was supplied, use the stored data.
-         */
-        const dataToRender =
-          base64Data && base64Data.length > 0
-            ? base64Data
-            : pptxBase64Data;
-
-        if (!dataToRender) {
-          throw new Error('PPTX data is empty.');
-        }
-
-
-        const buffer =
-          base64ToArrayBuffer(dataToRender);
-
-        const container =
-          document.getElementById('container');
-
-        /*
-         * Clear previous document.
-         */
-        container.innerHTML = '';
-
-
-        /*
-         * Calculate available width.
-         */
-        const screenWidth =
-          window.innerWidth ||
-          document.documentElement.clientWidth ||
-          360;
-
-        const targetWidth =
-          Math.max(280, screenWidth - 20);
-
-
-        /*
-         * Standard 16:9 slide ratio.
-         */
-        const targetHeight =
-          Math.round(
-            targetWidth * (9 / 16)
-          );
-
-
-        /*
-         * Initialize PPTX preview.
-         *
-         * currentSlideMode is now "list" by default.
+         * This allows the complete deck to be
+         * rendered vertically.
          */
         pptxPreviewInstance =
           pptxPreview.init(
             container,
             {
-              width: targetWidth,
+              width:
+                targetWidth,
 
-              height: targetHeight,
+              height:
+                targetHeight,
 
-              mode: currentSlideMode
+              mode:
+                currentSlideMode
             }
           );
 
-
-        /*
-         * Render PPTX.
-         */
         pptxData =
           await pptxPreviewInstance.preview(
             buffer
           );
 
-
-        // ---------------------------------------------------------
-        // Determine slide count
-        // ---------------------------------------------------------
-
-        let slideCount = 1;
-
+        /*
+         * Get slide count when available.
+         */
         if (
           pptxData &&
-          pptxData.slides &&
-          pptxData.slides.length > 0
+          Array.isArray(
+            pptxData.slides
+          )
         ) {
-          slideCount =
+          totalSlidesCount =
             pptxData.slides.length;
         } else {
-          const domSlides =
+          const slides =
             document.querySelectorAll(
-              '.pptx-wrapper, .slide, .pptx-slide'
+              '.pptx-wrapper .slide, ' +
+              '.pptx-wrapper .pptx-slide'
             );
 
-          if (domSlides.length > 0) {
-            slideCount =
-              domSlides.length;
-          }
+          totalSlidesCount =
+            slides.length;
         }
 
-
-        totalSlidesCount =
-          slideCount;
-
-        currentSlideIndex = 0;
-
-
-        notifyPageCount(
-          slideCount
-        );
-
-        notifySlideChanged(
-          1,
-          slideCount
-        );
-
-
         /*
-         * Style the generated PPT DOM.
+         * Apply vertical PPT layout
+         * after renderer creates DOM.
          */
         stylePptxDom(
           targetWidth,
           targetHeight
         );
 
-
         /*
-         * Swipe is only active in slide mode.
+         * Renderer may create/update its DOM
+         * asynchronously, so apply the layout
+         * again on the next animation frame.
          */
+        requestAnimationFrame(() => {
+          stylePptxDom(
+            targetWidth,
+            targetHeight
+          );
+        });
+
         setupSwipeGestures();
 
+        hideLoading();
 
-        notifySuccess();
+      } catch (error) {
+        console.error(
+          'PPTX render error:',
+          error
+        );
 
-      } catch (err) {
-        notifyError(
-          err && err.message
-            ? err.message
-            : String(err)
+        showError(
+          'Unable to preview PPTX: ' +
+          error.message
         );
       }
     }
 
 
-    // =============================================================
-    // PPTX DOM STYLING
-    // =============================================================
+    /* =========================================================
+       PPTX DOM STYLING
+       ========================================================= */
 
     function stylePptxDom(width, height) {
-      const slides =
-        document.querySelectorAll(
-          '.pptx-wrapper, .slide, .pptx-slide, canvas'
-        );
-
-
-      slides.forEach((el) => {
-        /*
-         * Never allow the generated content to exceed
-         * the available viewport width.
-         */
-        el.style.maxWidth =
-          '100%';
-      });
-
+      const viewportWidth = Math.min(
+        width,
+        Math.max(
+          280,
+          window.innerWidth - 20
+        )
+      );
 
       const wrapper =
         document.querySelector(
           '.pptx-wrapper'
         );
 
+      if (!wrapper) {
+        return;
+      }
 
-      if (wrapper) {
-        wrapper.classList.add(
+      /*
+       * The wrapper is the complete PPT deck.
+       *
+       * It must NOT become one large
+       * scrollable slide.
+       */
+      wrapper.classList.remove(
+        'pptx-slide-card'
+      );
+
+      wrapper.style.width =
+        viewportWidth + 'px';
+
+      wrapper.style.maxWidth =
+        viewportWidth + 'px';
+
+      wrapper.style.height =
+        'auto';
+
+      wrapper.style.minHeight =
+        '0';
+
+      wrapper.style.display =
+        'flex';
+
+      wrapper.style.flexDirection =
+        'column';
+
+      wrapper.style.alignItems =
+        'center';
+
+      wrapper.style.justifyContent =
+        'flex-start';
+
+      wrapper.style.gap =
+        '0';
+
+      wrapper.style.margin =
+        '0 auto';
+
+      /*
+       * Scrolling belongs to the page,
+       * not to the PPT wrapper.
+       */
+      wrapper.style.overflow =
+        'visible';
+
+      wrapper.style.overflowX =
+        'visible';
+
+      wrapper.style.overflowY =
+        'visible';
+
+      wrapper.style.position =
+        'relative';
+
+      /*
+       * Find actual slide elements
+       * generated by the PPT renderer.
+       */
+      let slides =
+        Array.from(
+          wrapper.querySelectorAll(
+            '.pptx-slide, ' +
+            '.slide, ' +
+            '[data-slide-index], ' +
+            '[data-slide]'
+          )
+        );
+
+      /*
+       * Fallback for renderers that use
+       * direct children for slides.
+       */
+      if (slides.length === 0) {
+        slides =
+          Array.from(
+            wrapper.children
+          ).filter((child) => {
+            const className =
+              typeof child.className ===
+              'string'
+                ? child.className.toLowerCase()
+                : '';
+
+            return (
+              !className.includes(
+                'next'
+              ) &&
+              !className.includes(
+                'prev'
+              ) &&
+              !className.includes(
+                'pagination'
+              ) &&
+              !className.includes(
+                'control'
+              ) &&
+              !className.includes(
+                'button'
+              )
+            );
+          });
+      }
+
+      /*
+       * Every slide gets its own card
+       * and stays vertically below the
+       * previous slide.
+       */
+      slides.forEach((slide) => {
+        slide.classList.add(
           'pptx-slide-card'
         );
 
+        slide.style.display =
+          'block';
 
-        wrapper.style.width =
-          Math.min(
-            width,
-            window.innerWidth - 20
-          ) + 'px';
+        slide.style.flex =
+          '0 0 auto';
 
+        slide.style.width =
+          viewportWidth + 'px';
+
+        slide.style.maxWidth =
+          viewportWidth + 'px';
+
+        slide.style.minWidth =
+          '0';
 
         /*
-         * Slide mode = one fixed slide.
-         *
-         * List mode = natural height so all slides
-         * can appear vertically.
+         * Keep the 16:9 slide ratio.
          */
-        if (currentSlideMode === 'slide') {
-          wrapper.style.height =
-            height + 'px';
-        } else {
-          wrapper.style.height =
-            'auto';
-        }
-      }
+        slide.style.height =
+          height + 'px';
+
+        slide.style.minHeight =
+          height + 'px';
+
+        slide.style.maxHeight =
+          height + 'px';
+
+        slide.style.margin =
+          '10px 0 16px 0';
+
+        slide.style.position =
+          'relative';
+
+        /*
+         * A slide itself must not scroll.
+         */
+        slide.style.overflow =
+          'hidden';
+
+        slide.style.overflowX =
+          'hidden';
+
+        slide.style.overflowY =
+          'hidden';
+
+        slide.style.transform =
+          'none';
+
+        slide.style.boxSizing =
+          'border-box';
+
+        /*
+         * Keep slide content completely
+         * inside the slide.
+         */
+        const contents =
+          slide.querySelectorAll(
+            'canvas, svg, img'
+          );
+
+        contents.forEach(
+          (element) => {
+            element.style.maxWidth =
+              '100%';
+
+            element.style.maxHeight =
+              '100%';
+
+            element.style.boxSizing =
+              'border-box';
+
+            if (
+              element.tagName
+                .toLowerCase() ===
+              'img'
+            ) {
+              element.style.width =
+                '100%';
+
+              element.style.height =
+                '100%';
+
+              element.style.objectFit =
+                'contain';
+            }
+          }
+        );
+      });
+
+      /*
+       * Make direct canvases fit the
+       * available slide width.
+       */
+      wrapper
+        .querySelectorAll(
+          'canvas'
+        )
+        .forEach(
+          (canvas) => {
+            canvas.style.maxWidth =
+              '100%';
+
+            canvas.style.height =
+              'auto';
+
+            canvas.style.display =
+              'block';
+          }
+        );
     }
 
 
-    // =============================================================
-    // PPTX SWIPE GESTURES
-    // =============================================================
+    /* =========================================================
+       PPTX SWIPE GESTURES
+       ========================================================= */
 
     function setupSwipeGestures() {
-      let touchStartX = 0;
-
-      let touchStartY = 0;
-
-      const container =
-        document.getElementById(
-          'container'
-        );
-
-
       /*
-       * No horizontal swipe behavior in list mode.
+       * List mode is already vertically
+       * scrollable, so there is no
+       * horizontal swipe navigation.
        */
       if (
-        currentSlideMode !== 'slide'
+        currentSlideMode !==
+        'slide'
       ) {
         return;
       }
 
+      const wrapper =
+        document.querySelector(
+          '.pptx-wrapper'
+        );
 
-      container.addEventListener(
+      if (!wrapper) {
+        return;
+      }
+
+      let startX = 0;
+
+      let startY = 0;
+
+      wrapper.addEventListener(
         'touchstart',
-        (e) => {
-          touchStartX =
-            e.changedTouches[0].screenX;
+        (event) => {
+          if (
+            !event.touches ||
+            event.touches.length === 0
+          ) {
+            return;
+          }
 
-          touchStartY =
-            e.changedTouches[0].screenY;
+          startX =
+            event.touches[0].clientX;
+
+          startY =
+            event.touches[0].clientY;
         },
         {
           passive: true
         }
       );
 
-
-      container.addEventListener(
+      wrapper.addEventListener(
         'touchend',
-        (e) => {
+        (event) => {
           if (
-            currentDocType !== 'pptx' ||
-            currentSlideMode !== 'slide'
+            !event.changedTouches ||
+            event.changedTouches.length === 0
           ) {
             return;
           }
 
+          const endX =
+            event.changedTouches[0]
+              .clientX;
+
+          const endY =
+            event.changedTouches[0]
+              .clientY;
 
           const diffX =
-            e.changedTouches[0].screenX -
-            touchStartX;
+            endX - startX;
 
           const diffY =
-            e.changedTouches[0].screenY -
-            touchStartY;
+            endY - startY;
 
-
+          /*
+           * Only horizontal gestures
+           * navigate in single-slide mode.
+           */
           if (
             Math.abs(diffX) >
               Math.abs(diffY) &&
-            Math.abs(diffX) > 45
+            Math.abs(diffX) > 50
           ) {
             if (diffX < 0) {
               nextSlide();
@@ -993,201 +1200,239 @@
     }
 
 
-    // =============================================================
-    // PPTX NAVIGATION
-    // =============================================================
+    /* =========================================================
+       NEXT SLIDE
+       ========================================================= */
 
     function nextSlide() {
       if (
-        currentDocType !== 'pptx' ||
-        !pptxPreviewInstance
+        currentSlideMode !==
+        'slide'
       ) {
         return;
       }
 
-
       if (
-        currentSlideIndex <
+        currentSlideIndex >=
         totalSlidesCount - 1
       ) {
-        currentSlideIndex++;
+        return;
+      }
 
+      currentSlideIndex++;
 
-        if (
-          typeof pptxPreviewInstance.renderSingleSlide ===
+      if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderSingleSlide ===
           'function'
-        ) {
-          pptxPreviewInstance.renderSingleSlide(
+      ) {
+        pptxPreviewInstance
+          .renderSingleSlide(
             currentSlideIndex
           );
-
-        } else if (
-          typeof pptxPreviewInstance.renderNextSlide ===
+      }
+      else if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderNextSlide ===
           'function'
-        ) {
-          pptxPreviewInstance.renderNextSlide();
-        }
-
-
-        notifySlideChanged(
-          currentSlideIndex + 1,
-          totalSlidesCount
-        );
+      ) {
+        pptxPreviewInstance
+          .renderNextSlide();
       }
     }
 
+
+    /* =========================================================
+       PREVIOUS SLIDE
+       ========================================================= */
 
     function prevSlide() {
       if (
-        currentDocType !== 'pptx' ||
-        !pptxPreviewInstance
+        currentSlideMode !==
+        'slide'
       ) {
         return;
       }
 
+      if (
+        currentSlideIndex <=
+        0
+      ) {
+        return;
+      }
 
-      if (currentSlideIndex > 0) {
-        currentSlideIndex--;
+      currentSlideIndex--;
 
-
-        if (
-          typeof pptxPreviewInstance.renderSingleSlide ===
+      if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderSingleSlide ===
           'function'
-        ) {
-          pptxPreviewInstance.renderSingleSlide(
+      ) {
+        pptxPreviewInstance
+          .renderSingleSlide(
             currentSlideIndex
           );
-
-        } else if (
-          typeof pptxPreviewInstance.renderPreSlide ===
+      }
+      else if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderPreSlide ===
           'function'
-        ) {
-          pptxPreviewInstance.renderPreSlide();
-        }
-
-
-        notifySlideChanged(
-          currentSlideIndex + 1,
-          totalSlidesCount
-        );
+      ) {
+        pptxPreviewInstance
+          .renderPreSlide();
       }
     }
 
 
+    /* =========================================================
+       GO TO SLIDE
+       ========================================================= */
+
     function goToSlide(index) {
       if (
-        currentDocType !== 'pptx' ||
-        !pptxPreviewInstance
+        currentSlideMode !==
+        'slide'
       ) {
         return;
       }
 
-
-      const idx =
-        Math.max(
-          0,
-          Math.min(
-            index,
-            totalSlidesCount - 1
-          )
-        );
-
-
-      currentSlideIndex =
-        idx;
-
-
       if (
-        typeof pptxPreviewInstance.renderSingleSlide ===
-        'function'
+        index < 0 ||
+        index >= totalSlidesCount
       ) {
-        pptxPreviewInstance.renderSingleSlide(
-          currentSlideIndex
-        );
+        return;
       }
 
+      currentSlideIndex =
+        index;
 
-      notifySlideChanged(
-        currentSlideIndex + 1,
-        totalSlidesCount
+      if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderSingleSlide ===
+          'function'
+      ) {
+        pptxPreviewInstance
+          .renderSingleSlide(
+            currentSlideIndex
+          );
+      }
+    }
+
+
+    /* =========================================================
+       SET PPT SLIDE MODE
+       ========================================================= */
+
+    async function setSlideMode(mode) {
+      /*
+       * PPTX viewer is always a vertical list.
+       *
+       * Flutter may send "slide" mode, but this viewer
+       * intentionally keeps all slides stacked vertically.
+       */
+      currentSlideMode = 'list';
+      currentSlideIndex = 0;
+
+      if (!pptxBase64Data) {
+        return;
+      }
+
+      await renderPptx(
+        pptxBase64Data
       );
     }
 
 
-    // =============================================================
-    // VIEW & ZOOM CONTROLS
-    // =============================================================
+    /* =========================================================
+       ZOOM
+       ========================================================= */
 
-    function setZoom(scale) {
+    function setZoom(zoom) {
       currentZoom =
         Math.max(
           0.5,
           Math.min(
-            scale,
-            3.0
+            3.0,
+            zoom
           )
         );
 
-
-      if (
-        currentDocType === 'docx'
-      ) {
-        applyDocxPageScaling();
-      }
-    }
-
-
-    function setViewMode(mode) {
-      currentViewMode =
-        mode; // 'page' or 'reflow'
-
-
-      if (
-        currentDocType === 'docx'
-      ) {
-        applyDocxPageScaling();
-      }
-    }
-
-
-    // =============================================================
-    // PPTX SLIDE MODE
-    // =============================================================
-
-    function setSlideMode(mode) {
-      currentSlideMode =
-        mode; // 'slide' or 'list'
-
-
-      /*
-       * IMPORTANT FIX:
-       *
-       * Previously this used:
-       *
-       * renderPptx('');
-       *
-       * which sent empty data and could cause
-       * a blank PPT viewer.
-       *
-       * Now we reuse the original PPTX data.
-       */
-      if (
-        currentDocType === 'pptx' &&
-        pptxBase64Data
-      ) {
-        renderPptx(
-          pptxBase64Data
+      const content =
+        document.querySelector(
+          '.zoom-container'
         );
+
+      if (content) {
+        content.style.transform =
+          'scale(' +
+          currentZoom +
+          ')';
       }
     }
 
 
-    // =============================================================
-    // THEME
-    // =============================================================
+    function zoomIn() {
+      setZoom(
+        currentZoom + 0.1
+      );
+    }
 
-    function setTheme(theme) {
-      if (theme === 'dark') {
+
+    function zoomOut() {
+      setZoom(
+        currentZoom - 0.1
+      );
+    }
+
+
+    function resetZoom() {
+      setZoom(1.0);
+    }
+
+
+    /* =========================================================
+       RESIZE
+       ========================================================= */
+
+    let resizeTimer = null;
+
+    window.addEventListener(
+      'resize',
+      () => {
+        clearTimeout(
+          resizeTimer
+        );
+
+        resizeTimer =
+          setTimeout(
+            () => {
+              if (
+                currentDocType ===
+                'pptx' &&
+                pptxBase64Data
+              ) {
+                renderPptx(
+                  pptxBase64Data
+                );
+              }
+            },
+            250
+          );
+      }
+    );
+
+
+    /* =========================================================
+       DARK MODE
+       ========================================================= */
+
+    function setDarkMode(enabled) {
+      if (enabled) {
         document.body.classList.add(
           'dark-mode'
         );
@@ -1197,6 +1442,123 @@
         );
       }
     }
+
+
+    /* =========================================================
+       MESSAGE HANDLING
+       ========================================================= */
+
+    window.addEventListener(
+      'message',
+      (event) => {
+        if (
+          !event.data
+        ) {
+          return;
+        }
+
+        const data =
+          event.data;
+
+        if (
+          data.type ===
+          'darkMode'
+        ) {
+          setDarkMode(
+            data.enabled
+          );
+
+          return;
+        }
+
+        if (
+          data.type ===
+          'zoom'
+        ) {
+          setZoom(
+            data.value
+          );
+
+          return;
+        }
+
+        if (
+          data.type ===
+          'pptxMode'
+        ) {
+          setSlideMode(
+            data.mode
+          );
+
+          return;
+        }
+
+        if (
+          data.type ===
+          'render'
+        ) {
+          renderDocument(
+            data.documentType,
+            data.base64
+          );
+        }
+      }
+    );
+
+
+    /* =========================================================
+       FLUTTER WEBVIEW MESSAGE SUPPORT
+       ========================================================= */
+
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        hideLoading();
+      }
+    );
+
+
+    /* =========================================================
+       INITIALIZATION
+       ========================================================= */
+
+    window.DocVault =
+      window.DocVault || {};
+
+    window.DocVault.renderDocument =
+      renderDocument;
+
+    window.DocVault.renderPptx =
+      renderPptx;
+
+    window.DocVault.setSlideMode =
+      setSlideMode;
+
+    window.DocVault.setZoom =
+      setZoom;
+
+    window.DocVault.zoomIn =
+      zoomIn;
+
+    window.DocVault.zoomOut =
+      zoomOut;
+
+    window.DocVault.resetZoom =
+      resetZoom;
+
+    window.DocVault.setDarkMode =
+      setDarkMode;
+
+    window.DocVault.nextSlide =
+      nextSlide;
+
+    window.DocVault.prevSlide =
+      prevSlide;
+
+    window.DocVault.goToSlide =
+      goToSlide;
+
   </script>
+
 </body>
 </html>
