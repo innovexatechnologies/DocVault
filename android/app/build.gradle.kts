@@ -35,15 +35,20 @@ android {
         multiDexEnabled = true
     }
 
-    buildTypes {
-        release {
-            signingConfig =
-                signingConfigs.getByName("debug")
-                proguardFiles getDefaultProguardFile('proguard-android-optimize.txt'), 'proguard-rules.pro'
-                minifyEnabled true
-        shrinkResources true
-        }
+   buildTypes {
+    release {
+        // Sign with release or debug key
+        signingConfig = signingConfigs.getByName("debug")
+        
+        // Kotlin DSL Syntax for ProGuard / R8
+        isMinifyEnabled = true
+        isShrinkResources = true
+        proguardFiles(
+            getDefaultProguardFile("proguard-android-optimize.txt"),
+            "proguard-rules.pro"
+        )
     }
+}
 
     packaging {
         resources {

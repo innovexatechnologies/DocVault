@@ -115,8 +115,6 @@ Future<Uint8List> _generatePdfInBackground(
 ) async {
   final pdf = pw.Document();
 
-  final basePageWidth = PdfPageFormat.a4.width;
-
   const maxImageWidth = 1800;
   const maxImageHeight = 2400;
 
@@ -201,38 +199,19 @@ Future<Uint8List> _generatePdfInBackground(
       Uint8List.fromList(jpegBytes),
     );
 
-    final imageWidth =
-        processedImage.width.toDouble();
-
-    final imageHeight =
-        processedImage.height.toDouble();
-
-    final pageWidth = basePageWidth;
-
-    final pageHeight =
-        pageWidth *
-        imageHeight /
-        imageWidth;
-
-    final pageFormat = PdfPageFormat(
-      pageWidth,
-      pageHeight,
-    );
-
     // ==============================================================
-    // FIX HERE: pw.FullPage use kiya hai taaki overflow se blank page na bane
+    // FIXED: Standard A4 format with full image containment
     // ==============================================================
 
     pdf.addPage(
       pw.Page(
-        pageFormat: pageFormat,
+        pageFormat: PdfPageFormat.a4,
         margin: pw.EdgeInsets.zero,
         build: (context) {
-          return pw.FullPage(
-            ignoreMargins: true,
+          return pw.Center(
             child: pw.Image(
               pdfImage,
-              fit: pw.BoxFit.fill,
+              fit: pw.BoxFit.contain,
             ),
           );
         },
