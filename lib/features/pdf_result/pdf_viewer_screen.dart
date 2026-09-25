@@ -1657,6 +1657,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         children: [
           PageView.builder(
             controller: _pageController,
+            scrollDirection: Axis.vertical,
             itemCount: _fallbackImagePaths.length,
             onPageChanged: (index) {
               if (!mounted) return;
