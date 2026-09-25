@@ -182,10 +182,6 @@
         0 8px 30px rgba(0, 0, 0, 0.5);
     }
 
-    /*
-     * PPT list mode:
-     * Every slide stays one below another.
-     */
     .pptx-preview-container,
     .pptx-wrapper {
       flex-direction: column !important;
@@ -221,17 +217,11 @@
       letter-spacing: 0.3px;
     }
 
-    /* Hide default PPTX internal buttons */
-
     .pptx-wrapper .pptx-next,
     .pptx-wrapper .pptx-pre,
     .pptx-wrapper .pptx-pagination {
       display: none !important;
     }
-
-    /*
-     * Keep PPT content inside available slide width.
-     */
 
     .pptx-wrapper canvas,
     .pptx-wrapper img,
@@ -399,16 +389,30 @@
       overflow-x: hidden;
 
       overflow-y: visible;
+
+      display: flex;
+
+      flex-direction: column;
+
+      align-items: center;
+
+      gap: 12px;
     }
 
-    .pdf-page {
-      width: 100%;
+    .pdf-page-canvas {
+      width: 100% !important;
 
-      margin: 0 auto 16px auto;
+      max-width: 100%;
+
+      height: auto !important;
 
       background: #FFFFFF;
 
-      overflow: hidden;
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+
+      border-radius: 6px;
+
+      display: block;
     }
 
     /* =========================================================
@@ -416,6 +420,8 @@
        ========================================================= */
 
     .zoom-container {
+      width: 100%;
+
       transform-origin: top center;
 
       transition:
@@ -455,9 +461,12 @@
 
     <div id="error"></div>
 
+    <div id="zoom-wrapper" class="zoom-container"></div>
+
   </div>
 
   <script src="js/pptx-preview.js"></script>
+  <script src="js/pdf.min.js"></script>
 
   <script>
     /* =========================================================
@@ -470,12 +479,6 @@
 
     let currentViewMode = 'page';
 
-    /*
-     * PPT MUST remain in list mode.
-     *
-     * list = all slides vertically
-     * slide = one slide at a time
-     */
     let currentSlideMode = 'list';
 
     let pptxPreviewInstance = null;
@@ -496,7 +499,7 @@
        ========================================================= */
 
     function getContainer() {
-      return document.getElementById('container');
+      return document.getElementById('zoom-wrapper') || document.getElementById('container');
     }
 
 
@@ -595,6 +598,12 @@
       showLoading();
 
       try {
+        if (type === 'pdf') {
+          renderPdf(base64Data);
+
+          return;
+        }
+
         if (type === 'pptx') {
           renderPptx(base64Data);
 
@@ -623,6 +632,56 @@
           error.message ||
           'Unable to render document.'
         );
+      }
+    }
+
+
+    /* =========================================================
+       PDF RENDER
+       ========================================================= */
+
+    async function renderPdf(base64Data) {
+      clearContainer();
+
+      const container = getContainer();
+
+      const pdfContainer = document.createElement('div');
+      pdfContainer.className = 'pdf-preview-container';
+
+      container.appendChild(pdfContainer);
+
+      try {
+        if (typeof pdfjsLib === 'undefined') {
+          throw new Error('PDF.js library not loaded.');
+        }
+
+        const buffer = base64ToArrayBuffer(base64Data);
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
+
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1.5 });
+
+          const canvas = document.createElement('canvas');
+          canvas.className = 'pdf-page-canvas';
+
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
+
+          pdfContainer.appendChild(canvas);
+
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise;
+        }
+
+        hideLoading();
+      } catch (error) {
+        console.error(error);
+
+        showError('Unable to preview PDF: ' + error.message);
       }
     }
 
@@ -731,10 +790,6 @@
         return;
       }
 
-      /*
-       * Width is based on the available
-       * mobile/desktop viewport.
-       */
       const screenWidth =
         window.innerWidth;
 
@@ -744,9 +799,6 @@
           screenWidth - 20
         );
 
-      /*
-       * PPT slides are 16:9.
-       */
       const targetHeight =
         targetWidth * 9 / 16;
 
@@ -765,13 +817,6 @@
             base64Data
           );
 
-        /*
-         * IMPORTANT:
-         * Always initialize PPTX in list mode.
-         *
-         * This allows the complete deck to be
-         * rendered vertically.
-         */
         pptxPreviewInstance =
           pptxPreview.init(
             container,
@@ -792,9 +837,6 @@
             buffer
           );
 
-        /*
-         * Get slide count when available.
-         */
         if (
           pptxData &&
           Array.isArray(
@@ -814,20 +856,11 @@
             slides.length;
         }
 
-        /*
-         * Apply vertical PPT layout
-         * after renderer creates DOM.
-         */
         stylePptxDom(
           targetWidth,
           targetHeight
         );
 
-        /*
-         * Renderer may create/update its DOM
-         * asynchronously, so apply the layout
-         * again on the next animation frame.
-         */
         requestAnimationFrame(() => {
           stylePptxDom(
             targetWidth,
@@ -875,12 +908,6 @@
         return;
       }
 
-      /*
-       * The wrapper is the complete PPT deck.
-       *
-       * It must NOT become one large
-       * scrollable slide.
-       */
       wrapper.classList.remove(
         'pptx-slide-card'
       );
@@ -915,10 +942,6 @@
       wrapper.style.margin =
         '0 auto';
 
-      /*
-       * Scrolling belongs to the page,
-       * not to the PPT wrapper.
-       */
       wrapper.style.overflow =
         'visible';
 
@@ -931,10 +954,6 @@
       wrapper.style.position =
         'relative';
 
-      /*
-       * Find actual slide elements
-       * generated by the PPT renderer.
-       */
       let slides =
         Array.from(
           wrapper.querySelectorAll(
@@ -945,10 +964,6 @@
           )
         );
 
-      /*
-       * Fallback for renderers that use
-       * direct children for slides.
-       */
       if (slides.length === 0) {
         slides =
           Array.from(
@@ -980,11 +995,6 @@
           });
       }
 
-      /*
-       * Every slide gets its own card
-       * and stays vertically below the
-       * previous slide.
-       */
       slides.forEach((slide) => {
         slide.classList.add(
           'pptx-slide-card'
@@ -1005,9 +1015,6 @@
         slide.style.minWidth =
           '0';
 
-        /*
-         * Keep the 16:9 slide ratio.
-         */
         slide.style.height =
           height + 'px';
 
@@ -1023,9 +1030,6 @@
         slide.style.position =
           'relative';
 
-        /*
-         * A slide itself must not scroll.
-         */
         slide.style.overflow =
           'hidden';
 
@@ -1041,10 +1045,6 @@
         slide.style.boxSizing =
           'border-box';
 
-        /*
-         * Keep slide content completely
-         * inside the slide.
-         */
         const contents =
           slide.querySelectorAll(
             'canvas, svg, img'
@@ -1079,10 +1079,6 @@
         );
       });
 
-      /*
-       * Make direct canvases fit the
-       * available slide width.
-       */
       wrapper
         .querySelectorAll(
           'canvas'
@@ -1107,11 +1103,6 @@
        ========================================================= */
 
     function setupSwipeGestures() {
-      /*
-       * List mode is already vertically
-       * scrollable, so there is no
-       * horizontal swipe navigation.
-       */
       if (
         currentSlideMode !==
         'slide'
@@ -1177,10 +1168,6 @@
           const diffY =
             endY - startY;
 
-          /*
-           * Only horizontal gestures
-           * navigate in single-slide mode.
-           */
           if (
             Math.abs(diffX) >
               Math.abs(diffY) &&
@@ -1329,12 +1316,6 @@
        ========================================================= */
 
     async function setSlideMode(mode) {
-      /*
-       * PPTX viewer is always a vertical list.
-       *
-       * Flutter may send "slide" mode, but this viewer
-       * intentionally keeps all slides stacked vertically.
-       */
       currentSlideMode = 'list';
       currentSlideIndex = 0;
 
@@ -1357,14 +1338,14 @@
         Math.max(
           0.5,
           Math.min(
-            3.0,
+            4.0,
             zoom
           )
         );
 
       const content =
-        document.querySelector(
-          '.zoom-container'
+        document.getElementById(
+          'zoom-wrapper'
         );
 
       if (content) {
@@ -1378,14 +1359,14 @@
 
     function zoomIn() {
       setZoom(
-        currentZoom + 0.1
+        currentZoom + 0.15
       );
     }
 
 
     function zoomOut() {
       setZoom(
-        currentZoom - 0.1
+        currentZoom - 0.15
       );
     }
 
@@ -1507,7 +1488,7 @@
 
 
     /* =========================================================
-       FLUTTER WEBVIEW MESSAGE SUPPORT
+       INITIALIZATION
        ========================================================= */
 
     document.addEventListener(
@@ -1518,10 +1499,6 @@
     );
 
 
-    /* =========================================================
-       INITIALIZATION
-       ========================================================= */
-
     window.DocVault =
       window.DocVault || {};
 
@@ -1530,6 +1507,9 @@
 
     window.DocVault.renderPptx =
       renderPptx;
+
+    window.DocVault.renderPdf =
+      renderPdf;
 
     window.DocVault.setSlideMode =
       setSlideMode;
