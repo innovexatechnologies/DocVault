@@ -18,22 +18,22 @@ class PdfGenerationScreen extends StatefulWidget {
   });
 
   @override
-  State<PdfGenerationScreen> createState() =>
-      _PdfGenerationScreenState();
+  State<PdfGenerationScreen> createState() => _PdfGenerationScreenState();
 }
 
-class _PdfGenerationScreenState
-    extends State<PdfGenerationScreen> {
+class _PdfGenerationScreenState extends State<PdfGenerationScreen> {
   late Future<DocumentResult> _generationFuture;
-
-  final DocumentGenerationService _documentService =
-      DocumentGenerationService();
+  final DocumentGenerationService _documentService = DocumentGenerationService();
 
   bool _hasNavigated = false;
+  int _imageCount = 0;
 
   @override
   void initState() {
     super.initState();
+    // Cache image paths before async computation starts
+    final imageProvider = context.read<ImageSelectionProvider>();
+    _imageCount = imageProvider.imageCount;
     _startGeneration();
   }
 
@@ -43,159 +43,87 @@ class _PdfGenerationScreenState
 
   void _startGeneration() {
     _hasNavigated = false;
+    final imageProvider = context.read<ImageSelectionProvider>();
+    final imagePaths = imageProvider.getImageFilePaths();
 
-    final imageProvider =
-        context.read<ImageSelectionProvider>();
-
-    final imagePaths =
-        imageProvider.getImageFilePaths();
-
+    // Start background document creation
     _generationFuture = _documentService
         .generateDocument(
           imagePaths: imagePaths,
           conversionType: widget.conversionType,
         )
         .then((result) {
-      // ==========================================================
-      // CLEAR SELECTED IMAGES AFTER SUCCESS
-      // ==========================================================
-
       if (mounted) {
         imageProvider.clearAllImages();
       }
 
-      // ==========================================================
-      // DIRECTLY OPEN RESULT SCREEN
-      //
-      // PDF / DOCX / PPTX:
-      // Generation Screen -> ResultScreen
-      //
-      // SUCCESS "VIEW RESULT" SCREEN IS SKIPPED
-      // ==========================================================
-
+      // Navigate to Result Screen instantly when done
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || _hasNavigated) {
-          return;
-        }
-
+        if (!mounted || _hasNavigated) return;
         _hasNavigated = true;
 
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(
-            builder: (_) => ResultScreen(
-              pdfResult: result,
-            ),
+            builder: (_) => ResultScreen(pdfResult: result),
           ),
         );
       });
 
       return result;
     }).catchError((error) {
-      debugPrint(
-        'Document generation error: $error',
-      );
-
-      // Do not clear images on error.
-      // User can retry generation.
-
+      debugPrint('Document generation error: $error');
       throw error;
     });
   }
 
-  // ============================================================
-  // RETRY
-  // ============================================================
-
   void _retryGeneration() {
     if (!mounted) return;
-
     setState(() {
       _startGeneration();
     });
   }
 
-  // ============================================================
-  // BUILD
-  // ============================================================
-
   @override
   Widget build(BuildContext context) {
-    final responsivePadding =
-        ResponsiveHelper.getResponsivePadding(context);
-
-    final buttonHeight =
-        ResponsiveHelper.getResponsiveButtonHeight(context);
-
+    final responsivePadding = ResponsiveHelper.getResponsivePadding(context);
+    final buttonHeight = ResponsiveHelper.getResponsiveButtonHeight(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
 
-    final itemUnit =
-        widget.conversionType == ConversionType.ppt
-            ? 'slide(s)'
-            : 'image(s)';
+    final itemUnit = widget.conversionType == ConversionType.ppt ? 'slide(s)' : 'image(s)';
 
     return FutureBuilder<DocumentResult>(
       future: _generationFuture,
       builder: (context, snapshot) {
-        final isLoading =
-            snapshot.connectionState ==
-                ConnectionState.waiting;
-
-        final hasError =
-            snapshot.hasError;
+        final isLoading = snapshot.connectionState == ConnectionState.waiting;
+        final hasError = snapshot.hasError;
 
         return PopScope(
           canPop: !isLoading,
-          onPopInvokedWithResult:
-              (didPop, result) {
+          onPopInvokedWithResult: (didPop, result) {
             if (!didPop && !isLoading) {
               Navigator.of(context).maybePop();
             }
           },
           child: Scaffold(
-            backgroundColor:
-                colorScheme.surface,
-
-            // ====================================================
-            // APP BAR
-            // ====================================================
-
+            backgroundColor: colorScheme.surface,
             appBar: hasError
                 ? AppBar(
-                    backgroundColor:
-                        colorScheme.surface,
-                    foregroundColor:
-                        colorScheme.onSurface,
+                    backgroundColor: colorScheme.surface,
+                    foregroundColor: colorScheme.onSurface,
                     elevation: 0,
                     scrolledUnderElevation: 0,
                     leading: IconButton(
-                      icon: const Icon(
-                        Icons.arrow_back_rounded,
-                      ),
-                      onPressed: () =>
-                          Navigator.of(
-                            context,
-                          ).maybePop(),
-                      tooltip:
-                          'Back to Review',
+                      icon: const Icon(Icons.arrow_back_rounded),
+                      onPressed: () => Navigator.of(context).maybePop(),
+                      tooltip: 'Back to Review',
                     ),
-                    title: const Text(
-                      'Generation Failed',
-                    ),
+                    title: const Text('Generation Failed'),
                   )
                 : null,
-
-            // ====================================================
-            // BODY
-            // ====================================================
-
             body: SafeArea(
               child: Builder(
                 builder: (context) {
-                  // ================================================
-                  // LOADING
-                  // ================================================
-
                   if (isLoading) {
                     return _buildLoadingState(
                       context,
@@ -204,10 +132,6 @@ class _PdfGenerationScreenState
                       itemUnit,
                     );
                   }
-
-                  // ================================================
-                  // ERROR
-                  // ================================================
 
                   if (hasError) {
                     return _buildErrorState(
@@ -219,13 +143,7 @@ class _PdfGenerationScreenState
                     );
                   }
 
-                  // ================================================
-                  // SUCCESS
-                  //
-                  // Navigation automatically happens to ResultScreen.
-                  // ================================================
-
-                  return const SizedBox();
+                  return const SizedBox.shrink();
                 },
               ),
             ),
@@ -245,173 +163,80 @@ class _PdfGenerationScreenState
     ColorScheme colorScheme,
     String itemUnit,
   ) {
-    final provider =
-        context.watch<ImageSelectionProvider>();
-
     return Center(
       child: SingleChildScrollView(
-        padding:
-            EdgeInsets.all(responsivePadding),
+        padding: EdgeInsets.all(responsivePadding),
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ----------------------------------------------------
-            // LOADING ICON
-            // ----------------------------------------------------
-
             Container(
-              width:
-                  ResponsiveHelper.isTablet(
-                context,
-              )
-                      ? 120
-                      : 100,
-              height:
-                  ResponsiveHelper.isTablet(
-                context,
-              )
-                      ? 120
-                      : 100,
-              decoration:
-                  BoxDecoration(
-                color: widget
-                    .conversionType
-                    .badgeColor
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
+              width: ResponsiveHelper.isTablet(context) ? 120 : 100,
+              height: ResponsiveHelper.isTablet(context) ? 120 : 100,
+              decoration: BoxDecoration(
+                color: widget.conversionType.badgeColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(24),
               ),
               child: Center(
-                child:
-                    CircularProgressIndicator(
-                  color: widget
-                      .conversionType
-                      .badgeColor,
+                child: CircularProgressIndicator(
+                  color: widget.conversionType.badgeColor,
                   strokeWidth: 4,
                 ),
               ),
             ),
-
-            SizedBox(
-              height:
-                  responsivePadding,
-            ),
-
-            // ----------------------------------------------------
-            // TITLE
-            // ----------------------------------------------------
-
+            SizedBox(height: responsivePadding),
             Text(
               'Generating ${widget.conversionType.label}...',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize:
-                    ResponsiveHelper
-                        .getResponsiveFontSize(
+                fontSize: ResponsiveHelper.getResponsiveFontSize(
                   context,
                   mobileSize: 18,
                   tabletSize: 20,
                   desktopSize: 22,
                 ),
-                fontWeight:
-                    FontWeight.w700,
-                color:
-                    colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
               ),
             ),
-
-            const SizedBox(
-              height: 8,
-            ),
-
-            // ----------------------------------------------------
-            // IMAGE COUNT
-            // ----------------------------------------------------
-
+            const SizedBox(height: 8),
             Text(
-              '${provider.imageCount} $itemUnit',
-              textAlign:
-                  TextAlign.center,
+              '$_imageCount $itemUnit',
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize:
-                    ResponsiveHelper
-                        .getResponsiveFontSize(
+                fontSize: ResponsiveHelper.getResponsiveFontSize(
                   context,
                   mobileSize: 13,
                   tabletSize: 14,
                   desktopSize: 15,
                 ),
-                color:
-                    colorScheme.onSurface
-                        .withValues(
-                  alpha: 0.60,
-                ),
+                color: colorScheme.onSurface.withValues(alpha: 0.60),
               ),
             ),
-
-            SizedBox(
-              height:
-                  responsivePadding,
-            ),
-
-            // ----------------------------------------------------
-            // INFORMATION
-            // ----------------------------------------------------
-
+            SizedBox(height: responsivePadding),
             Container(
-              padding:
-                  const EdgeInsets.all(
-                16,
-              ),
-              decoration:
-                  BoxDecoration(
-                color: colorScheme
-                    .onSurface
-                    .withValues(
-                  alpha: 0.04,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  16,
-                ),
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: colorScheme.onSurface.withValues(alpha: 0.04),
+                borderRadius: BorderRadius.circular(16),
                 border: Border.all(
-                  color: colorScheme
-                      .onSurface
-                      .withValues(
-                    alpha: 0.08,
-                  ),
+                  color: colorScheme.onSurface.withValues(alpha: 0.08),
                 ),
               ),
               child: Row(
                 children: [
                   Icon(
-                    Icons
-                        .auto_awesome_rounded,
-                    color: widget
-                        .conversionType
-                        .badgeColor,
+                    Icons.auto_awesome_rounded,
+                    color: widget.conversionType.badgeColor,
                     size: 22,
                   ),
-                  const SizedBox(
-                    width: 12,
-                  ),
+                  const SizedBox(width: 12),
                   Expanded(
                     child: Text(
-                      'Please wait while your document is being created.',
+                      'Optimizing pages for fast creation. Please wait...',
                       style: TextStyle(
                         fontSize: 12,
                         height: 1.5,
-                        color: colorScheme
-                            .onSurface
-                            .withValues(
-                          alpha: 0.65,
-                        ),
+                        color: colorScheme.onSurface.withValues(alpha: 0.65),
                       ),
                     ),
                   ),
@@ -437,229 +262,115 @@ class _PdfGenerationScreenState
   ) {
     return Center(
       child: SingleChildScrollView(
-        padding:
-            EdgeInsets.all(responsivePadding),
+        padding: EdgeInsets.all(responsivePadding),
         child: Column(
-          mainAxisAlignment:
-              MainAxisAlignment.center,
+          mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // ----------------------------------------------------
-            // ERROR ICON
-            // ----------------------------------------------------
-
             Container(
-              width:
-                  ResponsiveHelper.isTablet(
-                context,
-              )
-                      ? 120
-                      : 100,
-              height:
-                  ResponsiveHelper.isTablet(
-                context,
-              )
-                      ? 120
-                      : 100,
-              decoration:
-                  BoxDecoration(
-                color: AppTheme.errorColor
-                    .withValues(
-                  alpha: 0.10,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  24,
-                ),
+              width: ResponsiveHelper.isTablet(context) ? 120 : 100,
+              height: ResponsiveHelper.isTablet(context) ? 120 : 100,
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withValues(alpha: 0.10),
+                borderRadius: BorderRadius.circular(24),
               ),
               child: Icon(
                 Icons.error_outline_rounded,
-                size:
-                    ResponsiveHelper
-                        .isTablet(context)
-                            ? 70
-                            : 60,
-                color:
-                    AppTheme.errorColor,
+                size: ResponsiveHelper.isTablet(context) ? 70 : 60,
+                color: AppTheme.errorColor,
               ),
             ),
-
-            SizedBox(
-              height:
-                  responsivePadding,
-            ),
-
-            // ----------------------------------------------------
-            // ERROR TITLE
-            // ----------------------------------------------------
-
+            SizedBox(height: responsivePadding),
             Text(
               '${widget.conversionType.shortName} generation failed',
-              textAlign:
-                  TextAlign.center,
+              textAlign: TextAlign.center,
               style: TextStyle(
-                fontSize:
-                    ResponsiveHelper
-                        .getResponsiveFontSize(
+                fontSize: ResponsiveHelper.getResponsiveFontSize(
                   context,
                   mobileSize: 18,
                   tabletSize: 20,
                   desktopSize: 22,
                 ),
-                fontWeight:
-                    FontWeight.w700,
-                color:
-                    colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface,
               ),
             ),
-
-            const SizedBox(
-              height: 10,
-            ),
-
-            // ----------------------------------------------------
-            // ERROR DETAILS
-            // ----------------------------------------------------
-
+            const SizedBox(height: 10),
             Container(
               width: double.infinity,
-              padding:
-                  const EdgeInsets.all(
-                14,
-              ),
-              decoration:
-                  BoxDecoration(
-                color: AppTheme.errorColor
-                    .withValues(
-                  alpha: 0.06,
-                ),
-                borderRadius:
-                    BorderRadius.circular(
-                  12,
-                ),
+              padding: const EdgeInsets.all(14),
+              decoration: BoxDecoration(
+                color: AppTheme.errorColor.withValues(alpha: 0.06),
+                borderRadius: BorderRadius.circular(12),
                 border: Border.all(
-                  color: AppTheme.errorColor
-                      .withValues(
-                    alpha: 0.20,
-                  ),
+                  color: AppTheme.errorColor.withValues(alpha: 0.20),
                 ),
               ),
               child: Text(
                 error.toString(),
-                textAlign:
-                    TextAlign.center,
+                textAlign: TextAlign.center,
                 style: TextStyle(
-                  fontSize:
-                      ResponsiveHelper
-                          .getResponsiveFontSize(
+                  fontSize: ResponsiveHelper.getResponsiveFontSize(
                     context,
                     mobileSize: 11,
                     tabletSize: 12,
                     desktopSize: 13,
                   ),
                   height: 1.5,
-                  color: colorScheme
-                      .onSurface
-                      .withValues(
-                    alpha: 0.65,
-                  ),
+                  color: colorScheme.onSurface.withValues(alpha: 0.65),
                 ),
               ),
             ),
-
-            SizedBox(
-              height:
-                  responsivePadding,
-            ),
-
-            // ----------------------------------------------------
-            // RETRY
-            // ----------------------------------------------------
-
+            SizedBox(height: responsivePadding),
             SizedBox(
               width: double.infinity,
               height: buttonHeight,
               child: ElevatedButton.icon(
-                onPressed:
-                    _retryGeneration,
-                icon: const Icon(
-                  Icons.refresh_rounded,
-                ),
+                onPressed: _retryGeneration,
+                icon: const Icon(Icons.refresh_rounded),
                 label: Text(
                   'Retry',
                   style: TextStyle(
-                    fontSize:
-                        ResponsiveHelper
-                            .getResponsiveFontSize(
+                    fontSize: ResponsiveHelper.getResponsiveFontSize(
                       context,
                       mobileSize: 14,
                       tabletSize: 16,
                       desktopSize: 18,
                     ),
-                    fontWeight:
-                        FontWeight.w700,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
-                style:
-                    ElevatedButton.styleFrom(
-                  backgroundColor:
-                      widget
-                          .conversionType
-                          .badgeColor,
-                  foregroundColor:
-                      Colors.white,
+                style: ElevatedButton.styleFrom(
+                  backgroundColor: widget.conversionType.badgeColor,
+                  foregroundColor: Colors.white,
                   elevation: 0,
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                      12,
-                    ),
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),
             ),
-
-            const SizedBox(
-              height: 10,
-            ),
-
-            // ----------------------------------------------------
-            // BACK TO REVIEW
-            // ----------------------------------------------------
-
+            const SizedBox(height: 10),
             SizedBox(
               width: double.infinity,
               height: buttonHeight,
               child: OutlinedButton.icon(
-                onPressed: () {
-                  Navigator.of(context).pop();
-                },
-                icon: const Icon(
-                  Icons.arrow_back_rounded,
-                ),
+                onPressed: () => Navigator.of(context).pop(),
+                icon: const Icon(Icons.arrow_back_rounded),
                 label: Text(
                   'Back to Review',
                   style: TextStyle(
-                    fontSize:
-                        ResponsiveHelper
-                            .getResponsiveFontSize(
+                    fontSize: ResponsiveHelper.getResponsiveFontSize(
                       context,
                       mobileSize: 14,
                       tabletSize: 16,
                       desktopSize: 18,
                     ),
-                    fontWeight:
-                        FontWeight.w600,
+                    fontWeight: FontWeight.w600,
                   ),
                 ),
-                style:
-                    OutlinedButton.styleFrom(
-                  shape:
-                      RoundedRectangleBorder(
-                    borderRadius:
-                        BorderRadius.circular(
-                      12,
-                    ),
+                style: OutlinedButton.styleFrom(
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(12),
                   ),
                 ),
               ),

@@ -27,7 +27,7 @@ class PreviewScreen extends StatefulWidget {
 }
 
 class _PreviewScreenState extends State<PreviewScreen> {
-  late final PageController _pageController;
+  late final ScrollController _scrollController;
 
   int _currentPageIndex = 0;
 
@@ -76,12 +76,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
   @override
   void initState() {
     super.initState();
-    _pageController = PageController();
+    _scrollController = ScrollController();
   }
 
   @override
   void dispose() {
-    _pageController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -340,29 +340,25 @@ class _PreviewScreenState extends State<PreviewScreen> {
             ),
 
             // ======================================================
-            // DOCUMENT PREVIEW
+            // DOCUMENT PREVIEW (CONTINUOUS VERTICAL SCROLL)
             // ======================================================
 
             Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                scrollDirection:
-                    _isPpt ? Axis.horizontal : Axis.vertical,
-                itemCount: totalPages,
+              child: ListView.builder(
+                controller: _scrollController,
                 physics: const BouncingScrollPhysics(),
-                onPageChanged: (index) {
-                  if (!mounted) return;
-                  setState(() {
-                    _currentPageIndex = index;
-                  });
-                },
+                itemCount: totalPages,
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 itemBuilder: (context, index) {
                   final image = images[index];
-                  return _buildDocumentPreview(
-                    context,
-                    image.filePath,
-                    index,
-                    isDark,
+                  return Padding(
+                    padding: const EdgeInsets.only(bottom: 16),
+                    child: _buildDocumentPreview(
+                      context,
+                      image.filePath,
+                      index,
+                      isDark,
+                    ),
                   );
                 },
               ),
@@ -410,12 +406,14 @@ class _PreviewScreenState extends State<PreviewScreen> {
         const verticalPadding = 8.0;
 
         final maxWidth = availableWidth - (horizontalPadding * 2);
-        final maxHeight = availableHeight - verticalPadding - 14;
+        final maxHeight = availableHeight > 0
+            ? availableHeight - verticalPadding - 14
+            : 450.0;
 
         double documentWidth = maxWidth;
         double documentHeight = documentWidth / _documentAspectRatio;
 
-        if (documentHeight > maxHeight) {
+        if (documentHeight > maxHeight && maxHeight > 100) {
           documentHeight = maxHeight;
           documentWidth = documentHeight * _documentAspectRatio;
         }
@@ -430,11 +428,9 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
         return Center(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(
-              horizontalPadding,
-              verticalPadding,
-              horizontalPadding,
-              14,
+            padding: const EdgeInsets.symmetric(
+              horizontal: horizontalPadding,
+              vertical: verticalPadding,
             ),
             child: SizedBox(
               width: documentWidth,
@@ -659,9 +655,12 @@ class _PreviewScreenState extends State<PreviewScreen> {
 
                   return GestureDetector(
                     onTap: () {
-                      if (!_pageController.hasClients) return;
-                      _pageController.animateToPage(
-                        index,
+                      setState(() {
+                        _currentPageIndex = index;
+                      });
+                      if (!_scrollController.hasClients) return;
+                      _scrollController.animateTo(
+                        index * 320.0,
                         duration: const Duration(milliseconds: 300),
                         curve: Curves.easeOutCubic,
                       );

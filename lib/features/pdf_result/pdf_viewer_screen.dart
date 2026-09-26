@@ -1,12 +1,14 @@
 import 'dart:async';
-import 'dart:io';
 import 'dart:convert';
-import 'package:webview_flutter/webview_flutter.dart';
+import 'dart:io';
+
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:open_file/open_file.dart';
 import 'package:flutter_pdfview/flutter_pdfview.dart';
+import 'package:open_file/open_file.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:webview_flutter/webview_flutter.dart';
 
 import '../../core/providers/image_selection_provider.dart';
 import '../../core/providers/pdf_manager_provider.dart';
@@ -36,7 +38,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
   PDFViewController? _pdfViewController;
   WebViewController? _webViewController;
-  late final PageController _pageController;
 
   int _actualPageCount = 0;
   int _currentPage = 1;
@@ -53,8 +54,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // View management state
   int _rotationQuarterTurns = 0;
   bool _isFitWidth = true;
-  String _docxViewMode = 'page'; // 'page' or 'reflow'
-  String _pptxSlideMode = 'slide'; // 'slide' or 'list'
+  String _docxViewMode = 'page';
+  String _pptxSlideMode = 'list';
   final bool _showControlsBar = true;
 
   bool get _isPdf => _docType == ConversionType.pdf;
@@ -62,22 +63,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String get _itemUnit => _isPpt ? 'Slide' : 'Page';
   Color get _accentColor => _docType.badgeColor;
 
-  // ============================================================
-  // INIT
-  // ============================================================
-
   @override
   void initState() {
     super.initState();
-
-    _docType = ConversionType.fromFileName(
-      widget.fileName,
-    );
-
-    _pageController = PageController();
+    _docType = ConversionType.fromFileName(widget.fileName);
 
     final file = File(widget.filePath);
-
     if (!file.existsSync()) {
       _errorMessage = 'Document file not found on device.';
       _isLoading = false;
@@ -87,29 +78,25 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     _initializeViewer();
   }
 
-  // ============================================================
-  // INITIALIZE
-  // ============================================================
-
   Future<void> _initializeViewer() async {
+    // -------------------------------------------------------------------------
+    // FAST PATH FOR PDF: Skip WebView & timers completely for instant load
+    // -------------------------------------------------------------------------
+    if (_isPdf) {
+      if (mounted) {
+        setState(() {
+          _isLoading = false;
+        });
+      }
+      return;
+    }
+
     _renderTimeoutTimer?.cancel();
     try {
-      if (_isPdf) {
-        if (mounted) {
-          setState(() {
-            _isLoading = false;
-          });
-        }
-        return;
-      }
-
-      _renderTimeoutTimer = Timer(const Duration(seconds: 25), () {
+      _renderTimeoutTimer = Timer(const Duration(seconds: 15), () {
         if (mounted && _isLoading && !_usingFallbackView) {
-          debugPrint(
-            'WebView render timed out for ${widget.fileName}. Falling back to native page extraction...',
-          );
           _tryFallbackNativeRendering(
-            error: 'WebView preview took longer than usual. Switched to slide/page view.',
+            error: 'Preview loading took longer than usual. Switched to page view.',
           );
         }
       });
@@ -123,7 +110,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         )
         ..setNavigationDelegate(
           NavigationDelegate(
-            onPageFinished: (_) => _renderOfficeDocument(),
+            onPageFinished: (_) async {
+              await _webViewController?.runJavaScript('''
+                (function() {
+                  document.body.style.overflowY = 'auto';
+                  document.body.style.height = 'auto';
+                  document.body.style.backgroundColor = '#f4f6fa';
+                  var containers = document.querySelectorAll('.swiper-wrapper, .slides, .carousel, #document-container');
+                  containers.forEach(function(c) {
+                    c.style.display = 'flex';
+                    c.style.flexDirection = 'column';
+                    c.style.transform = 'none !important';
+                    c.style.width = '100% !important';
+                    c.style.height = 'auto !important';
+                  });
+                })();
+              ''');
+              _renderOfficeDocument();
+            },
             onWebResourceError: (error) {
               debugPrint('WebView web resource error: ${error.description}');
             },
@@ -137,14 +141,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         });
       }
     } catch (e) {
-      debugPrint('WebView initialization error: $e. Attempting fallback...');
       await _tryFallbackNativeRendering(error: e.toString());
     }
   }
-
-  // ============================================================
-  // RENDER DOCX/PPTX INSIDE WEBVIEW
-  // ============================================================
 
   Future<void> _renderOfficeDocument() async {
     try {
@@ -155,12 +154,9 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
       if (!mounted) return;
       final isDark = Theme.of(context).brightness == Brightness.dark;
-      await _webViewController?.runJavaScript(
-        "setTheme('${isDark ? 'dark' : 'light'}');",
-      );
+      await _webViewController?.runJavaScript("setTheme('${isDark ? 'dark' : 'light'}');");
 
-      final bytes = await file.readAsBytes();
-      final base64Data = base64Encode(bytes);
+      final base64Data = await compute(_readAndEncodeFile, file.path);
 
       if (!mounted) return;
 
@@ -178,23 +174,20 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         }
       } else {
         final jsFunction = _isPpt ? 'renderPptx' : 'renderDocx';
-        await _webViewController!.runJavaScript(
-          "$jsFunction('$base64Data');",
-        );
+        await _webViewController!.runJavaScript("$jsFunction('$base64Data');");
       }
     } catch (e) {
-      debugPrint('WebView script error: $e. Attempting native fallback...');
       await _tryFallbackNativeRendering(error: e.toString());
     }
   }
 
-  // ============================================================
-  // WEBVIEW <-> FLUTTER BRIDGE
-  // ============================================================
+  static Future<String> _readAndEncodeFile(String path) async {
+    final bytes = await File(path).readAsBytes();
+    return base64Encode(bytes);
+  }
 
   void _handleBridgeMessage(JavaScriptMessage message) {
     if (!mounted) return;
-
     final data = message.message;
 
     if (data == 'success') {
@@ -205,7 +198,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       });
     } else if (data.startsWith('error:')) {
       _renderTimeoutTimer?.cancel();
-      debugPrint('DocumentBridge error: ${data.substring(6)}. Trying native extraction...');
       _tryFallbackNativeRendering(error: data.substring(6));
     } else if (data.startsWith('pagecount:')) {
       final count = int.tryParse(data.substring(10)) ?? 0;
@@ -227,10 +219,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
   }
 
-  // ============================================================
-  // FALLBACK NATIVE IMAGE RENDERING FOR DOCX / PPTX
-  // ============================================================
-
   Future<void> _tryFallbackNativeRendering({String? error}) async {
     _renderTimeoutTimer?.cancel();
     try {
@@ -248,7 +236,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         return;
       }
     } catch (e) {
-      debugPrint('Fallback native page extraction failed: $e');
+      debugPrint('Fallback extraction failed: $e');
     }
 
     if (!mounted) return;
@@ -259,10 +247,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _isLoading = false;
     });
   }
-
-  // ============================================================
-  // VIEW & PAGE MANAGEMENT CONTROLS
-  // ============================================================
 
   void _rotateDocument() {
     setState(() {
@@ -289,11 +273,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _pdfViewController!.setPage(_currentPage);
     } else if (_isPpt && !_usingFallbackView) {
       _webViewController?.runJavaScript("nextSlide();");
-    } else if (_usingFallbackView && _pageController.hasClients) {
-      _pageController.nextPage(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
     }
   }
 
@@ -302,11 +281,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _pdfViewController!.setPage(_currentPage - 2);
     } else if (_isPpt && !_usingFallbackView) {
       _webViewController?.runJavaScript("prevSlide();");
-    } else if (_usingFallbackView && _pageController.hasClients) {
-      _pageController.previousPage(
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeInOut,
-      );
     }
   }
 
@@ -318,14 +292,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       _pdfViewController!.setPage(targetPage - 1);
     } else if (_isPpt && !_usingFallbackView) {
       _webViewController?.runJavaScript("goToSlide(${targetPage - 1});");
-    } else if (_usingFallbackView && _pageController.hasClients) {
-      _pageController.jumpToPage(targetPage - 1);
     }
   }
-
-  // ============================================================
-  // JUMP TO PAGE DIALOG (Without Zoom Controls)
-  // ============================================================
 
   void _showJumpToPageDialog() {
     if (_actualPageCount <= 0) return;
@@ -456,20 +424,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // BACK / CLOSE VIEWER
-  // ============================================================
-
   Future<void> _closeViewer() async {
     if (!mounted) return;
-
     final navigator = Navigator.of(context);
 
     if (widget.isExternal) {
-      navigator.pushNamedAndRemoveUntil(
-        '/home',
-        (route) => false,
-      );
+      navigator.pushNamedAndRemoveUntil('/home', (route) => false);
       return;
     }
 
@@ -478,205 +438,111 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       return;
     }
 
-    navigator.pushNamedAndRemoveUntil(
-      '/home',
-      (route) => false,
-    );
+    navigator.pushNamedAndRemoveUntil('/home', (route) => false);
   }
-
-  // ============================================================
-  // SHARE
-  // ============================================================
 
   Future<void> _shareDocument() async {
     try {
       final file = File(widget.filePath);
-
       if (!await file.exists()) {
         throw Exception('Document file not found.');
       }
-
       await Share.shareXFiles(
-        [
-          XFile(widget.filePath),
-        ],
+        [XFile(widget.filePath)],
         text: 'Sharing ${widget.fileName} from DocScanner',
       );
     } catch (e) {
       if (!mounted) return;
-
-      _showSnackBar(
-        'Failed to share document: $e',
-        isError: true,
-      );
+      _showSnackBar('Failed to share document: $e', isError: true);
     }
   }
-
-  // ============================================================
-  // EXPORT / SAVE TO DEVICE
-  // ============================================================
 
   Future<void> _exportDocument() async {
     try {
       final sourceFile = File(widget.filePath);
-
       if (!await sourceFile.exists()) {
-        throw Exception(
-          'Document file not found.',
-        );
+        throw Exception('Document file not found.');
       }
 
       if (widget.isExternal) {
-        await Share.shareXFiles(
-          [
-            XFile(widget.filePath),
-          ],
-          text: 'Save ${widget.fileName}',
-        );
-
+        await Share.shareXFiles([XFile(widget.filePath)], text: 'Save ${widget.fileName}');
         return;
       }
 
       if (!mounted) return;
-
       final provider = context.read<PdfManagerProvider>();
-
       final matchingDocuments = provider.documents.where(
         (d) => d.filePath == widget.filePath || d.fileName == widget.fileName,
       );
 
-      if (matchingDocuments.isEmpty) {
-        await Share.shareXFiles(
-          [
-            XFile(widget.filePath),
-          ],
-          text: 'Save ${widget.fileName}',
-        );
-
+      if (matchingDocuments.isEmpty || matchingDocuments.first.id.isEmpty) {
+        await Share.shareXFiles([XFile(widget.filePath)], text: 'Save ${widget.fileName}');
         return;
       }
 
-      final doc = matchingDocuments.first;
-
-      if (doc.id.isEmpty) {
-        await Share.shareXFiles(
-          [
-            XFile(widget.filePath),
-          ],
-          text: 'Save ${widget.fileName}',
-        );
-
-        return;
-      }
-
-      final exportedPath = await provider.exportPdf(doc.id);
+      final exportedPath = await provider.exportPdf(matchingDocuments.first.id);
 
       if (!mounted) return;
-
       if (exportedPath != null && exportedPath.isNotEmpty) {
-        _showSnackBar(
-          'Saved successfully',
-        );
+        _showSnackBar('Saved successfully');
       } else {
-        _showSnackBar(
-          'Unable to export document',
-          isError: true,
-        );
+        _showSnackBar('Unable to export document', isError: true);
       }
     } catch (e) {
       if (!mounted) return;
-
-      _showSnackBar(
-        'Export failed: $e',
-        isError: true,
-      );
+      _showSnackBar('Export failed: $e', isError: true);
     }
   }
 
-  // ============================================================
-  // EDIT
-  // ============================================================
-
   Future<void> _editDocument() async {
     final provider = context.read<PdfManagerProvider>();
-
     final matchingDocuments = provider.documents.where(
       (d) => d.filePath == widget.filePath || d.fileName == widget.fileName,
     );
 
-    if (matchingDocuments.isEmpty) {
-      _showSnackBar(
-        'Please save document to DocScanner before editing.',
-        isError: true,
-      );
+    if (matchingDocuments.isEmpty || matchingDocuments.first.id.isEmpty) {
+      _showSnackBar('Please save document to DocScanner before editing.', isError: true);
       return;
     }
 
     final doc = matchingDocuments.first;
 
-    if (doc.id.isEmpty) {
-      _showSnackBar(
-        'Please save document to DocScanner before editing.',
-        isError: true,
-      );
-      return;
-    }
-
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (_) {
-        return const PopScope(
-          canPop: false,
-          child: Center(
-            child: Card(
-              child: Padding(
-                padding: EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    CircularProgressIndicator(),
-                    SizedBox(height: 16),
-                    Text(
-                      'Loading document for editing...',
-                      style: TextStyle(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ],
-                ),
+      builder: (_) => const PopScope(
+        canPop: false,
+        child: Center(
+          child: Card(
+            child: Padding(
+              padding: EdgeInsets.all(24),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  CircularProgressIndicator(),
+                  SizedBox(height: 16),
+                  Text('Loading document for editing...', style: TextStyle(fontWeight: FontWeight.w600)),
+                ],
               ),
             ),
           ),
-        );
-      },
+        ),
+      ),
     );
 
     try {
-      final imagePaths = await FileUtils.extractPagesFromDocument(
-        doc.filePath,
-      );
-
+      final imagePaths = await FileUtils.extractPagesFromDocument(doc.filePath);
       if (!mounted) return;
 
       Navigator.of(context).pop();
 
       final imageProvider = context.read<ImageSelectionProvider>();
-
       imageProvider.clearAllImages();
-
-      imageProvider.addImages(
-        imagePaths,
-        'existing_doc',
-        markUnsaved: false,
-      );
+      imageProvider.addImages(imagePaths, 'existing_doc', markUnsaved: false);
 
       final result = await Navigator.of(context).push<bool>(
         MaterialPageRoute(
-          builder: (_) => ReviewScreen(
-            existingDocument: doc,
-            conversionType: _docType,
-          ),
+          builder: (_) => ReviewScreen(existingDocument: doc, conversionType: _docType),
         ),
       );
 
@@ -685,94 +551,52 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       }
     } catch (e) {
       if (!mounted) return;
-
       Navigator.of(context).pop();
-
-      _showSnackBar(
-        'Failed to load document: $e',
-        isError: true,
-      );
+      _showSnackBar('Failed to load document: $e', isError: true);
     }
   }
-
-  // ============================================================
-  // OPEN EXTERNAL APP
-  // ============================================================
 
   Future<void> _openWithExternalApp() async {
     try {
       final file = File(widget.filePath);
-
       if (!await file.exists()) {
-        throw Exception(
-          'Document file not found.',
-        );
+        throw Exception('Document file not found.');
       }
 
-      final result = await OpenFile.open(
-        widget.filePath,
-      );
-
+      final result = await OpenFile.open(widget.filePath);
       if (!mounted) return;
 
       if (result.type != ResultType.done) {
-        _showSnackBar(
-          result.message.isNotEmpty ? result.message : 'Unable to open file.',
-          isError: true,
-        );
+        _showSnackBar(result.message.isNotEmpty ? result.message : 'Unable to open file.', isError: true);
       }
     } catch (e) {
       if (!mounted) return;
-
-      _showSnackBar(
-        'Failed to open file: $e',
-        isError: true,
-      );
+      _showSnackBar('Failed to open file: $e', isError: true);
     }
   }
 
-  // ============================================================
-  // SAVE EXTERNAL DOCUMENT TO DOCVAULT
-  // ============================================================
-
   Future<void> _saveToDocScannerLibrary() async {
-    if (_isSavingToDocScanner) {
-      return;
-    }
+    if (_isSavingToDocScanner) return;
 
-    setState(() {
-      _isSavingToDocScanner = true;
-    });
+    setState(() => _isSavingToDocScanner = true);
 
     try {
       final sourceFile = File(widget.filePath);
-
       if (!await sourceFile.exists()) {
-        throw Exception(
-          'Source file not found.',
-        );
+        throw Exception('Source file not found.');
       }
 
-      final destinationPath = await FileUtils.getFullPdfPath(
-        widget.fileName,
-      );
-
+      final destinationPath = await FileUtils.getFullPdfPath(widget.fileName);
       final destinationFile = File(destinationPath);
-
-      await destinationFile.parent.create(
-        recursive: true,
-      );
+      await destinationFile.parent.create(recursive: true);
 
       if (sourceFile.path != destinationFile.path) {
-        await sourceFile.copy(
-          destinationPath,
-        );
+        await sourceFile.copy(destinationPath);
       }
 
       if (!mounted) return;
 
       final provider = context.read<PdfManagerProvider>();
-
       await provider.registerGeneratedPdf(
         filePath: destinationPath,
         fileName: widget.fileName,
@@ -780,75 +604,40 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       );
 
       if (!mounted) return;
-
-      _showSnackBar(
-        '"${widget.fileName}" saved to DocScanner',
-      );
+      _showSnackBar('"${widget.fileName}" saved to DocScanner');
     } catch (e) {
       if (!mounted) return;
-
-      _showSnackBar(
-        'Failed to save to DocScanner: $e',
-        isError: true,
-      );
+      _showSnackBar('Failed to save to DocScanner: $e', isError: true);
     } finally {
       if (mounted) {
-        setState(() {
-          _isSavingToDocScanner = false;
-        });
+        setState(() => _isSavingToDocScanner = false);
       }
     }
   }
 
-  // ============================================================
-  // SNACKBAR
-  // ============================================================
-
-  void _showSnackBar(
-    String message, {
-    bool isError = false,
-  }) {
+  void _showSnackBar(String message, {bool isError = false}) {
     ScaffoldMessenger.of(context).showSnackBar(
       SnackBar(
         content: Row(
           children: [
-            Icon(
-              isError
-                  ? Icons.error_outline_rounded
-                  : Icons.check_circle_outline_rounded,
-              color: Colors.white,
-            ),
+            Icon(isError ? Icons.error_outline_rounded : Icons.check_circle_outline_rounded, color: Colors.white),
             const SizedBox(width: 10),
-            Expanded(
-              child: Text(message),
-            ),
+            Expanded(child: Text(message)),
           ],
         ),
         behavior: SnackBarBehavior.floating,
-        backgroundColor:
-            isError ? AppTheme.errorColor : AppTheme.successColor,
+        backgroundColor: isError ? AppTheme.errorColor : AppTheme.successColor,
         margin: const EdgeInsets.all(16),
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(14),
-        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
       ),
     );
   }
 
-  // ============================================================
-  // DISPOSE
-  // ============================================================
-
   @override
   void dispose() {
     _renderTimeoutTimer?.cancel();
-    _pageController.dispose();
     super.dispose();
   }
-
-  // ============================================================
-  // BUILD
-  // ============================================================
 
   @override
   Widget build(BuildContext context) {
@@ -857,28 +646,19 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
 
     return PopScope(
       canPop: !widget.isExternal,
-      onPopInvokedWithResult: (
-        didPop,
-        result,
-      ) {
+      onPopInvokedWithResult: (didPop, result) {
         if (didPop) return;
-
         _closeViewer();
       },
       child: Scaffold(
-        backgroundColor:
-            isDark ? const Color(0xFF070A16) : const Color(0xFFF5F7FB),
+        backgroundColor: isDark ? const Color(0xFF070A16) : const Color(0xFFF5F7FB),
         body: SafeArea(
           child: Column(
             children: [
               _buildTopBar(isDark),
-              if (_showControlsBar && !_isLoading && _errorMessage == null)
-                _buildViewControlsBar(isDark),
-              Expanded(
-                child: _buildBody(isDark),
-              ),
-              if (!_isLoading && _errorMessage == null)
-                _buildPageNavigationBar(isDark),
+              if (_showControlsBar && !_isLoading && _errorMessage == null) _buildViewControlsBar(isDark),
+              Expanded(child: _buildBody(isDark)),
+              if (!_isLoading && _errorMessage == null && !_usingFallbackView) _buildPageNavigationBar(isDark),
               _buildBottomToolbar(isDark),
             ],
           ),
@@ -887,10 +667,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // TOP BAR
-  // ============================================================
-
   Widget _buildTopBar(bool isDark) {
     return Container(
       padding: const EdgeInsets.fromLTRB(14, 10, 14, 12),
@@ -898,18 +674,13 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         color: isDark ? const Color(0xFF0D1122) : Colors.white,
         border: Border(
           bottom: BorderSide(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.black.withValues(alpha: 0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
           ),
         ),
       ),
       child: Row(
         children: [
-          _buildTopIcon(
-            icon: Icons.arrow_back_rounded,
-            onTap: _closeViewer,
-          ),
+          _buildTopIcon(icon: Icons.arrow_back_rounded, onTap: _closeViewer),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -944,36 +715,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ],
             ),
           ),
-          if (!widget.isExternal)
-            _buildTopIcon(
-              icon: Icons.edit_rounded,
-              onTap: _editDocument,
-            ),
+          if (!widget.isExternal) _buildTopIcon(icon: Icons.edit_rounded, onTap: _editDocument),
           const SizedBox(width: 6),
-          _buildTopIcon(
-            icon: Icons.more_horiz_rounded,
-            onTap: () => _showMoreOptions(isDark),
-          ),
+          _buildTopIcon(icon: Icons.more_horiz_rounded, onTap: () => _showMoreOptions(isDark)),
         ],
       ),
     );
   }
 
-  // ============================================================
-  // TYPE BADGE
-  // ============================================================
-
   Widget _buildTypeBadge() {
-    String label;
-
-    if (_isPdf) {
-      label = 'PDF';
-    } else if (_isPpt) {
-      label = 'PPT';
-    } else {
-      label = 'DOC';
-    }
-
+    final label = _isPdf ? 'PDF' : (_isPpt ? 'PPT' : 'DOC');
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
       decoration: BoxDecoration(
@@ -982,23 +733,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       ),
       child: Text(
         label,
-        style: TextStyle(
-          color: _accentColor,
-          fontSize: 10,
-          fontWeight: FontWeight.w900,
-        ),
+        style: TextStyle(color: _accentColor, fontSize: 10, fontWeight: FontWeight.w900),
       ),
     );
   }
 
-  // ============================================================
-  // TOP ICON
-  // ============================================================
-
-  Widget _buildTopIcon({
-    required IconData icon,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildTopIcon({required IconData icon, required VoidCallback onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1013,18 +753,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                 ? Colors.white.withValues(alpha: 0.06)
                 : Colors.black.withValues(alpha: 0.035),
           ),
-          child: Icon(
-            icon,
-            size: 21,
-          ),
+          child: Icon(icon, size: 21),
         ),
       ),
     );
   }
-
-  // ============================================================
-  // VIEW CONTROLS BAR
-  // ============================================================
 
   Widget _buildViewControlsBar(bool isDark) {
     return Container(
@@ -1034,9 +767,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         color: isDark ? const Color(0xFF0F1428) : const Color(0xFFFAFBFC),
         border: Border(
           bottom: BorderSide(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.05)
-                : Colors.black.withValues(alpha: 0.05),
+            color: isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.05),
           ),
         ),
       ),
@@ -1047,11 +778,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             label: _isFitWidth ? 'Fit Width' : 'Full Page',
             isActive: _isFitWidth,
             isDark: isDark,
-            onTap: () {
-              setState(() {
-                _isFitWidth = !_isFitWidth;
-              });
-            },
+            onTap: () => setState(() => _isFitWidth = !_isFitWidth),
           ),
           const SizedBox(width: 8),
           if (!_isPdf && !_isPpt)
@@ -1071,11 +798,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               onTap: _togglePptxSlideMode,
             ),
           const Spacer(),
-          _buildSmallToolIcon(
-            icon: Icons.rotate_right_rounded,
-            isDark: isDark,
-            onTap: _rotateDocument,
-          ),
+          _buildSmallToolIcon(icon: Icons.rotate_right_rounded, isDark: isDark, onTap: _rotateDocument),
         ],
       ),
     );
@@ -1098,36 +821,24 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           decoration: BoxDecoration(
             color: isActive
                 ? _accentColor.withValues(alpha: 0.14)
-                : (isDark
-                    ? Colors.white.withValues(alpha: 0.05)
-                    : Colors.black.withValues(alpha: 0.04)),
+                : (isDark ? Colors.white.withValues(alpha: 0.05) : Colors.black.withValues(alpha: 0.04)),
             borderRadius: BorderRadius.circular(16),
             border: Border.all(
-              color: isActive
-                  ? _accentColor.withValues(alpha: 0.4)
-                  : Colors.transparent,
+              color: isActive ? _accentColor.withValues(alpha: 0.4) : Colors.transparent,
               width: 1,
             ),
           ),
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(
-                icon,
-                size: 14,
-                color: isActive
-                    ? _accentColor
-                    : (isDark ? Colors.white70 : Colors.black54),
-              ),
+              Icon(icon, size: 14, color: isActive ? _accentColor : (isDark ? Colors.white70 : Colors.black54)),
               const SizedBox(width: 5),
               Text(
                 label,
                 style: TextStyle(
                   fontSize: 11,
                   fontWeight: isActive ? FontWeight.w700 : FontWeight.w500,
-                  color: isActive
-                      ? _accentColor
-                      : (isDark ? Colors.white70 : Colors.black87),
+                  color: isActive ? _accentColor : (isDark ? Colors.white70 : Colors.black87),
                 ),
               ),
             ],
@@ -1137,11 +848,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  Widget _buildSmallToolIcon({
-    required IconData icon,
-    required bool isDark,
-    required VoidCallback onTap,
-  }) {
+  Widget _buildSmallToolIcon({required IconData icon, required bool isDark, required VoidCallback onTap}) {
     return Material(
       color: Colors.transparent,
       child: InkWell(
@@ -1151,24 +858,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           width: 28,
           height: 28,
           decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.black.withValues(alpha: 0.04),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
             borderRadius: BorderRadius.circular(8),
           ),
-          child: Icon(
-            icon,
-            size: 16,
-            color: isDark ? Colors.white70 : Colors.black87,
-          ),
+          child: Icon(icon, size: 16, color: isDark ? Colors.white70 : Colors.black87),
         ),
       ),
     );
   }
-
-  // ============================================================
-  // PAGE NAVIGATION BAR
-  // ============================================================
 
   Widget _buildPageNavigationBar(bool isDark) {
     if (_actualPageCount <= 1) return const SizedBox.shrink();
@@ -1179,9 +876,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         color: isDark ? const Color(0xFF0D1122) : Colors.white,
         border: Border(
           top: BorderSide(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.black.withValues(alpha: 0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
           ),
         ),
       ),
@@ -1192,9 +887,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             onPressed: _currentPage > 1 ? _prevPageOrSlide : null,
             icon: const Icon(Icons.arrow_back_ios_new_rounded, size: 16),
             style: IconButton.styleFrom(
-              backgroundColor: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.04),
+              backgroundColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -1210,19 +903,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Icon(
-                    _isPpt ? Icons.slideshow_rounded : Icons.menu_book_rounded,
-                    size: 15,
-                    color: _accentColor,
-                  ),
+                  Icon(_isPpt ? Icons.slideshow_rounded : Icons.menu_book_rounded, size: 15, color: _accentColor),
                   const SizedBox(width: 8),
                   Text(
                     '$_itemUnit $_currentPage of $_actualPageCount',
-                    style: TextStyle(
-                      color: _accentColor,
-                      fontWeight: FontWeight.w700,
-                      fontSize: 13,
-                    ),
+                    style: TextStyle(color: _accentColor, fontWeight: FontWeight.w700, fontSize: 13),
                   ),
                   const SizedBox(width: 4),
                   Icon(Icons.keyboard_arrow_down_rounded, size: 18, color: _accentColor),
@@ -1234,9 +919,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             onPressed: _currentPage < _actualPageCount ? _nextPageOrSlide : null,
             icon: const Icon(Icons.arrow_forward_ios_rounded, size: 16),
             style: IconButton.styleFrom(
-              backgroundColor: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.04),
+              backgroundColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
               shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
             ),
           ),
@@ -1245,14 +928,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // BODY
-  // ============================================================
-
   Widget _buildBody(bool isDark) {
-    if (_errorMessage != null) {
-      return _buildErrorState(isDark);
-    }
+    if (_errorMessage != null) return _buildErrorState(isDark);
 
     Widget content;
     if (_isPdf) {
@@ -1264,18 +941,11 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
 
     if (_rotationQuarterTurns != 0) {
-      return RotatedBox(
-        quarterTurns: _rotationQuarterTurns,
-        child: content,
-      );
+      return RotatedBox(quarterTurns: _rotationQuarterTurns, child: content);
     }
 
     return content;
   }
-
-  // ============================================================
-  // ERROR
-  // ============================================================
 
   Widget _buildErrorState(bool isDark) {
     return Center(
@@ -1287,9 +957,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF111627) : Colors.white,
             borderRadius: BorderRadius.circular(26),
-            border: Border.all(
-              color: AppTheme.errorColor.withValues(alpha: 0.15),
-            ),
+            border: Border.all(color: AppTheme.errorColor.withValues(alpha: 0.15)),
           ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
@@ -1301,11 +969,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   shape: BoxShape.circle,
                   color: AppTheme.errorColor.withValues(alpha: 0.10),
                 ),
-                child: const Icon(
-                  Icons.error_outline_rounded,
-                  size: 42,
-                  color: AppTheme.errorColor,
-                ),
+                child: const Icon(Icons.error_outline_rounded, size: 42, color: AppTheme.errorColor),
               ),
               const SizedBox(height: 20),
               Text(
@@ -1321,11 +985,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               Text(
                 _errorMessage!,
                 textAlign: TextAlign.center,
-                style: TextStyle(
-                  fontSize: 13,
-                  height: 1.5,
-                  color: isDark ? Colors.white60 : Colors.black54,
-                ),
+                style: TextStyle(fontSize: 13, height: 1.5, color: isDark ? Colors.white60 : Colors.black54),
               ),
               const SizedBox(height: 24),
               if (!_isPdf && _fallbackImagePaths.isEmpty) ...[
@@ -1344,12 +1004,8 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     label: Text('View as $_itemUnit Images'),
                     style: OutlinedButton.styleFrom(
                       foregroundColor: _accentColor,
-                      side: BorderSide(
-                        color: _accentColor.withValues(alpha: 0.5),
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(15),
-                      ),
+                      side: BorderSide(color: _accentColor.withValues(alpha: 0.5)),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                     ),
                   ),
                 ),
@@ -1366,17 +1022,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                     backgroundColor: _accentColor,
                     foregroundColor: Colors.white,
                     elevation: 0,
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(15),
-                    ),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(15)),
                   ),
                 ),
               ),
               const SizedBox(height: 10),
-              TextButton(
-                onPressed: _closeViewer,
-                child: const Text('Go to Home'),
-              ),
+              TextButton(onPressed: _closeViewer, child: const Text('Go to Home')),
             ],
           ),
         ),
@@ -1384,146 +1035,126 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // FALLBACK IMAGE VIEWER (DOCX / PPTX native slides)
-  // ============================================================
-
   Widget _buildFallbackImageViewer(bool isDark) {
     return Container(
       color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
       width: double.infinity,
       height: double.infinity,
-      child: Stack(
-        children: [
-          PageView.builder(
-            controller: _pageController,
-            itemCount: _fallbackImagePaths.length,
-            onPageChanged: (index) {
-              if (!mounted) return;
-              setState(() {
-                _currentPage = index + 1;
-              });
-            },
-            itemBuilder: (context, index) {
-              final imageFile = File(_fallbackImagePaths[index]);
-              return Center(
-                child: InteractiveViewer(
-                  minScale: 0.8,
+      child: ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 12),
+        itemCount: _fallbackImagePaths.length,
+        itemBuilder: (context, index) {
+          final imageFile = File(_fallbackImagePaths[index]);
+          return Container(
+            margin: const EdgeInsets.only(bottom: 16),
+            decoration: BoxDecoration(
+              color: isDark ? const Color(0xFF13182C) : Colors.white,
+              borderRadius: BorderRadius.circular(12),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.12),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            clipBehavior: Clip.hardEdge,
+            child: Stack(
+              children: [
+                InteractiveViewer(
+                  minScale: 1.0,
                   maxScale: 4.0,
                   child: Image.file(
                     imageFile,
-                    fit: BoxFit.contain,
-                    errorBuilder: (context, error, stackTrace) => Center(
-                      child: Text(
-                        'Unable to load $_itemUnit ${index + 1}',
-                        style: TextStyle(
-                          color: isDark ? Colors.white70 : Colors.black54,
+                    fit: BoxFit.fitWidth,
+                    width: double.infinity,
+                    errorBuilder: (context, error, stackTrace) => Padding(
+                      padding: const EdgeInsets.all(32.0),
+                      child: Center(
+                        child: Text(
+                          'Unable to load $_itemUnit ${index + 1}',
+                          style: TextStyle(color: isDark ? Colors.white70 : Colors.black54),
                         ),
                       ),
                     ),
                   ),
                 ),
-              );
-            },
-          ),
-          if (_fallbackImagePaths.length > 1)
-            Positioned(
-              bottom: 16,
-              left: 0,
-              right: 0,
-              child: Center(
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 14,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withValues(alpha: 0.65),
-                    borderRadius: BorderRadius.circular(20),
-                  ),
-                  child: Text(
-                    '$_itemUnit $_currentPage of ${_fallbackImagePaths.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
+                Positioned(
+                  bottom: 10,
+                  right: 10,
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.black.withOpacity(0.65),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: Text(
+                      '${index + 1} / ${_fallbackImagePaths.length}',
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),
-              ),
+              ],
             ),
-        ],
+          );
+        },
       ),
     );
   }
 
-  // ============================================================
-  // PDF VIEWER
-  // ============================================================
-
+  // ===========================================================================
+  // OPTIMIZED FAST PDF VIEWER
+  // ===========================================================================
   Widget _buildPdfViewer(bool isDark) {
     return Container(
       color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
       width: double.infinity,
       height: double.infinity,
-      child: Stack(
-        children: [
-          PDFView(
-            filePath: widget.filePath,
-            enableSwipe: true,
-            swipeHorizontal: false,
-            autoSpacing: true,
-            pageFling: true,
-            pageSnap: true,
-            fitPolicy: FitPolicy.WIDTH,
-            onViewCreated: (PDFViewController pdfViewController) {
-              _pdfViewController = pdfViewController;
-            },
-            onRender: (pages) {
-              if (!mounted) return;
-              setState(() {
-                _actualPageCount = pages ?? 0;
-                _isLoading = false;
-              });
-            },
-            onError: (error) {
-              if (!mounted) return;
-              setState(() {
-                _errorMessage = 'Failed to display PDF: $error';
-                _isLoading = false;
-              });
-            },
-            onPageChanged: (page, total) {
-              if (!mounted) return;
-              setState(() {
-                _currentPage = (page ?? 0) + 1;
-                if (total != null && total > 0) {
-                  _actualPageCount = total;
-                }
-              });
-            },
-          ),
-          if (_isLoading)
-            Container(
-              color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
-              child: Center(
-                child: _buildLoadingState(isDark),
-              ),
-            ),
-        ],
+      child: PDFView(
+        filePath: widget.filePath,
+        enableSwipe: true,
+        swipeHorizontal: false,
+        autoSpacing: true,
+        pageFling: true,
+        pageSnap: false,
+        fitPolicy: FitPolicy.WIDTH,
+        onViewCreated: (PDFViewController pdfViewController) {
+          _pdfViewController = pdfViewController;
+        },
+        onRender: (pages) {
+          if (!mounted) return;
+          setState(() {
+            _actualPageCount = pages ?? 0;
+            _isLoading = false;
+          });
+        },
+        onError: (error) {
+          if (!mounted) return;
+          setState(() {
+            _errorMessage = 'Failed to display PDF: $error';
+            _isLoading = false;
+          });
+        },
+        onPageChanged: (page, total) {
+          if (!mounted) return;
+          setState(() {
+            _currentPage = (page ?? 0) + 1;
+            if (total != null && total > 0) {
+              _actualPageCount = total;
+            }
+          });
+        },
       ),
     );
   }
 
-  // ============================================================
-  // OFFICE VIEWER (WebView based — DOCX/PPTX)
-  // ============================================================
-
   Widget _buildOfficeWebViewer(bool isDark) {
     if (_webViewController == null) {
-      return const Center(
-        child: CircularProgressIndicator(),
-      );
+      return const Center(child: CircularProgressIndicator());
     }
 
     return Container(
@@ -1536,18 +1167,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           if (_isLoading)
             Container(
               color: isDark ? const Color(0xFF070A16) : const Color(0xFFF4F6FA),
-              child: Center(
-                child: _buildLoadingState(isDark),
-              ),
+              child: Center(child: _buildLoadingState(isDark)),
             ),
         ],
       ),
     );
   }
-
-  // ============================================================
-  // LOADING
-  // ============================================================
 
   Widget _buildLoadingState(bool isDark) {
     return Center(
@@ -1562,10 +1187,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               borderRadius: BorderRadius.circular(22),
             ),
             child: Center(
-              child: CircularProgressIndicator(
-                color: _accentColor,
-                strokeWidth: 3,
-              ),
+              child: CircularProgressIndicator(color: _accentColor, strokeWidth: 3),
             ),
           ),
           const SizedBox(height: 18),
@@ -1580,19 +1202,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           const SizedBox(height: 5),
           Text(
             'Preparing your ${_itemUnit.toLowerCase()}',
-            style: TextStyle(
-              fontSize: 12,
-              color: isDark ? Colors.white54 : Colors.black45,
-            ),
+            style: TextStyle(fontSize: 12, color: isDark ? Colors.white54 : Colors.black45),
           ),
         ],
       ),
     );
   }
-
-  // ============================================================
-  // BOTTOM TOOLBAR
-  // ============================================================
 
   Widget _buildBottomToolbar(bool isDark) {
     return Container(
@@ -1601,9 +1216,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         color: isDark ? const Color(0xFF0D1122) : Colors.white,
         border: Border(
           top: BorderSide(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.06)
-                : Colors.black.withValues(alpha: 0.06),
+            color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.06),
           ),
         ),
       ),
@@ -1640,10 +1253,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // BOTTOM ACTION
-  // ============================================================
-
   Widget _buildBottomAction({
     required IconData icon,
     required String label,
@@ -1658,24 +1267,16 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
         child: Container(
           height: 52,
           decoration: BoxDecoration(
-            color: isDark
-                ? Colors.white.withValues(alpha: 0.055)
-                : const Color(0xFFF5F6FA),
+            color: isDark ? Colors.white.withValues(alpha: 0.055) : const Color(0xFFF5F6FA),
             borderRadius: BorderRadius.circular(15),
             border: Border.all(
-              color: isDark
-                  ? Colors.white.withValues(alpha: 0.06)
-                  : Colors.black.withValues(alpha: 0.05),
+              color: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.05),
             ),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
-              Icon(
-                icon,
-                size: 19,
-                color: isDark ? Colors.white : const Color(0xFF252936),
-              ),
+              Icon(icon, size: 19, color: isDark ? Colors.white : const Color(0xFF252936)),
               const SizedBox(height: 2),
               Text(
                 label,
@@ -1692,10 +1293,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // MORE OPTIONS
-  // ============================================================
-
   void _showMoreOptions(bool isDark) {
     showModalBottomSheet(
       context: context,
@@ -1705,9 +1302,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           padding: const EdgeInsets.fromLTRB(18, 12, 18, 24),
           decoration: BoxDecoration(
             color: isDark ? const Color(0xFF111627) : Colors.white,
-            borderRadius: const BorderRadius.vertical(
-              top: Radius.circular(28),
-            ),
+            borderRadius: const BorderRadius.vertical(top: Radius.circular(28)),
           ),
           child: SafeArea(
             child: Column(
@@ -1769,10 +1364,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     );
   }
 
-  // ============================================================
-  // SHEET ITEM
-  // ============================================================
-
   Widget _buildSheetItem({
     required IconData icon,
     required String title,
@@ -1789,32 +1380,14 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
           color: _accentColor.withValues(alpha: 0.10),
           borderRadius: BorderRadius.circular(14),
         ),
-        child: Icon(
-          icon,
-          color: _accentColor,
-        ),
+        child: Icon(icon, color: _accentColor),
       ),
-      title: Text(
-        title,
-        style: const TextStyle(
-          fontWeight: FontWeight.w700,
-          fontSize: 14,
-        ),
-      ),
-      subtitle: Text(
-        subtitle,
-        style: const TextStyle(
-          fontSize: 11,
-        ),
-      ),
+      title: Text(title, style: const TextStyle(fontWeight: FontWeight.w700, fontSize: 14)),
+      subtitle: Text(subtitle, style: const TextStyle(fontSize: 11)),
       trailing: const Icon(Icons.chevron_right_rounded),
       onTap: onTap,
     );
   }
 }
-
-// ================================================================
-// BACKWARD COMPATIBILITY
-// ================================================================
 
 typedef DocumentViewerScreen = PdfViewerScreen;
