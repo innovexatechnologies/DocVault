@@ -157,7 +157,8 @@
       width: 100% !important;
       max-width: 100% !important;
 
-      margin: 10px auto 16px auto !important;
+      /* ONLY CHANGE: reduced gap between PPT slides */
+      margin: 3px auto 5px auto !important;
 
       flex: 0 0 auto !important;
 
@@ -440,8 +441,9 @@
       .pptx-slide-card {
         border-radius: 8px;
 
+        /* ONLY CHANGE: reduced mobile gap */
         margin:
-          8px auto 14px auto !important;
+          3px auto 5px auto !important;
       }
     }
   </style>
@@ -1024,8 +1026,9 @@
         slide.style.maxHeight =
           height + 'px';
 
+        /* ONLY CHANGE: reduced gap between slides */
         slide.style.margin =
-          '10px 0 16px 0';
+          '3px 0 5px 0';
 
         slide.style.position =
           'relative';
@@ -1316,7 +1319,13 @@
        ========================================================= */
 
     async function setSlideMode(mode) {
+<<<<<<< HEAD
       currentSlideMode = 'list';
+=======
+      currentSlideMode =
+        mode === 'slide' ? 'slide' : 'list';
+
+>>>>>>> 5e80c13453ba74d49e53f13abfeca16a85ab63f1
       currentSlideIndex = 0;
 
       if (!pptxBase64Data) {
