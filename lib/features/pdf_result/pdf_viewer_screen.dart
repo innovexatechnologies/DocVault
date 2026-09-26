@@ -54,7 +54,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   int _rotationQuarterTurns = 0;
   bool _isFitWidth = true;
   String _docxViewMode = 'page'; // 'page' or 'reflow'
-  String _pptxSlideMode = 'slide'; // 'slide' or 'list'
+  String _pptxSlideMode = 'list'; // 'slide' or 'list'
   final bool _showControlsBar = true;
 
   bool get _isPdf => _docType == ConversionType.pdf;

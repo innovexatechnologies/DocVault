@@ -1319,7 +1319,9 @@
        ========================================================= */
 
     async function setSlideMode(mode) {
-      currentSlideMode = 'list';
+      currentSlideMode =
+        mode === 'slide' ? 'slide' : 'list';
+
       currentSlideIndex = 0;
 
       if (!pptxBase64Data) {
