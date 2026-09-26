@@ -125,11 +125,12 @@
       margin: 0;
       padding: 0;
       display: block;
+      box-sizing: border-box;
     }
 
     .pptx-render-host .pptx-preview-wrapper {
       width: 100% !important;
-      max-width: 100% !important;
+      max-width: none !important;
       height: auto !important;
       min-height: 0 !important;
       overflow: visible !important;
@@ -137,10 +138,22 @@
       margin: 0 !important;
       padding: 0 !important;
       background: transparent !important;
+      box-sizing: border-box !important;
     }
 
+    /*
+     * IMPORTANT:
+     *
+     * Do not force slide height here.
+     * pptx-preview.js calculates the real
+     * slide height from the PPTX dimensions.
+     *
+     * Only width is controlled by the
+     * available viewer width.
+     */
     .pptx-render-host .pptx-preview-slide-wrapper {
       position: relative !important;
+
       left: auto !important;
       top: auto !important;
       right: auto !important;
@@ -149,10 +162,14 @@
       width: 100% !important;
       max-width: 100% !important;
 
+      height: auto !important;
+
       margin: 0 0 2px 0 !important;
 
       flex: 0 0 auto !important;
+
       box-sizing: border-box !important;
+
       overflow: hidden !important;
 
       background: #FFFFFF !important;
@@ -175,15 +192,18 @@
       z-index: 9999 !important;
 
       padding: 3px 7px !important;
+
       border-radius: 4px !important;
 
       background: rgba(0, 0, 0, 0.65) !important;
+
       color: #FFFFFF !important;
 
       font-size: 12px !important;
       line-height: 1.2 !important;
 
       font-family: Arial, sans-serif !important;
+
       font-weight: 600 !important;
 
       pointer-events: none !important;
@@ -281,10 +301,13 @@
     let currentSlideMode = 'list';
 
     let pptxScrollArea = null;
+
     let pptxZoomContent = null;
+
     let pptxRenderHost = null;
 
     let receivedDocChunks = '';
+
     let receivedDocIsPpt = false;
 
     let lastPptxBase64 = '';
@@ -438,88 +461,6 @@
       return bytes;
     }
 
-    function uint8ArrayToString(bytes) {
-      let result = '';
-
-      const chunkSize = 8192;
-
-      for (
-        let i = 0;
-        i < bytes.length;
-        i += chunkSize
-      ) {
-        const chunk =
-          bytes.subarray(
-            i,
-            Math.min(
-              i + chunkSize,
-              bytes.length
-            )
-          );
-
-        result +=
-          String.fromCharCode.apply(
-            null,
-            chunk
-          );
-      }
-
-      return result;
-    }
-
-    /* ============================================================
-       ZIP / PPTX XML HELPERS
-       ============================================================ */
-
-    function readPptxSlideSize(
-      base64Data
-    ) {
-      try {
-        const bytes =
-          base64ToUint8Array(
-            base64Data
-          );
-
-        const text =
-          uint8ArrayToString(
-            bytes
-          );
-
-        const regex =
-          /<p:sldSz\b[^>]*\bcx=["'](\d+)["'][^>]*\bcy=["'](\d+)["'][^>]*\/?>/;
-
-        const match =
-          text.match(regex);
-
-        if (match) {
-          const cx =
-            Number(match[1]);
-
-          const cy =
-            Number(match[2]);
-
-          if (
-            Number.isFinite(cx) &&
-            Number.isFinite(cy) &&
-            cx > 0 &&
-            cy > 0
-          ) {
-            return {
-              width: cx,
-              height: cy,
-              ratio: cx / cy
-            };
-          }
-        }
-      } catch (_) {}
-
-      return {
-        width: 13.333,
-        height: 7.5,
-        ratio: 16 / 9
-      };
-    }
-
     /* ============================================================
        PPTX DOM HELPERS
        ============================================================ */
@@ -635,11 +576,9 @@
         'auto';
 
       /*
-       * IMPORTANT:
-       * Keep the actual PPTX scroll area
-       * as the scrolling element.
+       * The scroll area is the
+       * actual scrolling element.
        */
-
       pptxScrollArea.style.height =
         '100%';
 
@@ -647,16 +586,9 @@
         '0';
 
       /*
-       * IMPORTANT:
-       *
-       * The pptx-preview library creates an
-       * outer .pptx-preview-wrapper.
-       *
-       * We allow it to grow naturally so
-       * all slides participate in the
-       * vertical document flow.
+       * Let the PPTX wrapper grow
+       * naturally for all slides.
        */
-
       wrapper.style.width =
         viewportWidthSafe + 'px';
 
@@ -682,20 +614,14 @@
         'relative';
 
       /*
-       * Actual slides.
+       * Put every slide into
+       * normal vertical flow.
        */
-
       const slides =
         getRenderedPptxElements();
 
       slides.forEach(
         (slide) => {
-
-          /*
-           * Put every slide into
-           * normal vertical flow.
-           */
-
           slide.style.position =
             'relative';
 
@@ -715,7 +641,6 @@
            * Width follows the
            * available viewer width.
            */
-
           slide.style.width =
             viewportWidthSafe + 'px';
 
@@ -725,19 +650,14 @@
           /*
            * IMPORTANT:
            *
-           * DO NOT set slide height.
+           * Do NOT set slide height.
            *
-           * pptx-preview calculates
-           * the real slide height from
-           * the presentation dimensions.
-           *
-           * This preserves:
-           * 4:3
-           * 16:9
-           * portrait
-           * landscape
-           * custom PPTX dimensions
+           * pptx-preview.js already
+           * calculates the real height
+           * from the PPTX dimensions.
            */
+          slide.style.height =
+            'auto';
 
           slide.style.margin =
             '0 0 2px 0';
@@ -801,7 +721,6 @@
        * of the complete vertical
        * slide list.
        */
-
       const width =
         Math.max(
           wrapper.scrollWidth,
@@ -815,15 +734,13 @@
         );
 
       /*
-       * Transform does not affect
-       * normal layout.
+       * CSS transform does not affect
+       * normal layout dimensions.
        *
        * Therefore the zoom content
        * receives the scaled dimensions
-       * so the scroll area knows the
-       * complete content size.
+       * for correct scrolling.
        */
-
       pptxZoomContent.style.width =
         Math.max(
           width * currentZoom,
@@ -840,7 +757,6 @@
        * Apply zoom only to the
        * actual PPTX render.
        */
-
       pptxRenderHost.style.transform =
         'scale(' +
         currentZoom +
@@ -925,7 +841,6 @@
           renderPptx(
             base64Data
           );
-
           return;
         }
 
@@ -933,7 +848,6 @@
           renderDocx(
             base64Data
           );
-
           return;
         }
 
@@ -941,7 +855,6 @@
           renderImage(
             base64Data
           );
-
           return;
         }
 
@@ -987,7 +900,6 @@
        * pptx-preview is only used
        * for PPTX.
        */
-
       try {
         if (
           typeof window.docx !==
@@ -1001,11 +913,8 @@
       } catch (_) {}
 
       /*
-       * If the existing DOCX rendering
-       * code is available below, it is
-       * used by the normal application.
+       * Existing DOCX rendering.
        */
-
       try {
         const bytes =
           base64ToUint8Array(
@@ -1116,7 +1025,7 @@
        PPTX
        ============================================================ */
 
-    function renderPptx(
+    async function renderPptx(
       base64Data
     ) {
       currentDocType =
@@ -1149,25 +1058,16 @@
       }
 
       /*
-       * Read actual PPTX
-       * presentation dimensions.
+       * Width follows the available
+       * WebView width.
+       *
+       * We intentionally DO NOT calculate
+       * a height or force 16:9 here.
+       *
+       * pptx-preview.js reads the actual
+       * PPTX dimensions and calculates
+       * the correct slide height itself.
        */
-
-      const slideSize =
-        readPptxSlideSize(
-          base64Data
-        );
-
-      const ratio =
-        slideSize.ratio > 0
-          ? slideSize.ratio
-          : 16 / 9;
-
-      /*
-       * Width follows the
-       * available WebView width.
-       */
-
       const targetWidth =
         Math.max(
           280,
@@ -1175,19 +1075,9 @@
         );
 
       /*
-       * IMPORTANT:
-       * Height is calculated from
-       * the actual PPTX ratio.
+       * Create dedicated PPTX
+       * vertical scroll structure.
        */
-
-      const targetHeight =
-        targetWidth / ratio;
-
-      /*
-       * Create dedicated
-       * PPTX scroll structure.
-       */
-
       pptxScrollArea =
         document.createElement(
           'div'
@@ -1225,59 +1115,64 @@
       );
 
       /*
-       * Initialize PPTX preview
-       * using the REAL slide
-       * aspect ratio.
+       * Initialize PPTX preview.
+       *
+       * IMPORTANT:
+       *
+       * Do not force targetHeight.
+       * The library uses the real PPTX
+       * presentation dimensions.
        */
+      const preview =
+        window.pptxPreview.init(
+          pptxRenderHost,
+          {
+            width:
+              targetWidth,
+            mode:
+              currentSlideMode
+          }
+        );
 
-      window.pptxPreview.init(
-        pptxRenderHost,
-        {
-          width:
-            targetWidth,
-
-          height:
-            targetHeight,
-
-          mode:
-            currentSlideMode
-        }
-      );
-
-      window.pptxPreview.preview(
+      /*
+       * IMPORTANT:
+       *
+       * preview() is asynchronous.
+       * Wait until ALL slides have
+       * actually been rendered.
+       */
+      await preview.preview(
         base64Data
       );
 
       /*
-       * The library renders
-       * asynchronously.
-       *
-       * Apply vertical list
-       * styling after rendering.
+       * Now the PPTX DOM actually
+       * contains all slides.
        */
+      stylePptxDom(
+        targetWidth
+      );
 
+      /*
+       * Give the browser one render
+       * frame before measuring the
+       * final scroll dimensions.
+       */
       requestAnimationFrame(
         () => {
-
-          stylePptxDom(
-            targetWidth
-          );
+          updatePptxScrollSize();
 
           setTimeout(
             () => {
-
-              stylePptxDom(
-                targetWidth
-              );
+              addPptxSlideNumbers();
 
               updatePptxScrollSize();
 
               hideLoading();
 
               notifySuccess();
-
             },
-            100
+            50
           );
         }
       );
@@ -1337,7 +1232,6 @@
        * PPTX viewer is intentionally
        * kept in vertical list mode.
        */
-
       currentSlideMode =
         'list';
 
@@ -1514,12 +1408,10 @@
     window.addEventListener(
       'resize',
       function () {
-
         if (
           currentDocType === 'pptx' &&
           pptxRenderHost
         ) {
-
           const width =
             Math.max(
               280,
@@ -1542,7 +1434,6 @@
     window.addEventListener(
       'error',
       function (event) {
-
         if (
           event &&
           event.error
