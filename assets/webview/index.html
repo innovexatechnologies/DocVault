@@ -19,339 +19,511 @@
     body {
       margin: 0;
       padding: 0;
+
       width: 100%;
-      height: 100%;
-      overflow: hidden;
-      font-family: Arial, Helvetica, sans-serif;
-      background: transparent;
+      min-height: 100%;
+
+      overflow-x: hidden;
+      overflow-y: auto;
+
+      background: #F5F5F5;
+
+      font-family:
+        -apple-system,
+        BlinkMacSystemFont,
+        "Segoe UI",
+        Roboto,
+        Arial,
+        sans-serif;
     }
 
-    body {
-      color: #151823;
+    body.dark-mode {
+      background: #0B1220;
+      color: #FFFFFF;
     }
 
-    body.dark {
-      color: #ffffff;
-    }
+    #container {
+      width: 100%;
+      min-height: 100vh;
 
-    #loading {
-      position: fixed;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      z-index: 99999;
-      background: transparent;
-    }
-
-    #loading.hidden {
-      display: none;
-    }
-
-    .loading-content {
       display: flex;
       flex-direction: column;
+
+      overflow-x: hidden;
+      overflow-y: visible;
+    }
+
+    /* =========================================================
+       GENERAL DOCUMENT STYLES
+       ========================================================= */
+
+    .document-container {
+      width: 100%;
+      max-width: 100%;
+      margin: 0 auto;
+
+      padding: 10px;
+
+      overflow-x: hidden;
+      overflow-y: visible;
+    }
+
+    .page {
+      width: 100%;
+      max-width: 100%;
+
+      margin: 0 auto 16px auto;
+
+      background: #FFFFFF;
+
+      overflow: hidden;
+
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.10);
+
+      border-radius: 8px;
+    }
+
+    body.dark-mode .page {
+      background: #141D2E;
+    }
+
+    /* =========================================================
+       DOCX
+       ========================================================= */
+
+    .docx-preview-container,
+    .docx-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+
+      margin: 0 auto !important;
+
+      overflow-x: hidden !important;
+      overflow-y: visible !important;
+    }
+
+    .docx-wrapper {
+      background: transparent !important;
+    }
+
+    .docx-page {
+      width: 100% !important;
+      max-width: 100% !important;
+
+      margin: 0 auto 16px auto !important;
+
+      overflow: hidden !important;
+
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.10);
+
+      background: #FFFFFF;
+    }
+
+    body.dark-mode .docx-page {
+      background: #141D2E;
+    }
+
+    /* =========================================================
+       PPTX
+       ========================================================= */
+
+    .pptx-preview-container,
+    .pptx-wrapper {
+      width: 100% !important;
+      max-width: 100% !important;
+
+      margin: 0 auto !important;
+
+      display: flex !important;
+      flex-direction: column !important;
+      align-items: center !important;
+      justify-content: flex-start !important;
+
+      background: transparent !important;
+
+      overflow: visible !important;
+      overflow-x: visible !important;
+      overflow-y: visible !important;
+
+      height: auto !important;
+
+      touch-action: pan-y !important;
+      overscroll-behavior-x: none !important;
+    }
+
+    .pptx-slide-card {
+      width: 100% !important;
+      max-width: 100% !important;
+
+      /* ONLY CHANGE: reduced gap between PPT slides */
+      margin: 3px auto 5px auto !important;
+
+      flex: 0 0 auto !important;
+
+      box-shadow:
+        0 6px 24px rgba(0, 0, 0, 0.12);
+
+      border-radius: 12px;
+
+      overflow: hidden !important;
+
+      background: #FFFFFF;
+
+      position: relative;
+
+      transform: none !important;
+
+      touch-action: pan-y !important;
+    }
+
+    body.dark-mode .pptx-slide-card {
+      box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.5);
+    }
+
+    .pptx-preview-container,
+    .pptx-wrapper {
+      flex-direction: column !important;
+    }
+
+    .pptx-slide-mode-wrap {
+      display: flex;
+
+      flex-direction: column;
+
       align-items: center;
+
+      width: 100%;
+    }
+
+    .pptx-slide-badge {
+      display: inline-block;
+
+      margin-top: 10px;
+
+      padding: 4px 12px;
+
+      background: rgba(0, 0, 0, 0.6);
+
+      color: #FFF;
+
+      border-radius: 14px;
+
+      font-size: 11px;
+
+      font-weight: 600;
+
+      letter-spacing: 0.3px;
+    }
+
+    .pptx-wrapper .pptx-next,
+    .pptx-wrapper .pptx-pre,
+    .pptx-wrapper .pptx-pagination {
+      display: none !important;
+    }
+
+    .pptx-wrapper canvas,
+    .pptx-wrapper img,
+    .pptx-wrapper svg {
+      max-width: 100% !important;
+    }
+
+    .pptx-wrapper canvas {
+      display: block;
+      height: auto;
+    }
+
+    /* =========================================================
+       TOOLBAR
+       ========================================================= */
+
+    #toolbar {
+      width: 100%;
+
+      display: flex;
+
+      align-items: center;
+
+      justify-content: space-between;
+
+      padding: 10px 12px;
+
+      background: #FFFFFF;
+
+      border-bottom: 1px solid #E5E7EB;
+
+      position: sticky;
+
+      top: 0;
+
+      z-index: 100;
+    }
+
+    body.dark-mode #toolbar {
+      background: #141D2E;
+
+      border-bottom-color: #263247;
+    }
+
+    #toolbar button {
+      border: none;
+
+      background: transparent;
+
+      padding: 8px;
+
+      cursor: pointer;
+
+      border-radius: 8px;
+    }
+
+    #toolbar button:hover {
+      background: rgba(0, 0, 0, 0.05);
+    }
+
+    body.dark-mode #toolbar button:hover {
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    /* =========================================================
+       LOADING
+       ========================================================= */
+
+    #loading {
+      width: 100%;
+
+      min-height: 200px;
+
+      display: flex;
+
+      align-items: center;
+
       justify-content: center;
+
+      flex-direction: column;
+
       gap: 12px;
+
+      color: #555;
+    }
+
+    body.dark-mode #loading {
+      color: #CCC;
     }
 
     .spinner {
       width: 34px;
+
       height: 34px;
-      border: 3px solid rgba(128, 128, 128, 0.25);
-      border-top-color: #666666;
+
       border-radius: 50%;
-      animation: spin 0.8s linear infinite;
+
+      border: 4px solid #DDD;
+
+      border-top-color: #555;
+
+      animation:
+        spin 0.8s linear infinite;
     }
 
     @keyframes spin {
-      from {
-        transform: rotate(0deg);
-      }
-
       to {
         transform: rotate(360deg);
       }
     }
 
-    #container {
-      width: 100%;
-      height: 100%;
-      min-height: 100%;
-      overflow: hidden;
-      transform-origin: top left;
-    }
-
-    .docx-container {
-      width: 100%;
-      min-height: 100%;
-      overflow: visible;
-    }
-
-    /* ============================================================
-       PPTX SCROLLING
-       ============================================================ */
-
-    .pptx-scroll-area {
-      width: 100%;
-      height: 100%;
-      min-height: 0;
-      overflow-x: auto;
-      overflow-y: auto;
-      -webkit-overflow-scrolling: touch;
-      overscroll-behavior: contain;
-      touch-action: pan-x pan-y;
-      padding: 0;
-      margin: 0;
-      background: transparent;
-      display: block;
-      box-sizing: border-box;
-    }
-
-    .pptx-zoom-content {
-      position: relative;
-      width: 100%;
-      min-width: 100%;
-      min-height: 100%;
-      transform-origin: top left;
-      padding: 0;
-      margin: 0;
-    }
-
-    .pptx-render-host {
-      position: relative;
-      width: 100%;
-      margin: 0;
-      padding: 0;
-      display: block;
-      box-sizing: border-box;
-    }
-
-    .pptx-render-host .pptx-preview-wrapper {
-      width: 100% !important;
-      max-width: none !important;
-      height: auto !important;
-      min-height: 0 !important;
-      overflow: visible !important;
-      position: relative !important;
-      margin: 0 !important;
-      padding: 0 !important;
-      background: transparent !important;
-      box-sizing: border-box !important;
-    }
-
-    /*
-     * IMPORTANT:
-     *
-     * Do not force slide height here.
-     * pptx-preview.js calculates the real
-     * slide height from the PPTX dimensions.
-     *
-     * Only width is controlled by the
-     * available viewer width.
-     */
-    .pptx-render-host .pptx-preview-slide-wrapper {
-      position: relative !important;
-
-      left: auto !important;
-      top: auto !important;
-      right: auto !important;
-      bottom: auto !important;
-
-      width: 100% !important;
-      max-width: 100% !important;
-
-      height: auto !important;
-
-      margin: 0 0 2px 0 !important;
-
-      flex: 0 0 auto !important;
-
-      box-sizing: border-box !important;
-
-      overflow: hidden !important;
-
-      background: #FFFFFF !important;
-    }
-
-    .pptx-render-host
-      .pptx-preview-slide-wrapper:last-child {
-      margin-bottom: 0 !important;
-    }
-
-    /* ============================================================
-       PPTX SLIDE NUMBER
-       ============================================================ */
-
-    .pptx-render-host .pptx-slide-number {
-      position: absolute !important;
-      left: 8px !important;
-      top: 8px !important;
-
-      z-index: 9999 !important;
-
-      padding: 3px 7px !important;
-
-      border-radius: 4px !important;
-
-      background: rgba(0, 0, 0, 0.65) !important;
-
-      color: #FFFFFF !important;
-
-      font-size: 12px !important;
-      line-height: 1.2 !important;
-
-      font-family: Arial, sans-serif !important;
-
-      font-weight: 600 !important;
-
-      pointer-events: none !important;
-      user-select: none !important;
-
-      box-sizing: border-box !important;
-    }
-
-    /* ============================================================
-       GENERIC IMAGE
-       ============================================================ */
-
-    .document-image {
-      display: block;
-      max-width: 100%;
-      height: auto;
-      margin: 0 auto;
-    }
-
-    /* ============================================================
+    /* =========================================================
        ERROR
-       ============================================================ */
+       ========================================================= */
 
     #error {
       display: none;
-      width: 100%;
-      min-height: 100%;
-      align-items: center;
-      justify-content: center;
-      padding: 30px;
+
+      padding: 20px;
+
       text-align: center;
+
+      color: #B00020;
     }
 
-    #error.visible {
+    body.dark-mode #error {
+      color: #FF8A9B;
+    }
+
+    /* =========================================================
+       IMAGE VIEWER
+       ========================================================= */
+
+    .image-preview {
+      width: 100%;
+
       display: flex;
+
+      justify-content: center;
+
+      align-items: center;
+
+      padding: 10px;
+
+      overflow: hidden;
     }
 
-    .error-content {
-      max-width: 500px;
+    .image-preview img {
+      max-width: 100%;
+
+      height: auto;
+
+      display: block;
+
+      object-fit: contain;
     }
 
-    .error-title {
-      font-size: 20px;
-      font-weight: 700;
-      margin-bottom: 10px;
+    /* =========================================================
+       PDF
+       ========================================================= */
+
+    .pdf-preview-container {
+      width: 100%;
+
+      overflow-x: hidden;
+
+      overflow-y: visible;
+
+      display: flex;
+
+      flex-direction: column;
+
+      align-items: center;
+
+      gap: 12px;
     }
 
-    .error-message {
-      font-size: 14px;
-      line-height: 1.5;
-      opacity: 0.75;
-      white-space: pre-wrap;
+    .pdf-page-canvas {
+      width: 100% !important;
+
+      max-width: 100%;
+
+      height: auto !important;
+
+      background: #FFFFFF;
+
+      box-shadow: 0 4px 16px rgba(0, 0, 0, 0.10);
+
+      border-radius: 6px;
+
+      display: block;
     }
 
-    body.dark #error {
-      color: #ffffff;
+    /* =========================================================
+       ZOOM
+       ========================================================= */
+
+    .zoom-container {
+      width: 100%;
+
+      transform-origin: top center;
+
+      transition:
+        transform 0.15s ease;
+    }
+
+    /* =========================================================
+       MOBILE
+       ========================================================= */
+
+    @media (max-width: 600px) {
+      .document-container {
+        padding: 10px;
+      }
+
+      .pptx-slide-card {
+        border-radius: 8px;
+
+        /* ONLY CHANGE: reduced mobile gap */
+        margin:
+          3px auto 5px auto !important;
+      }
     }
   </style>
 </head>
 
 <body>
 
-  <div id="loading">
-    <div class="loading-content">
+  <div id="container">
+
+    <div id="loading">
       <div class="spinner"></div>
-    </div>
-  </div>
 
-  <div id="error">
-    <div class="error-content">
-      <div class="error-title">
-        Unable to open document
+      <div>
+        Loading document...
       </div>
-
-      <div
-        id="errorMessage"
-        class="error-message"
-      ></div>
     </div>
+
+    <div id="error"></div>
+
+    <div id="zoom-wrapper" class="zoom-container"></div>
+
   </div>
 
-  <div id="container"></div>
-
-  <script src="pptx-preview.js"></script>
+  <script src="js/pptx-preview.js"></script>
+  <script src="js/pdf.min.js"></script>
 
   <script>
-    /* ============================================================
+    /* =========================================================
        GLOBAL STATE
-       ============================================================ */
+       ========================================================= */
 
-    let currentDocType = '';
+    let currentDocType = null;
 
     let currentZoom = 1.0;
 
+    let currentViewMode = 'page';
+
     let currentSlideMode = 'list';
 
-    let pptxScrollArea = null;
+    let pptxPreviewInstance = null;
 
-    let pptxZoomContent = null;
+    let pptxData = null;
 
-    let pptxRenderHost = null;
+    let currentSlideIndex = 0;
 
-    let receivedDocChunks = '';
+    let totalSlidesCount = 0;
 
-    let receivedDocIsPpt = false;
+    let base64Chunks = [];
 
-    let lastPptxBase64 = '';
+    let pptxBase64Data = null;
 
-    /* ============================================================
-       THEME
-       ============================================================ */
 
-    function setTheme(theme) {
-      if (theme === 'dark') {
-        document.body.classList.add('dark');
-      } else {
-        document.body.classList.remove('dark');
-      }
+    /* =========================================================
+       UTILITY FUNCTIONS
+       ========================================================= */
+
+    function getContainer() {
+      return document.getElementById('zoom-wrapper') || document.getElementById('container');
     }
 
-    /* ============================================================
-       LOADING
-       ============================================================ */
 
     function showLoading() {
       const loading =
         document.getElementById('loading');
 
       if (loading) {
-        loading.classList.remove('hidden');
-      }
-
-      const error =
-        document.getElementById('error');
-
-      if (error) {
-        error.classList.remove('visible');
+        loading.style.display = 'flex';
       }
     }
+
 
     function hideLoading() {
       const loading =
         document.getElementById('loading');
 
       if (loading) {
-        loading.classList.add('hidden');
+        loading.style.display = 'none';
       }
     }
+
 
     function showError(message) {
       hideLoading();
@@ -359,87 +531,23 @@
       const error =
         document.getElementById('error');
 
-      const errorMessage =
-        document.getElementById(
-          'errorMessage'
-        );
-
-      if (errorMessage) {
-        errorMessage.textContent =
-          message || 'Unknown error';
+      if (!error) {
+        return;
       }
 
-      if (error) {
-        error.classList.add('visible');
-      }
+      error.textContent =
+        message || 'Unable to load document.';
 
-      try {
-        if (
-          window.DocumentBridge &&
-          typeof window.DocumentBridge.postMessage ===
-            'function'
-        ) {
-          window.DocumentBridge.postMessage(
-            'error:' +
-            (message || 'Unknown error')
-          );
-        }
-      } catch (_) {}
+      error.style.display =
+        'block';
     }
 
-    function notifySuccess() {
-      try {
-        if (
-          window.DocumentBridge &&
-          typeof window.DocumentBridge.postMessage ===
-            'function'
-        ) {
-          window.DocumentBridge.postMessage(
-            'success'
-          );
-        }
-      } catch (_) {}
-    }
 
-    function notifyPageCount(count) {
-      try {
-        if (
-          window.DocumentBridge &&
-          typeof window.DocumentBridge.postMessage ===
-            'function'
-        ) {
-          window.DocumentBridge.postMessage(
-            'pagecount:' + count
-          );
-        }
-      } catch (_) {}
-    }
+    /* =========================================================
+       BASE64
+       ========================================================= */
 
-    function notifySlideChanged(
-      current,
-      total
-    ) {
-      try {
-        if (
-          window.DocumentBridge &&
-          typeof window.DocumentBridge.postMessage ===
-            'function'
-        ) {
-          window.DocumentBridge.postMessage(
-            'slidechanged:' +
-            current +
-            ':' +
-            total
-          );
-        }
-      } catch (_) {}
-    }
-
-    /* ============================================================
-       BASE64 HELPERS
-       ============================================================ */
-
-    function base64ToUint8Array(base64) {
+    function base64ToArrayBuffer(base64) {
       const binaryString =
         atob(base64);
 
@@ -458,372 +566,29 @@
           binaryString.charCodeAt(i);
       }
 
-      return bytes;
+      return bytes.buffer;
     }
 
-    /* ============================================================
-       PPTX DOM HELPERS
-       ============================================================ */
 
-    function getPptxLibraryWrapper() {
-      if (!pptxRenderHost) {
-        return null;
-      }
+    /* =========================================================
+       DOCUMENT CLEAR
+       ========================================================= */
 
-      return pptxRenderHost.querySelector(
-        ':scope > .pptx-preview-wrapper'
-      );
-    }
-
-    function getRenderedPptxElements() {
-      const wrapper =
-        getPptxLibraryWrapper();
-
-      if (!wrapper) {
-        return [];
-      }
-
-      return Array.from(
-        wrapper.querySelectorAll(
-          ':scope > .pptx-preview-slide-wrapper'
-        )
-      );
-    }
-
-    function addPptxSlideNumbers() {
-      const slides =
-        getRenderedPptxElements();
-
-      slides.forEach(
-        (slide, index) => {
-          let label =
-            slide.querySelector(
-              ':scope > .pptx-slide-number'
-            );
-
-          if (!label) {
-            label =
-              document.createElement(
-                'div'
-              );
-
-            label.className =
-              'pptx-slide-number';
-
-            slide.appendChild(
-              label
-            );
-          }
-
-          label.textContent =
-            'Slide ' +
-            (index + 1);
-        }
-      );
-
-      notifyPageCount(
-        slides.length
-      );
-    }
-
-    /* ============================================================
-       STYLE PPTX DOM
-       ============================================================ */
-
-    function stylePptxDom(
-      viewportWidth
-    ) {
-      if (
-        !pptxRenderHost ||
-        !pptxZoomContent ||
-        !pptxScrollArea
-      ) {
-        return;
-      }
-
-      const viewportWidthSafe =
-        Math.max(
-          280,
-          Math.min(
-            viewportWidth,
-            window.innerWidth - 10
-          )
-        );
-
-      const wrapper =
-        getPptxLibraryWrapper();
-
-      if (!wrapper) {
-        return;
-      }
-
-      pptxRenderHost.style.width =
-        viewportWidthSafe + 'px';
-
-      pptxRenderHost.style.maxWidth =
-        viewportWidthSafe + 'px';
-
-      pptxRenderHost.style.margin =
-        '0 auto';
-
-      pptxRenderHost.style.padding =
-        '0';
-
-      pptxRenderHost.style.display =
-        'block';
-
-      pptxRenderHost.style.height =
-        'auto';
-
-      /*
-       * The scroll area is the
-       * actual scrolling element.
-       */
-      pptxScrollArea.style.height =
-        '100%';
-
-      pptxScrollArea.style.minHeight =
-        '0';
-
-      /*
-       * Let the PPTX wrapper grow
-       * naturally for all slides.
-       */
-      wrapper.style.width =
-        viewportWidthSafe + 'px';
-
-      wrapper.style.maxWidth =
-        viewportWidthSafe + 'px';
-
-      wrapper.style.height =
-        'auto';
-
-      wrapper.style.minHeight =
-        '0';
-
-      wrapper.style.overflow =
-        'visible';
-
-      wrapper.style.margin =
-        '0';
-
-      wrapper.style.padding =
-        '0';
-
-      wrapper.style.position =
-        'relative';
-
-      /*
-       * Put every slide into
-       * normal vertical flow.
-       */
-      const slides =
-        getRenderedPptxElements();
-
-      slides.forEach(
-        (slide) => {
-          slide.style.position =
-            'relative';
-
-          slide.style.left =
-            'auto';
-
-          slide.style.top =
-            'auto';
-
-          slide.style.right =
-            'auto';
-
-          slide.style.bottom =
-            'auto';
-
-          /*
-           * Width follows the
-           * available viewer width.
-           */
-          slide.style.width =
-            viewportWidthSafe + 'px';
-
-          slide.style.maxWidth =
-            viewportWidthSafe + 'px';
-
-          /*
-           * IMPORTANT:
-           *
-           * Do NOT set slide height.
-           *
-           * pptx-preview.js already
-           * calculates the real height
-           * from the PPTX dimensions.
-           */
-          slide.style.height =
-            'auto';
-
-          slide.style.margin =
-            '0 0 2px 0';
-
-          slide.style.flex =
-            '0 0 auto';
-
-          slide.style.overflow =
-            'hidden';
-
-          slide.style.boxSizing =
-            'border-box';
-        }
-      );
-
-      if (slides.length > 0) {
-        slides[
-          slides.length - 1
-        ].style.marginBottom =
-          '0';
-      }
-
-      addPptxSlideNumbers();
-
-      requestAnimationFrame(
-        () => {
-          updatePptxScrollSize();
-
-          setTimeout(
-            () => {
-              updatePptxScrollSize();
-            },
-            50
-          );
-        }
-      );
-    }
-
-    /* ============================================================
-       PPTX SCROLL SIZE
-       ============================================================ */
-
-    function updatePptxScrollSize() {
-      if (
-        !pptxZoomContent ||
-        !pptxRenderHost ||
-        !pptxScrollArea
-      ) {
-        return;
-      }
-
-      const wrapper =
-        getPptxLibraryWrapper();
-
-      if (!wrapper) {
-        return;
-      }
-
-      /*
-       * Get the REAL unscaled size
-       * of the complete vertical
-       * slide list.
-       */
-      const width =
-        Math.max(
-          wrapper.scrollWidth,
-          wrapper.offsetWidth
-        );
-
-      const height =
-        Math.max(
-          wrapper.scrollHeight,
-          wrapper.offsetHeight
-        );
-
-      /*
-       * CSS transform does not affect
-       * normal layout dimensions.
-       *
-       * Therefore the zoom content
-       * receives the scaled dimensions
-       * for correct scrolling.
-       */
-      pptxZoomContent.style.width =
-        Math.max(
-          width * currentZoom,
-          pptxScrollArea.clientWidth
-        ) + 'px';
-
-      pptxZoomContent.style.height =
-        Math.max(
-          height * currentZoom,
-          pptxScrollArea.clientHeight
-        ) + 'px';
-
-      /*
-       * Apply zoom only to the
-       * actual PPTX render.
-       */
-      pptxRenderHost.style.transform =
-        'scale(' +
-        currentZoom +
-        ')';
-
-      pptxRenderHost.style.transformOrigin =
-        'top left';
-    }
-
-    /* ============================================================
-       ZOOM
-       ============================================================ */
-
-    function setZoom(zoom) {
-      currentZoom =
-        Math.max(
-          0.5,
-          Math.min(
-            3.0,
-            Number(zoom) || 1.0
-          )
-        );
-
-      if (
-        currentDocType === 'pptx' &&
-        pptxRenderHost &&
-        pptxZoomContent
-      ) {
-        updatePptxScrollSize();
-        return;
-      }
-
+    function clearContainer() {
       const container =
-        document.getElementById(
-          'container'
-        );
+        getContainer();
 
-      if (container) {
-        container.style.transform =
-          'scale(' +
-          currentZoom +
-          ')';
-
-        container.style.transformOrigin =
-          'top left';
+      if (!container) {
+        return;
       }
+
+      container.innerHTML = '';
     }
 
-    function zoomIn() {
-      setZoom(
-        currentZoom + 0.15
-      );
-    }
 
-    function zoomOut() {
-      setZoom(
-        currentZoom - 0.15
-      );
-    }
-
-    function resetZoom() {
-      setZoom(1.0);
-    }
-
-    /* ============================================================
-       DOCUMENT RENDERER
-       ============================================================ */
+    /* =========================================================
+       GENERIC DOCUMENT RENDER
+       ========================================================= */
 
     function renderDocument(
       type,
@@ -832,667 +597,950 @@
       currentDocType =
         type;
 
-      resetZoom();
-
       showLoading();
 
       try {
+        if (type === 'pdf') {
+          renderPdf(base64Data);
+
+          return;
+        }
+
         if (type === 'pptx') {
-          renderPptx(
-            base64Data
-          );
+          renderPptx(base64Data);
+
           return;
         }
 
         if (type === 'docx') {
-          renderDocx(
-            base64Data
-          );
+          renderDocx(base64Data);
+
           return;
         }
 
         if (type === 'image') {
-          renderImage(
-            base64Data
-          );
+          renderImage(base64Data);
+
           return;
         }
 
-        throw new Error(
-          'Unsupported document type: ' +
-          type
-        );
-      } catch (e) {
         showError(
-          e && e.message
-            ? e.message
-            : String(e)
+          'Unsupported document type.'
+        );
+      } catch (error) {
+        console.error(error);
+
+        showError(
+          error.message ||
+          'Unable to render document.'
         );
       }
     }
 
-    /* ============================================================
-       DOCX
-       ============================================================ */
 
-    function renderDocx(
-      base64Data
-    ) {
-      currentDocType =
-        'docx';
+    /* =========================================================
+       PDF RENDER
+       ========================================================= */
 
-      const container =
-        document.getElementById(
-          'container'
-        );
+    async function renderPdf(base64Data) {
+      clearContainer();
 
-      if (!container) {
-        throw new Error(
-          'Document container not found.'
-        );
-      }
+      const container = getContainer();
 
-      container.innerHTML =
-        '';
+      const pdfContainer = document.createElement('div');
+      pdfContainer.className = 'pdf-preview-container';
 
-      /*
-       * Existing DOCX renderer.
-       * pptx-preview is only used
-       * for PPTX.
-       */
+      container.appendChild(pdfContainer);
+
       try {
-        if (
-          typeof window.docx !==
-          'undefined'
-        ) {
-          /*
-           * Keep compatibility with
-           * existing DOCX implementation.
-           */
+        if (typeof pdfjsLib === 'undefined') {
+          throw new Error('PDF.js library not loaded.');
         }
-      } catch (_) {}
 
-      /*
-       * Existing DOCX rendering.
-       */
-      try {
-        const bytes =
-          base64ToUint8Array(
-            base64Data
-          );
+        const buffer = base64ToArrayBuffer(base64Data);
+        const pdf = await pdfjsLib.getDocument({ data: buffer }).promise;
 
-        const blob =
-          new Blob(
-            [bytes],
-            {
-              type:
-                'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-            }
-          );
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const viewport = page.getViewport({ scale: 1.5 });
 
-        const url =
-          URL.createObjectURL(
-            blob
-          );
+          const canvas = document.createElement('canvas');
+          canvas.className = 'pdf-page-canvas';
 
-        const iframe =
-          document.createElement(
-            'iframe'
-          );
+          const context = canvas.getContext('2d');
+          canvas.height = viewport.height;
+          canvas.width = viewport.width;
 
-        iframe.style.width =
-          '100%';
+          pdfContainer.appendChild(canvas);
 
-        iframe.style.minHeight =
-          '100vh';
-
-        iframe.style.border =
-          '0';
-
-        iframe.src =
-          url;
-
-        container.appendChild(
-          iframe
-        );
+          await page.render({
+            canvasContext: context,
+            viewport: viewport
+          }).promise;
+        }
 
         hideLoading();
+      } catch (error) {
+        console.error(error);
 
-        notifySuccess();
-      } catch (e) {
-        showError(
-          'DOCX rendering failed: ' +
-          e.message
-        );
+        showError('Unable to preview PDF: ' + error.message);
       }
     }
 
-    /* ============================================================
-       IMAGE
-       ============================================================ */
 
-    function renderImage(
-      base64Data
-    ) {
-      currentDocType =
-        'image';
+    /* =========================================================
+       IMAGE RENDER
+       ========================================================= */
+
+    function renderImage(base64Data) {
+      clearContainer();
 
       const container =
-        document.getElementById(
-          'container'
-        );
+        getContainer();
 
-      if (!container) {
-        throw new Error(
-          'Document container not found.'
-        );
-      }
+      const wrapper =
+        document.createElement('div');
 
-      container.innerHTML =
-        '';
+      wrapper.className =
+        'image-preview';
 
       const image =
-        document.createElement(
-          'img'
-        );
-
-      image.className =
-        'document-image';
+        document.createElement('img');
 
       image.src =
         'data:image/png;base64,' +
         base64Data;
 
-      image.onload =
-        function () {
-          hideLoading();
-          notifySuccess();
-        };
-
-      image.onerror =
-        function () {
-          showError(
-            'Image could not be loaded.'
-          );
-        };
-
-      container.appendChild(
+      wrapper.appendChild(
         image
       );
+
+      container.appendChild(
+        wrapper
+      );
+
+      hideLoading();
     }
 
-    /* ============================================================
-       PPTX
-       ============================================================ */
 
-    async function renderPptx(
-      base64Data
-    ) {
-      currentDocType =
-        'pptx';
+    /* =========================================================
+       DOCX RENDER
+       ========================================================= */
 
-      lastPptxBase64 =
-        base64Data;
+    async function renderDocx(base64Data) {
+      clearContainer();
 
       const container =
-        document.getElementById(
-          'container'
+        getContainer();
+
+      const wrapper =
+        document.createElement('div');
+
+      wrapper.className =
+        'docx-preview-container';
+
+      container.appendChild(
+        wrapper
+      );
+
+      try {
+        if (
+          typeof docxPreview ===
+          'undefined'
+        ) {
+          throw new Error(
+            'DOCX preview library not loaded.'
+          );
+        }
+
+        const buffer =
+          base64ToArrayBuffer(
+            base64Data
+          );
+
+        await docxPreview.renderAsync(
+          buffer,
+          wrapper
         );
+
+        hideLoading();
+      } catch (error) {
+        console.error(error);
+
+        showError(
+          'Unable to preview DOCX: ' +
+          error.message
+        );
+      }
+    }
+
+
+    /* =========================================================
+       PPTX RENDER
+       ========================================================= */
+
+    async function renderPptx(base64Data) {
+      pptxBase64Data =
+        base64Data;
+
+      clearContainer();
+
+      const container =
+        getContainer();
 
       if (!container) {
-        throw new Error(
-          'Document container not found.'
-        );
+        return;
       }
 
-      container.innerHTML =
-        '';
+      const screenWidth =
+        window.innerWidth;
 
-      if (
-        typeof window.pptxPreview ===
-        'undefined'
-      ) {
-        throw new Error(
-          'pptx-preview.js is not loaded.'
-        );
-      }
-
-      /*
-       * Width follows the available
-       * WebView width.
-       *
-       * We intentionally DO NOT calculate
-       * a height or force 16:9 here.
-       *
-       * pptx-preview.js reads the actual
-       * PPTX dimensions and calculates
-       * the correct slide height itself.
-       */
       const targetWidth =
         Math.max(
           280,
-          window.innerWidth - 10
+          screenWidth - 20
         );
 
-      /*
-       * Create dedicated PPTX
-       * vertical scroll structure.
-       */
-      pptxScrollArea =
-        document.createElement(
-          'div'
-        );
+      const targetHeight =
+        targetWidth * 9 / 16;
 
-      pptxScrollArea.className =
-        'pptx-scroll-area';
-
-      pptxZoomContent =
-        document.createElement(
-          'div'
-        );
-
-      pptxZoomContent.className =
-        'pptx-zoom-content';
-
-      pptxRenderHost =
-        document.createElement(
-          'div'
-        );
-
-      pptxRenderHost.className =
-        'pptx-render-host';
-
-      pptxZoomContent.appendChild(
-        pptxRenderHost
-      );
-
-      pptxScrollArea.appendChild(
-        pptxZoomContent
-      );
-
-      container.appendChild(
-        pptxScrollArea
-      );
-
-      /*
-       * Initialize PPTX preview.
-       *
-       * IMPORTANT:
-       *
-       * Do not force targetHeight.
-       * The library uses the real PPTX
-       * presentation dimensions.
-       */
-      const preview =
-        window.pptxPreview.init(
-          pptxRenderHost,
-          {
-            width:
-              targetWidth,
-            mode:
-              currentSlideMode
-          }
-        );
-
-      /*
-       * IMPORTANT:
-       *
-       * preview() is asynchronous.
-       * Wait until ALL slides have
-       * actually been rendered.
-       */
-      await preview.preview(
-        base64Data
-      );
-
-      /*
-       * Now the PPTX DOM actually
-       * contains all slides.
-       */
-      stylePptxDom(
-        targetWidth
-      );
-
-      /*
-       * Give the browser one render
-       * frame before measuring the
-       * final scroll dimensions.
-       */
-      requestAnimationFrame(
-        () => {
-          updatePptxScrollSize();
-
-          setTimeout(
-            () => {
-              addPptxSlideNumbers();
-
-              updatePptxScrollSize();
-
-              hideLoading();
-
-              notifySuccess();
-            },
-            50
+      try {
+        if (
+          typeof pptxPreview ===
+          'undefined'
+        ) {
+          throw new Error(
+            'PPTX preview library not loaded.'
           );
         }
+
+        const buffer =
+          base64ToArrayBuffer(
+            base64Data
+          );
+
+        pptxPreviewInstance =
+          pptxPreview.init(
+            container,
+            {
+              width:
+                targetWidth,
+
+              height:
+                targetHeight,
+
+              mode:
+                currentSlideMode
+            }
+          );
+
+        pptxData =
+          await pptxPreviewInstance.preview(
+            buffer
+          );
+
+        if (
+          pptxData &&
+          Array.isArray(
+            pptxData.slides
+          )
+        ) {
+          totalSlidesCount =
+            pptxData.slides.length;
+        } else {
+          const slides =
+            document.querySelectorAll(
+              '.pptx-wrapper .slide, ' +
+              '.pptx-wrapper .pptx-slide'
+            );
+
+          totalSlidesCount =
+            slides.length;
+        }
+
+        stylePptxDom(
+          targetWidth,
+          targetHeight
+        );
+
+        requestAnimationFrame(() => {
+          stylePptxDom(
+            targetWidth,
+            targetHeight
+          );
+        });
+
+        setupSwipeGestures();
+
+        hideLoading();
+
+      } catch (error) {
+        console.error(
+          'PPTX render error:',
+          error
+        );
+
+        showError(
+          'Unable to preview PPTX: ' +
+          error.message
+        );
+      }
+    }
+
+
+    /* =========================================================
+       PPTX DOM STYLING
+       ========================================================= */
+
+    function stylePptxDom(width, height) {
+      const viewportWidth = Math.min(
+        width,
+        Math.max(
+          280,
+          window.innerWidth - 20
+        )
+      );
+
+      const wrapper =
+        document.querySelector(
+          '.pptx-wrapper'
+        );
+
+      if (!wrapper) {
+        return;
+      }
+
+      wrapper.classList.remove(
+        'pptx-slide-card'
+      );
+
+      wrapper.style.width =
+        viewportWidth + 'px';
+
+      wrapper.style.maxWidth =
+        viewportWidth + 'px';
+
+      wrapper.style.height =
+        'auto';
+
+      wrapper.style.minHeight =
+        '0';
+
+      wrapper.style.display =
+        'flex';
+
+      wrapper.style.flexDirection =
+        'column';
+
+      wrapper.style.alignItems =
+        'center';
+
+      wrapper.style.justifyContent =
+        'flex-start';
+
+      wrapper.style.gap =
+        '0';
+
+      wrapper.style.margin =
+        '0 auto';
+
+      wrapper.style.overflow =
+        'visible';
+
+      wrapper.style.overflowX =
+        'visible';
+
+      wrapper.style.overflowY =
+        'visible';
+
+      wrapper.style.position =
+        'relative';
+
+      let slides =
+        Array.from(
+          wrapper.querySelectorAll(
+            '.pptx-slide, ' +
+            '.slide, ' +
+            '[data-slide-index], ' +
+            '[data-slide]'
+          )
+        );
+
+      if (slides.length === 0) {
+        slides =
+          Array.from(
+            wrapper.children
+          ).filter((child) => {
+            const className =
+              typeof child.className ===
+              'string'
+                ? child.className.toLowerCase()
+                : '';
+
+            return (
+              !className.includes(
+                'next'
+              ) &&
+              !className.includes(
+                'prev'
+              ) &&
+              !className.includes(
+                'pagination'
+              ) &&
+              !className.includes(
+                'control'
+              ) &&
+              !className.includes(
+                'button'
+              )
+            );
+          });
+      }
+
+      slides.forEach((slide) => {
+        slide.classList.add(
+          'pptx-slide-card'
+        );
+
+        slide.style.display =
+          'block';
+
+        slide.style.flex =
+          '0 0 auto';
+
+        slide.style.width =
+          viewportWidth + 'px';
+
+        slide.style.maxWidth =
+          viewportWidth + 'px';
+
+        slide.style.minWidth =
+          '0';
+
+        slide.style.height =
+          height + 'px';
+
+        slide.style.minHeight =
+          height + 'px';
+
+        slide.style.maxHeight =
+          height + 'px';
+
+        /* ONLY CHANGE: reduced gap between slides */
+        slide.style.margin =
+          '3px 0 5px 0';
+
+        slide.style.position =
+          'relative';
+
+        slide.style.overflow =
+          'hidden';
+
+        slide.style.overflowX =
+          'hidden';
+
+        slide.style.overflowY =
+          'hidden';
+
+        slide.style.transform =
+          'none';
+
+        slide.style.boxSizing =
+          'border-box';
+
+        const contents =
+          slide.querySelectorAll(
+            'canvas, svg, img'
+          );
+
+        contents.forEach(
+          (element) => {
+            element.style.maxWidth =
+              '100%';
+
+            element.style.maxHeight =
+              '100%';
+
+            element.style.boxSizing =
+              'border-box';
+
+            if (
+              element.tagName
+                .toLowerCase() ===
+              'img'
+            ) {
+              element.style.width =
+                '100%';
+
+              element.style.height =
+                '100%';
+
+              element.style.objectFit =
+                'contain';
+            }
+          }
+        );
+      });
+
+      wrapper
+        .querySelectorAll(
+          'canvas'
+        )
+        .forEach(
+          (canvas) => {
+            canvas.style.maxWidth =
+              '100%';
+
+            canvas.style.height =
+              'auto';
+
+            canvas.style.display =
+              'block';
+          }
+        );
+    }
+
+
+    /* =========================================================
+       PPTX SWIPE GESTURES
+       ========================================================= */
+
+    function setupSwipeGestures() {
+      if (
+        currentSlideMode !==
+        'slide'
+      ) {
+        return;
+      }
+
+      const wrapper =
+        document.querySelector(
+          '.pptx-wrapper'
+        );
+
+      if (!wrapper) {
+        return;
+      }
+
+      let startX = 0;
+
+      let startY = 0;
+
+      wrapper.addEventListener(
+        'touchstart',
+        (event) => {
+          if (
+            !event.touches ||
+            event.touches.length === 0
+          ) {
+            return;
+          }
+
+          startX =
+            event.touches[0].clientX;
+
+          startY =
+            event.touches[0].clientY;
+        },
+        {
+          passive: true
+        }
+      );
+
+      wrapper.addEventListener(
+        'touchend',
+        (event) => {
+          if (
+            !event.changedTouches ||
+            event.changedTouches.length === 0
+          ) {
+            return;
+          }
+
+          const endX =
+            event.changedTouches[0]
+              .clientX;
+
+          const endY =
+            event.changedTouches[0]
+              .clientY;
+
+          const diffX =
+            endX - startX;
+
+          const diffY =
+            endY - startY;
+
+          if (
+            Math.abs(diffX) >
+              Math.abs(diffY) &&
+            Math.abs(diffX) > 50
+          ) {
+            if (diffX < 0) {
+              nextSlide();
+            } else {
+              prevSlide();
+            }
+          }
+        },
+        {
+          passive: true
+        }
       );
     }
 
-    /* ============================================================
-       LARGE FILE CHUNKS
-       ============================================================ */
 
-    function receiveDocChunk(
-      chunk,
-      isFirst,
-      isLast,
-      isPpt
-    ) {
-      if (isFirst) {
-        receivedDocChunks =
-          '';
-
-        receivedDocIsPpt =
-          !!isPpt;
-      }
-
-      receivedDocChunks +=
-        chunk;
-
-      if (isLast) {
-        const completeData =
-          receivedDocChunks;
-
-        const type =
-          receivedDocIsPpt
-            ? 'pptx'
-            : 'docx';
-
-        receivedDocChunks =
-          '';
-
-        receivedDocIsPpt =
-          false;
-
-        renderDocument(
-          type,
-          completeData
-        );
-      }
-    }
-
-    /* ============================================================
-       SLIDE MODE
-       ============================================================ */
-
-    function setSlideMode(
-      mode
-    ) {
-      /*
-       * PPTX viewer is intentionally
-       * kept in vertical list mode.
-       */
-      currentSlideMode =
-        'list';
-
-      if (
-        currentDocType === 'pptx' &&
-        lastPptxBase64
-      ) {
-        renderPptx(
-          lastPptxBase64
-        );
-      }
-    }
-
-    /* ============================================================
-       VIEW MODE
-       ============================================================ */
-
-    function setViewMode(
-      mode
-    ) {
-      /*
-       * Kept for compatibility with
-       * pdf_viewer_screen.dart.
-       */
-    }
-
-    /* ============================================================
-       NEXT / PREVIOUS SLIDE
-       ============================================================ */
-
-    function getPptxSlides() {
-      return getRenderedPptxElements();
-    }
+    /* =========================================================
+       NEXT SLIDE
+       ========================================================= */
 
     function nextSlide() {
-      const slides =
-        getPptxSlides();
-
-      if (slides.length === 0) {
-        return;
-      }
-
-      const area =
-        pptxScrollArea;
-
-      if (!area) {
-        return;
-      }
-
-      const current =
-        area.scrollTop;
-
-      let target =
-        null;
-
-      for (
-        let i = 0;
-        i < slides.length;
-        i++
+      if (
+        currentSlideMode !==
+        'slide'
       ) {
-        const top =
-          slides[i].offsetTop;
-
-        if (
-          top >
-          current + 10
-        ) {
-          target =
-            slides[i];
-
-          break;
-        }
+        return;
       }
 
-      if (target) {
-        area.scrollTo({
-          top:
-            target.offsetTop,
+      if (
+        currentSlideIndex >=
+        totalSlidesCount - 1
+      ) {
+        return;
+      }
 
-          behavior:
-            'smooth'
-        });
+      currentSlideIndex++;
+
+      if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderSingleSlide ===
+          'function'
+      ) {
+        pptxPreviewInstance
+          .renderSingleSlide(
+            currentSlideIndex
+          );
+      }
+      else if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderNextSlide ===
+          'function'
+      ) {
+        pptxPreviewInstance
+          .renderNextSlide();
       }
     }
+
+
+    /* =========================================================
+       PREVIOUS SLIDE
+       ========================================================= */
 
     function prevSlide() {
-      const slides =
-        getPptxSlides();
-
-      if (slides.length === 0) {
-        return;
-      }
-
-      const area =
-        pptxScrollArea;
-
-      if (!area) {
-        return;
-      }
-
-      const current =
-        area.scrollTop;
-
-      let target =
-        slides[0];
-
-      for (
-        let i =
-          slides.length - 1;
-        i >= 0;
-        i--
+      if (
+        currentSlideMode !==
+        'slide'
       ) {
-        const top =
-          slides[i].offsetTop;
-
-        if (
-          top <
-          current - 10
-        ) {
-          target =
-            slides[i];
-
-          break;
-        }
+        return;
       }
 
-      area.scrollTo({
-        top:
-          target.offsetTop,
+      if (
+        currentSlideIndex <=
+        0
+      ) {
+        return;
+      }
 
-        behavior:
-          'smooth'
-      });
+      currentSlideIndex--;
+
+      if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderSingleSlide ===
+          'function'
+      ) {
+        pptxPreviewInstance
+          .renderSingleSlide(
+            currentSlideIndex
+          );
+      }
+      else if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderPreSlide ===
+          'function'
+      ) {
+        pptxPreviewInstance
+          .renderPreSlide();
+      }
     }
 
-    function goToSlide(
-      index
-    ) {
-      const slides =
-        getPptxSlides();
+
+    /* =========================================================
+       GO TO SLIDE
+       ========================================================= */
+
+    function goToSlide(index) {
+      if (
+        currentSlideMode !==
+        'slide'
+      ) {
+        return;
+      }
 
       if (
         index < 0 ||
-        index >= slides.length
+        index >= totalSlidesCount
       ) {
         return;
       }
 
-      const area =
-        pptxScrollArea;
+      currentSlideIndex =
+        index;
 
-      if (!area) {
+      if (
+        pptxPreviewInstance &&
+        typeof
+          pptxPreviewInstance.renderSingleSlide ===
+          'function'
+      ) {
+        pptxPreviewInstance
+          .renderSingleSlide(
+            currentSlideIndex
+          );
+      }
+    }
+
+
+    /* =========================================================
+       SET PPT SLIDE MODE
+       ========================================================= */
+
+    async function setSlideMode(mode) {
+      currentSlideMode = 'list';
+      currentSlideIndex = 0;
+
+      if (!pptxBase64Data) {
         return;
       }
 
-      area.scrollTo({
-        top:
-          slides[index].offsetTop,
-
-        behavior:
-          'smooth'
-      });
-
-      notifySlideChanged(
-        index + 1,
-        slides.length
+      await renderPptx(
+        pptxBase64Data
       );
     }
 
-    /* ============================================================
+
+    /* =========================================================
+       ZOOM
+       ========================================================= */
+
+    function setZoom(zoom) {
+      currentZoom =
+        Math.max(
+          0.5,
+          Math.min(
+            4.0,
+            zoom
+          )
+        );
+
+      const content =
+        document.getElementById(
+          'zoom-wrapper'
+        );
+
+      if (content) {
+        content.style.transform =
+          'scale(' +
+          currentZoom +
+          ')';
+      }
+    }
+
+
+    function zoomIn() {
+      setZoom(
+        currentZoom + 0.15
+      );
+    }
+
+
+    function zoomOut() {
+      setZoom(
+        currentZoom - 0.15
+      );
+    }
+
+
+    function resetZoom() {
+      setZoom(1.0);
+    }
+
+
+    /* =========================================================
        RESIZE
-       ============================================================ */
+       ========================================================= */
+
+    let resizeTimer = null;
 
     window.addEventListener(
       'resize',
-      function () {
-        if (
-          currentDocType === 'pptx' &&
-          pptxRenderHost
-        ) {
-          const width =
-            Math.max(
-              280,
-              window.innerWidth - 10
-            );
+      () => {
+        clearTimeout(
+          resizeTimer
+        );
 
-          stylePptxDom(
-            width
+        resizeTimer =
+          setTimeout(
+            () => {
+              if (
+                currentDocType ===
+                'pptx' &&
+                pptxBase64Data
+              ) {
+                renderPptx(
+                  pptxBase64Data
+                );
+              }
+            },
+            250
           );
-
-          updatePptxScrollSize();
-        }
       }
     );
 
-    /* ============================================================
-       INITIAL MESSAGE HANDLER
-       ============================================================ */
+
+    /* =========================================================
+       DARK MODE
+       ========================================================= */
+
+    function setDarkMode(enabled) {
+      if (enabled) {
+        document.body.classList.add(
+          'dark-mode'
+        );
+      } else {
+        document.body.classList.remove(
+          'dark-mode'
+        );
+      }
+    }
+
+
+    /* =========================================================
+       MESSAGE HANDLING
+       ========================================================= */
 
     window.addEventListener(
-      'error',
-      function (event) {
+      'message',
+      (event) => {
         if (
-          event &&
-          event.error
+          !event.data
         ) {
-          console.error(
-            event.error
+          return;
+        }
+
+        const data =
+          event.data;
+
+        if (
+          data.type ===
+          'darkMode'
+        ) {
+          setDarkMode(
+            data.enabled
+          );
+
+          return;
+        }
+
+        if (
+          data.type ===
+          'zoom'
+        ) {
+          setZoom(
+            data.value
+          );
+
+          return;
+        }
+
+        if (
+          data.type ===
+          'pptxMode'
+        ) {
+          setSlideMode(
+            data.mode
+          );
+
+          return;
+        }
+
+        if (
+          data.type ===
+          'render'
+        ) {
+          renderDocument(
+            data.documentType,
+            data.base64
           );
         }
       }
     );
 
-    /* ============================================================
-       EXPOSE FUNCTIONS TO FLUTTER
-       ============================================================ */
 
-    window.setTheme =
-      setTheme;
+    /* =========================================================
+       INITIALIZATION
+       ========================================================= */
 
-    window.renderDocument =
+    document.addEventListener(
+      'DOMContentLoaded',
+      () => {
+        hideLoading();
+      }
+    );
+
+
+    window.DocVault =
+      window.DocVault || {};
+
+    window.DocVault.renderDocument =
       renderDocument;
 
-    window.renderDocx =
-      renderDocx;
-
-    window.renderPptx =
+    window.DocVault.renderPptx =
       renderPptx;
 
-    window.renderImage =
-      renderImage;
+    window.DocVault.renderPdf =
+      renderPdf;
 
-    window.receiveDocChunk =
-      receiveDocChunk;
-
-    window.setZoom =
-      setZoom;
-
-    window.zoomIn =
-      zoomIn;
-
-    window.zoomOut =
-      zoomOut;
-
-    window.resetZoom =
-      resetZoom;
-
-    window.setSlideMode =
+    window.DocVault.setSlideMode =
       setSlideMode;
 
-    window.setViewMode =
-      setViewMode;
+    window.DocVault.setZoom =
+      setZoom;
 
-    window.nextSlide =
+    window.DocVault.zoomIn =
+      zoomIn;
+
+    window.DocVault.zoomOut =
+      zoomOut;
+
+    window.DocVault.resetZoom =
+      resetZoom;
+
+    window.DocVault.setDarkMode =
+      setDarkMode;
+
+    window.DocVault.nextSlide =
       nextSlide;
 
-    window.prevSlide =
+    window.DocVault.prevSlide =
       prevSlide;
 
-    window.goToSlide =
+    window.DocVault.goToSlide =
       goToSlide;
+
   </script>
 
 </body>
