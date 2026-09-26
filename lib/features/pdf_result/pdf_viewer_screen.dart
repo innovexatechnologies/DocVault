@@ -51,7 +51,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   String? _errorMessage;
 
   // View management state
-  double _zoomScale = 1.0;
   int _rotationQuarterTurns = 0;
   bool _isFitWidth = true;
   String _docxViewMode = 'page'; // 'page' or 'reflow'
@@ -98,13 +97,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
       if (_isPdf) {
         if (mounted) {
           setState(() {
-            _isLoading = false; // PDFView widget handles loading internally
+            _isLoading = false;
           });
         }
         return;
       }
 
-      // DOCX / PPTX -> WebView-based rendering with native extraction fallback
       _renderTimeoutTimer = Timer(const Duration(seconds: 25), () {
         if (mounted && _isLoading && !_usingFallbackView) {
           debugPrint(
@@ -266,27 +264,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   // VIEW & PAGE MANAGEMENT CONTROLS
   // ============================================================
 
-  void _zoomIn() {
-    setState(() {
-      _zoomScale = (_zoomScale + 0.2).clamp(0.6, 3.0);
-    });
-    _webViewController?.runJavaScript("setZoom($_zoomScale);");
-  }
-
-  void _zoomOut() {
-    setState(() {
-      _zoomScale = (_zoomScale - 0.2).clamp(0.6, 3.0);
-    });
-    _webViewController?.runJavaScript("setZoom($_zoomScale);");
-  }
-
-  void _resetZoom() {
-    setState(() {
-      _zoomScale = 1.0;
-    });
-    _webViewController?.runJavaScript("setZoom(1.0);");
-  }
-
   void _rotateDocument() {
     setState(() {
       _rotationQuarterTurns = (_rotationQuarterTurns + 1) % 4;
@@ -346,8 +323,12 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
     }
   }
 
+  // ============================================================
+  // JUMP TO PAGE DIALOG (Without Zoom Controls)
+  // ============================================================
+
   void _showJumpToPageDialog() {
-    if (_actualPageCount <= 1) return;
+    if (_actualPageCount <= 0) return;
     int target = _currentPage;
     final textController = TextEditingController(text: '$_currentPage');
 
@@ -372,7 +353,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
                   ),
                   const SizedBox(width: 12),
                   Text(
-                    'Jump to $_itemUnit',
+                    'Jump to Page',
                     style: TextStyle(
                       fontWeight: FontWeight.w800,
                       fontSize: 17,
@@ -383,74 +364,48 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               ),
               content: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   Text(
-                    'Choose a $_itemUnit between 1 and $_actualPageCount:',
+                    'Select $_itemUnit (1 - $_actualPageCount):',
                     style: TextStyle(
                       fontSize: 13,
+                      fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white70 : Colors.black54,
                     ),
                   ),
-                  const SizedBox(height: 18),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      IconButton(
-                        onPressed: target > 1
-                            ? () {
-                                setDialogState(() {
-                                  target--;
-                                  textController.text = '$target';
-                                });
-                              }
-                            : null,
-                        icon: const Icon(Icons.remove_circle_outline_rounded),
-                        color: _accentColor,
-                      ),
-                      Container(
-                        width: 76,
-                        margin: const EdgeInsets.symmetric(horizontal: 8),
-                        child: TextField(
-                          controller: textController,
-                          keyboardType: TextInputType.number,
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            fontSize: 18,
-                            fontWeight: FontWeight.w800,
-                            color: isDark ? Colors.white : Colors.black87,
-                          ),
-                          decoration: InputDecoration(
-                            contentPadding: const EdgeInsets.symmetric(vertical: 8),
-                            filled: true,
-                            fillColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide.none,
-                            ),
-                          ),
-                          onChanged: (val) {
-                            final parsed = int.tryParse(val);
-                            if (parsed != null && parsed >= 1 && parsed <= _actualPageCount) {
-                              setDialogState(() => target = parsed);
-                            }
-                          },
+                  const SizedBox(height: 12),
+                  Center(
+                    child: SizedBox(
+                      width: 90,
+                      child: TextField(
+                        controller: textController,
+                        keyboardType: TextInputType.number,
+                        textAlign: TextAlign.center,
+                        style: TextStyle(
+                          fontSize: 18,
+                          fontWeight: FontWeight.w800,
+                          color: isDark ? Colors.white : Colors.black87,
                         ),
+                        decoration: InputDecoration(
+                          contentPadding: const EdgeInsets.symmetric(vertical: 8),
+                          filled: true,
+                          fillColor: isDark ? Colors.white.withValues(alpha: 0.06) : Colors.black.withValues(alpha: 0.04),
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12),
+                            borderSide: BorderSide.none,
+                          ),
+                        ),
+                        onChanged: (val) {
+                          final parsed = int.tryParse(val);
+                          if (parsed != null && parsed >= 1 && parsed <= _actualPageCount) {
+                            setDialogState(() => target = parsed);
+                          }
+                        },
                       ),
-                      IconButton(
-                        onPressed: target < _actualPageCount
-                            ? () {
-                                setDialogState(() {
-                                  target++;
-                                  textController.text = '$target';
-                                });
-                              }
-                            : null,
-                        icon: const Icon(Icons.add_circle_outline_rounded),
-                        color: _accentColor,
-                      ),
-                    ],
+                    ),
                   ),
-                  const SizedBox(height: 14),
+                  const SizedBox(height: 10),
                   SliderTheme(
                     data: SliderTheme.of(context).copyWith(
                       activeTrackColor: _accentColor,
@@ -1068,7 +1023,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   // ============================================================
-  // VIEW CONTROLS BAR (Fit Width, Zoom, Mode, Rotate)
+  // VIEW CONTROLS BAR
   // ============================================================
 
   Widget _buildViewControlsBar(bool isDark) {
@@ -1095,7 +1050,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
             onTap: () {
               setState(() {
                 _isFitWidth = !_isFitWidth;
-                _resetZoom();
               });
             },
           ),
@@ -1117,28 +1071,6 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
               onTap: _togglePptxSlideMode,
             ),
           const Spacer(),
-          _buildSmallToolIcon(
-            icon: Icons.remove_rounded,
-            isDark: isDark,
-            onTap: _zoomOut,
-          ),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 6),
-            child: Text(
-              '${(_zoomScale * 100).round()}%',
-              style: TextStyle(
-                fontSize: 11,
-                fontWeight: FontWeight.w700,
-                color: isDark ? Colors.white70 : Colors.black87,
-              ),
-            ),
-          ),
-          _buildSmallToolIcon(
-            icon: Icons.add_rounded,
-            isDark: isDark,
-            onTap: _zoomIn,
-          ),
-          const SizedBox(width: 6),
           _buildSmallToolIcon(
             icon: Icons.rotate_right_rounded,
             isDark: isDark,
@@ -1526,7 +1458,7 @@ class _PdfViewerScreenState extends State<PdfViewerScreen> {
   }
 
   // ============================================================
-  // PDF VIEWER (FLUTTER_PDFVIEW IMPLEMENTATION)
+  // PDF VIEWER
   // ============================================================
 
   Widget _buildPdfViewer(bool isDark) {
